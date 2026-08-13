@@ -10,7 +10,7 @@ import { NextResponse, type NextRequest } from 'next/server'
  * trước khi trang render.
  */
 
-const PUBLIC_PREFIXES = ['/sign-in', '/sign-up', '/auth', '/_next', '/favicon']
+const PUBLIC_PREFIXES = ['/sign-in', '/sign-up', '/auth', '/_next', '/favicon', '/privacy', '/terms']
 
 export async function proxy(request: NextRequest) {
   let response = NextResponse.next({ request })

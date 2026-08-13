@@ -47,6 +47,7 @@ const GUIDE_STEPS: Readonly<Record<ProviderFamily, readonly string[]>> = {
     'Vào App Settings → Basic để lấy App ID và App Secret — App Secret chỉ hiện khi bấm "Show" và nhập lại mật khẩu Facebook.',
     'Meta hiện ưu tiên sản phẩm "Facebook Login for Business" (thay cho "Facebook Login" cũ) cho App loại Business. Thêm sản phẩm này nếu chưa có → mục Configurations → tạo/chỉnh một Configuration → dán địa chỉ redirect URI bên dưới vào đó. Nếu App của bạn vẫn hiện sản phẩm "Facebook Login" cổ điển, dùng Settings → "Valid OAuth Redirect URIs" như trước.',
     'App mới tạo mặc định ở chế độ "Development" — chỉ tài khoản có vai trò Admin/Developer/Tester trong App mới đăng nhập được. Muốn người khác dùng được phải nộp App Review xin quyền ads_read (Marketing API) và instagram_business_basic (Instagram — quyền instagram_basic cũ đã bị Meta khai tử từ 27/1/2025) (Meta duyệt thủ công, thường vài ngày đến vài tuần) rồi bật "Live" — nếu chỉ dùng cho tài khoản của chính bạn (kể cả đọc nội dung Page ở bước trên) thì bỏ qua bước này, Development mode là đủ.',
+    'Nộp App Review cần khai Privacy Policy URL ở App Settings → Basic — dùng đúng https://marketing-optimizer-zeta.vercel.app/privacy (đã có sẵn trong app này).',
   ],
   tiktok: [
     'Vào developers.tiktok.com, đăng nhập bằng CHÍNH tài khoản TikTok của bạn (không phải tài khoản TikTok for Business) → "Manage apps" → "Connect an app" để tạo app mới. Đây là sản phẩm hoàn toàn khác business-api.tiktok.com cũ — không dùng lại được App ID/Secret đã có ở đó.',
@@ -55,7 +56,7 @@ const GUIDE_STEPS: Readonly<Record<ProviderFamily, readonly string[]>> = {
     'Vào cấu hình sản phẩm "Login Kit" → chọn nền tảng "Web" → mục Redirect URI, dán đúng địa chỉ bên dưới.',
     'Vào mục Scopes, bật "user.info.basic" (tự cấp sẵn, không cần duyệt), "user.info.stats" (follower/lượt thích/số video), và "video.list" (danh sách video) — hai cái sau cần App Review mới chạy được ngoài Sandbox.',
     'App mới tạo ở chế độ Sandbox — test được ngay với tối đa 10 tài khoản TikTok tự khai trong mục Sandbox, không cần duyệt. Muốn dùng với tài khoản TikTok bất kỳ phải nộp App Review (mô tả use case, có thể cần video demo) rồi bật "Live".',
-    'Vào mục "URL properties" của app, khai đủ Privacy Policy URL và Terms of Service URL hợp lệ — thiếu một trong hai TikTok từ chối App Review ngay từ vòng đầu.',
+    'Vào mục "URL properties" của app, khai đủ Privacy Policy URL và Terms of Service URL hợp lệ — thiếu một trong hai TikTok từ chối App Review ngay từ vòng đầu. Dùng đúng https://marketing-optimizer-zeta.vercel.app/privacy và https://marketing-optimizer-zeta.vercel.app/terms (đã có sẵn trong app này).',
   ],
 }
 

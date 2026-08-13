@@ -90,6 +90,15 @@ export default function AuthLayout({
           Kết nối tài khoản quảng cáo là hành động chỉ đọc. Không chiến dịch nào bị
           thay đổi nếu bạn chưa bấm duyệt.
         </p>
+
+        <p className="mt-3 flex gap-3 text-[length:var(--text-xs)] text-[var(--color-ink-3)]">
+          <Link href="/privacy" className="hover:text-[var(--color-ink-2)] hover:underline">
+            Chính sách quyền riêng tư
+          </Link>
+          <Link href="/terms" className="hover:text-[var(--color-ink-2)] hover:underline">
+            Điều khoản dịch vụ
+          </Link>
+        </p>
       </div>
     </div>
   )
