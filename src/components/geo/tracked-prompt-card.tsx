@@ -1,7 +1,7 @@
 import { Trash2 } from 'lucide-react'
 import { Card } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
+import { SubmitButton } from '@/components/ui/submit-button'
 import {
   deleteTrackedPromptAction,
   toggleTrackedPromptAction,
@@ -44,16 +44,16 @@ export function TrackedPromptCard({
             <input type="hidden" name="promptId" value={prompt.id} />
             <input type="hidden" name="siteId" value={siteId} />
             <input type="hidden" name="enabled" value={prompt.enabled ? 'false' : 'true'} />
-            <Button type="submit" variant="secondary" size="sm">
+            <SubmitButton variant="secondary" size="sm">
               {prompt.enabled ? 'Tắt' : 'Bật'}
-            </Button>
+            </SubmitButton>
           </form>
           <form action={deleteTrackedPromptAction}>
             <input type="hidden" name="promptId" value={prompt.id} />
             <input type="hidden" name="siteId" value={siteId} />
-            <Button type="submit" variant="ghost" size="icon" aria-label="Xoá câu hỏi">
+            <SubmitButton variant="ghost" size="icon" aria-label="Xoá câu hỏi">
               <Trash2 aria-hidden className="size-3.5 text-[var(--color-negative)]" />
-            </Button>
+            </SubmitButton>
           </form>
         </div>
       </div>

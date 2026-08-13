@@ -88,7 +88,12 @@ export async function syncConnectionAction(
   }
 
   const result = await syncConnection(connectionId)
-  revalidatePath(`/${connection.site_id}`, 'layout')
+  // Chỉ 2 trang thật sự đọc trạng thái/số liệu connection này — không
+  // `revalidatePath(.., 'layout')` cả cây Site như trước (kéo theo 4 truy
+  // vấn của `[siteId]/layout.tsx` chạy lại mỗi lần bấm "Làm mới", dù chúng
+  // không đổi). Cùng quy ước với `meta-ads.ts`/`google-ads.ts`/`gtm.ts`.
+  revalidatePath(`/${connection.site_id}/connections`)
+  revalidatePath(`/${connection.site_id}/channels`)
 
   if (!result.ok) {
     return { ok: false, error: `Đồng bộ thất bại (${result.error}).` }

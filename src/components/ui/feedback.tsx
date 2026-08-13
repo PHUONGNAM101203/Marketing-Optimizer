@@ -61,6 +61,33 @@ export function Skeleton({ className }: { readonly className?: string }) {
   )
 }
 
+/**
+ * Khung xương dùng cho `loading.tsx` của TỪNG trang con trong `[siteId]/`
+ * (Overview, Channels, Planner…) — CHỈ bọc phần `<main>`, không đụng tới
+ * sidebar/topbar (đã có khung xương riêng ở `(app)/loading.tsx`, xem comment
+ * ở đó về lý do tách hai cấp). Thiếu file `loading.tsx` ở từng trang con
+ * nghĩa là chuyển trang trong CÙNG một site (Overview → Channels → Planner)
+ * không có boundary Suspense nào gần hơn `(app)/loading.tsx` — cả khung app
+ * phải treo tới khi trang mới tải xong, đúng cảm giác "bấm là phải đợi" mà
+ * lẽ ra chỉ có phần nội dung giữa nên thay đổi.
+ */
+export function PageSkeleton() {
+  return (
+    <div className="flex flex-col gap-6 p-6">
+      <div className="flex items-center justify-between gap-3">
+        <Skeleton className="h-8 w-64" />
+        <Skeleton className="h-8 w-32" />
+      </div>
+      <div className="grid gap-3 md:grid-cols-3">
+        <Skeleton className="h-28" />
+        <Skeleton className="h-28" />
+        <Skeleton className="h-28" />
+      </div>
+      <Skeleton className="h-64" />
+    </div>
+  )
+}
+
 export type CalloutTone = 'signal' | 'critical' | 'caution' | 'positive'
 
 const CALLOUT_CLASS: Readonly<Record<CalloutTone, string>> = {
