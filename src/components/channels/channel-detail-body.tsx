@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { AlertTriangle, Info, Settings2 } from 'lucide-react'
+import { AlertTriangle, Eye, Heart, Info, MessageCircle, Settings2, Share2 } from 'lucide-react'
 import { Card, CardBody, CardHeader, SectionHead } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -34,6 +34,8 @@ export function ChannelDetailBody({
   siteId,
   provider,
   rangeParam,
+  fromParam,
+  toParam,
   productFilter,
   page,
 }: {
@@ -46,6 +48,9 @@ export function ChannelDetailBody({
   readonly siteId?: string
   readonly provider?: ProviderId
   readonly rangeParam?: string
+  /** Chỉ có giá trị khi `rangeParam === 'custom'` — xem `parseCustomRangeParams`. */
+  readonly fromParam?: string
+  readonly toParam?: string
   readonly productFilter?: ProductApprovalStatus
   readonly page?: number
 }) {
@@ -162,21 +167,19 @@ export function ChannelDetailBody({
             metricKey="views"
             label="Lượt xem"
           />
-          <BreakdownSection
+          <VideoCardGrid
             label="Video"
             title="Video xem nhiều nhất"
-            rows={detail.data.topVideos.map((row) => ({
-              dimension: row.title,
-              cells: [
-                formatCompact(row.views),
-                formatCompact(row.likes),
-                formatCompact(row.comments),
-                // `shares` là `null` khi YouTube Analytics API không trả cột
-                // này cho tài khoản — không đoán 0, hiện gạch ngang.
-                row.shares === null ? '—' : formatCompact(row.shares),
-              ],
+            emptyDescription="Chưa có video nào trong khoảng ngày này."
+            fetchError={detail.data.fetchError}
+            videos={detail.data.topVideos.map((row) => ({
+              title: row.title,
+              thumbnailUrl: row.thumbnailUrl,
+              views: row.views,
+              likes: row.likes,
+              comments: row.comments,
+              shares: row.shares,
             }))}
-            columns={['Lượt xem', 'Lượt thích', 'Bình luận', 'Chia sẻ']}
           />
         </div>
       )
@@ -189,6 +192,8 @@ export function ChannelDetailBody({
           siteId={siteId as string}
           provider={provider as ProviderId}
           rangeParam={rangeParam}
+          fromParam={fromParam}
+          toParam={toParam}
           productFilter={productFilter}
           page={page ?? 1}
         />
@@ -302,19 +307,19 @@ export function ChannelDetailBody({
             </Card>
           ) : null}
 
-          <BreakdownSection
+          <VideoCardGrid
             label="Video"
             title="Video xem nhiều nhất"
-            rows={detail.data.topVideos.map((row) => ({
-              dimension: row.title,
-              cells: [
-                formatCompact(row.views),
-                formatCompact(row.likes),
-                formatCompact(row.comments),
-                formatCompact(row.shares),
-              ],
+            emptyDescription="Chưa có video công khai trong khoảng ngày này — TikTok chỉ trả về 20 video đăng gần nhất, chọn khoảng ngày mới hơn nếu cần."
+            fetchError={detail.data.fetchError}
+            videos={detail.data.topVideos.map((row) => ({
+              title: row.title,
+              thumbnailUrl: row.coverImageUrl,
+              views: row.views,
+              likes: row.likes,
+              comments: row.comments,
+              shares: row.shares,
             }))}
-            columns={['Lượt xem', 'Lượt thích', 'Bình luận', 'Chia sẻ']}
           />
         </div>
       )
@@ -380,6 +385,8 @@ function MerchantCenterSection({
   siteId,
   provider,
   rangeParam,
+  fromParam,
+  toParam,
   productFilter,
   page,
 }: {
@@ -388,6 +395,8 @@ function MerchantCenterSection({
   readonly siteId: string
   readonly provider: ProviderId
   readonly rangeParam?: string
+  readonly fromParam?: string
+  readonly toParam?: string
   readonly productFilter?: ProductApprovalStatus
   readonly page: number
 }) {
@@ -400,6 +409,8 @@ function MerchantCenterSection({
   const filterHref = (status: ProductApprovalStatus | null) => {
     const params = new URLSearchParams()
     if (rangeParam) params.set('range', rangeParam)
+    if (rangeParam === 'custom' && fromParam) params.set('from', fromParam)
+    if (rangeParam === 'custom' && toParam) params.set('to', toParam)
     if (status) params.set('status', status)
     const query = params.toString()
     return `/${siteId}/channels/${provider}${query ? `?${query}` : ''}`
@@ -408,6 +419,8 @@ function MerchantCenterSection({
   const pageHref = (targetPage: number) => {
     const params = new URLSearchParams()
     if (rangeParam) params.set('range', rangeParam)
+    if (rangeParam === 'custom' && fromParam) params.set('from', fromParam)
+    if (rangeParam === 'custom' && toParam) params.set('to', toParam)
     if (productFilter) params.set('status', productFilter)
     if (targetPage > 1) params.set('page', String(targetPage))
     const query = params.toString()
@@ -633,6 +646,117 @@ function MerchantStat({
         {formatNumber(value)}
       </p>
     </Card>
+  )
+}
+
+interface VideoCardData {
+  readonly title: string
+  readonly thumbnailUrl?: string | null
+  readonly views: number
+  readonly likes: number
+  readonly comments: number
+  /** `null` khi nền tảng không trả được chỉ số này cho tài khoản (khác 0
+   * thật) — cả YouTube lẫn TikTok đều có thể rơi vào trường hợp này. */
+  readonly shares: number | null
+}
+
+/**
+ * Lưới thẻ video — dùng cho YouTube và TikTok, hai nền tảng có nội dung dạng
+ * video với đủ 4 chỉ số tương tác (view/like/comment/share). KHÔNG dùng
+ * `BreakdownSection` (bảng) ở đây vì nội dung video xứng đáng một ảnh bìa để
+ * nhận diện — một dòng bảng chỉ có tên không đủ để biết đang nói về clip nào.
+ */
+function VideoCardGrid({
+  label,
+  title,
+  videos,
+  fetchError,
+  emptyDescription,
+}: {
+  readonly label: string
+  readonly title: string
+  readonly videos: readonly VideoCardData[]
+  /** Khác `null` = request lấy video thất bại thật — phải nói rõ, không
+   * được lẫn với "chưa có video nào" (trạng thái bình thường). */
+  readonly fetchError: string | null
+  readonly emptyDescription: string
+}) {
+  return (
+    <section className="flex flex-col gap-3">
+      <SectionHead label={label} title={title} />
+      {fetchError ? (
+        <Callout
+          tone="critical"
+          icon={<AlertTriangle aria-hidden className="size-5 text-[var(--color-negative)]" />}
+          title="Không lấy được danh sách video"
+        >
+          <p>{fetchError}</p>
+        </Callout>
+      ) : videos.length === 0 ? (
+        <EmptyState title="Chưa có video" description={emptyDescription} />
+      ) : (
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {videos.map((video, index) => (
+            <Card key={index} className="flex flex-col overflow-hidden p-0">
+              {video.thumbnailUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={video.thumbnailUrl}
+                  alt=""
+                  className="aspect-video w-full object-cover"
+                />
+              ) : (
+                <div className="flex aspect-video w-full items-center justify-center bg-[var(--color-paper-3)]">
+                  <Eye aria-hidden className="size-6 text-[var(--color-ink-3)]" />
+                </div>
+              )}
+              <div className="flex flex-1 flex-col gap-3 p-4">
+                <p
+                  className="line-clamp-2 text-[length:var(--text-sm)] font-medium text-[var(--color-ink)]"
+                  title={video.title}
+                >
+                  {video.title}
+                </p>
+                <div className="mt-auto grid grid-cols-2 gap-2">
+                  <VideoStat icon={Eye} label="Lượt xem" value={formatCompact(video.views)} />
+                  <VideoStat icon={Heart} label="Lượt thích" value={formatCompact(video.likes)} />
+                  <VideoStat
+                    icon={MessageCircle}
+                    label="Bình luận"
+                    value={formatCompact(video.comments)}
+                  />
+                  <VideoStat
+                    icon={Share2}
+                    label="Chia sẻ"
+                    value={video.shares === null ? '—' : formatCompact(video.shares)}
+                  />
+                </div>
+              </div>
+            </Card>
+          ))}
+        </div>
+      )}
+    </section>
+  )
+}
+
+function VideoStat({
+  icon: Icon,
+  label,
+  value,
+}: {
+  readonly icon: typeof Eye
+  readonly label: string
+  readonly value: string
+}) {
+  return (
+    <div className="flex items-center gap-1.5 text-[length:var(--text-xs)] text-[var(--color-ink-2)]">
+      <Icon aria-hidden className="size-3.5 shrink-0 text-[var(--color-ink-3)]" />
+      <span data-numeric className="font-medium text-[var(--color-ink)]">
+        {value}
+      </span>
+      <span className="text-[var(--color-ink-3)]">{label}</span>
+    </div>
   )
 }
 

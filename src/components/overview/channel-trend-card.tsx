@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import { ArrowRight, Settings2 } from 'lucide-react'
+import { cn } from '@/lib/cn'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { EmptyState } from '@/components/ui/feedback'
@@ -68,20 +69,30 @@ export function ChannelTrendCard({
             className="py-6"
           />
         ) : (
-          <TrendChart
-            data={series.map((point) => ({ date: point.date, value: metric.getValue(point) }))}
-            series={[
-              {
-                key: 'value',
-                label: metric.label,
-                colorToken: PROVIDER_META[provider].colorToken,
-                kind: compact ? 'area' : 'line',
-              },
-            ]}
-            format={metric.format === 'currency' ? 'currency' : 'compact'}
-            currencySymbol={metric.format === 'currency' ? '₫' : undefined}
-            height={compact ? 140 : 220}
-          />
+          <div className="flex flex-col gap-2">
+            {/* TikTok là provider snapshot (một điểm/lần đồng bộ) — mới kết
+                nối thì đường xu hướng chỉ có 1-2 điểm, trông như thẻ trống dù
+                dữ liệu thật vẫn có. Thêm 3 số hiện tại ngay bên trên để thẻ
+                luôn có nội dung đọc được, không phụ thuộc lịch sử đã tích luỹ
+                được bao lâu. */}
+            {provider === 'tiktok' ? (
+              <TiktokQuickStats extra={series[series.length - 1].extra} compact={compact} />
+            ) : null}
+            <TrendChart
+              data={series.map((point) => ({ date: point.date, value: metric.getValue(point) }))}
+              series={[
+                {
+                  key: 'value',
+                  label: metric.label,
+                  colorToken: PROVIDER_META[provider].colorToken,
+                  kind: compact ? 'area' : 'line',
+                },
+              ]}
+              format={metric.format === 'currency' ? 'currency' : 'compact'}
+              currencySymbol={metric.format === 'currency' ? '₫' : undefined}
+              height={compact ? 140 : 220}
+            />
+          </div>
         )}
       </div>
     </Card>
@@ -118,6 +129,52 @@ function ConfigOnlyState({
     <div className="flex items-center gap-2 py-8 text-[length:var(--text-sm)] text-[var(--color-ink-3)]">
       <Settings2 aria-hidden className="size-4 shrink-0" />
       {text}
+    </div>
+  )
+}
+
+function TiktokQuickStats({
+  extra,
+  compact,
+}: {
+  readonly extra: Readonly<Record<string, number>>
+  readonly compact: boolean
+}) {
+  return (
+    <div className={compact ? 'grid grid-cols-3 gap-1.5' : 'grid grid-cols-3 gap-2'}>
+      <TiktokStatChip label="Follower" value={extra.followerCount ?? 0} compact={compact} />
+      <TiktokStatChip label="Lượt thích" value={extra.likesCount ?? 0} compact={compact} />
+      <TiktokStatChip label="Video" value={extra.videoCount ?? 0} compact={compact} />
+    </div>
+  )
+}
+
+function TiktokStatChip({
+  label,
+  value,
+  compact,
+}: {
+  readonly label: string
+  readonly value: number
+  readonly compact: boolean
+}) {
+  return (
+    <div
+      className={cn(
+        'flex flex-col items-center rounded-[var(--radius-md)] bg-[var(--color-paper-2)] text-center',
+        compact ? 'gap-0 px-1.5 py-1.5' : 'gap-0.5 px-2 py-2.5',
+      )}
+    >
+      <p
+        data-numeric
+        className={cn(
+          'leading-none font-semibold text-[var(--color-ink)]',
+          compact ? 'text-[length:var(--text-sm)]' : 'text-[length:var(--text-lg)]',
+        )}
+      >
+        {formatNumber(value)}
+      </p>
+      <p className="truncate text-[length:var(--text-2xs)] text-[var(--color-ink-3)]">{label}</p>
     </div>
   )
 }

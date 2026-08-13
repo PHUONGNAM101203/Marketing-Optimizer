@@ -237,7 +237,13 @@ export const listAllGtmContainers = async (
 
 interface YoutubeChannel {
   readonly id?: string
-  readonly snippet?: { readonly title?: string }
+  readonly snippet?: {
+    readonly title?: string
+    readonly thumbnails?: {
+      readonly default?: { readonly url?: string }
+      readonly medium?: { readonly url?: string }
+    }
+  }
 }
 
 const listYoutubeChannels = async (accessToken: string): Promise<DiscoveredAccount[]> => {
@@ -254,6 +260,8 @@ const listYoutubeChannels = async (accessToken: string): Promise<DiscoveredAccou
       provider: 'youtube' as const,
       externalAccountId: channel.id,
       accountName: channel.snippet?.title ?? channel.id,
+      avatarUrl:
+        channel.snippet?.thumbnails?.medium?.url ?? channel.snippet?.thumbnails?.default?.url ?? null,
     }))
 }
 

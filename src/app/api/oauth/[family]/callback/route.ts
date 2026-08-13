@@ -174,6 +174,7 @@ export async function GET(
             provider: account.provider,
             external_account_id: account.externalAccountId,
             account_name: account.accountName,
+            avatar_url: account.avatarUrl ?? null,
             status: 'syncing',
             scopes: adapter.scopes as string[],
             connected_by: user.id,

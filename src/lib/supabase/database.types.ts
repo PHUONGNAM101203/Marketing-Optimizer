@@ -123,6 +123,7 @@ export type Database = {
       connections: {
         Row: {
           account_name: string
+          avatar_url: string | null
           connected_at: string
           connected_by: string | null
           error_at: string | null
@@ -138,6 +139,7 @@ export type Database = {
         }
         Insert: {
           account_name: string
+          avatar_url?: string | null
           connected_at?: string
           connected_by?: string | null
           error_at?: string | null
@@ -153,6 +155,7 @@ export type Database = {
         }
         Update: {
           account_name?: string
+          avatar_url?: string | null
           connected_at?: string
           connected_by?: string | null
           error_at?: string | null

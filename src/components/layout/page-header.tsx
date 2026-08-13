@@ -10,7 +10,9 @@ import { cn } from '@/lib/cn'
 
 export interface PageHeaderProps {
   readonly title: string
-  readonly description?: string
+  /** Thường là chuỗi, nhưng chấp nhận ReactNode cho các trang cần chèn thêm
+   * ảnh đại diện/biểu tượng cạnh mô tả (vd. avatar kênh ở trang chi tiết kênh). */
+  readonly description?: ReactNode
   readonly action?: ReactNode
   readonly meta?: ReactNode
   readonly className?: string

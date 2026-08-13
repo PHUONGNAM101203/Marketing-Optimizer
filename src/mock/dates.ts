@@ -44,11 +44,28 @@ const PRESET_LENGTHS: Readonly<Partial<Record<DateRangePreset, number>>> = {
 /**
  * Giải preset thành khoảng ngày cụ thể kèm kỳ so sánh.
  * Kỳ trước LUÔN cùng độ dài và liền kề — so 30 ngày với 28 ngày là so sai.
+ *
+ * `custom` cần `customRange` (từ `parseCustomRangeParams`, `?from=`/`?to=`)
+ * — thiếu nó (bookmark cũ, gõ tay URL) thì SẬP VỀ `last-28` như trước khi có
+ * tuỳ chọn này, không render một khoảng ngày trống nghĩa.
  */
 export const resolveDateRange = (
   preset: DateRangePreset,
   today: Date = MOCK_TODAY,
+  customRange?: { readonly start: IsoDate; readonly end: IsoDate },
 ): ResolvedDateRange => {
+  if (preset === 'custom' && customRange) {
+    const start = new Date(customRange.start)
+    const length = daysBetween(customRange)
+    return {
+      preset,
+      start: customRange.start,
+      end: customRange.end,
+      previousStart: toIsoDate(addDays(start, -length)),
+      previousEnd: toIsoDate(addDays(start, -1)),
+    }
+  }
+
   // "Hôm nay" là ngoại lệ có chủ đích — người dùng chọn preset này chính là
   // để xem phần dữ liệu ĐANG tích luỹ trong ngày, biết là chưa đầy đủ.
   if (preset === 'today') {

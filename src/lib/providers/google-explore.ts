@@ -239,6 +239,7 @@ export const fetchGtmExplore = async (
 export interface YoutubeExplore {
   readonly topVideos: readonly {
     readonly title: string
+    readonly thumbnailUrl: string | null
     readonly views: number
     readonly likes: number
     readonly comments: number
@@ -247,6 +248,11 @@ export interface YoutubeExplore {
      * (xem UI: cột chỉ hiện khi ít nhất một video có giá trị khác null). */
     readonly shares: number | null
   }[]
+  /** `null` = tải thành công (danh sách có thể rỗng — kênh chưa đăng video
+   * trong khoảng ngày đã chọn, hoàn toàn bình thường). Khác `null` = request
+   * thất bại thật — phân biệt rõ với "chưa có video nào" để không hiện nhầm
+   * cùng một ô trống cho hai tình huống khác hẳn nhau. */
+  readonly fetchError: string | null
 }
 
 /** 4 metric cùng dimension `video`, cùng một lệnh gọi — CHƯA verify với tài
@@ -270,14 +276,17 @@ export const fetchYoutubeExplore = async (
   reportUrl.searchParams.set('maxResults', '10')
 
   const reportResponse = await fetch(reportUrl.toString(), { headers: authHeader(accessToken) })
-  if (!reportResponse.ok) return { topVideos: [] }
+  if (!reportResponse.ok) {
+    const errorBody = await reportResponse.text()
+    return { topVideos: [], fetchError: `YouTube Analytics trả lỗi HTTP ${reportResponse.status}: ${errorBody.slice(0, 200)}` }
+  }
 
   const reportData = (await reportResponse.json()) as {
     readonly columnHeaders?: readonly { readonly name?: string }[]
     readonly rows?: readonly (readonly (string | number)[])[]
   }
   const rows = reportData.rows ?? []
-  if (rows.length === 0) return { topVideos: [] }
+  if (rows.length === 0) return { topVideos: [], fetchError: null }
 
   // Đọc vị trí cột theo `columnHeaders` Google TRẢ VỀ, không giả định khớp
   // đúng thứ tự đã yêu cầu ở `metrics` — an toàn hơn nếu API bỏ qua một
@@ -295,29 +304,47 @@ export const fetchYoutubeExplore = async (
     `https://www.googleapis.com/youtube/v3/videos?part=snippet&id=${videoIds.join(',')}`,
     { headers: authHeader(accessToken) },
   )
-  const titleById = new Map<string, string>()
+  interface VideoMeta {
+    readonly title: string
+    readonly thumbnailUrl: string | null
+  }
+  const metaById = new Map<string, VideoMeta>()
   if (videosResponse.ok) {
     const videosData = (await videosResponse.json()) as {
       readonly items?: readonly {
         readonly id?: string
-        readonly snippet?: { readonly title?: string }
+        readonly snippet?: {
+          readonly title?: string
+          readonly thumbnails?: {
+            readonly medium?: { readonly url?: string }
+            readonly default?: { readonly url?: string }
+          }
+        }
       }[]
     }
     for (const item of videosData.items ?? []) {
-      if (item.id) titleById.set(item.id, item.snippet?.title ?? item.id)
+      if (!item.id) continue
+      metaById.set(item.id, {
+        title: item.snippet?.title ?? item.id,
+        thumbnailUrl:
+          item.snippet?.thumbnails?.medium?.url ?? item.snippet?.thumbnails?.default?.url ?? null,
+      })
     }
   }
 
   return {
     topVideos: rows.map((row) => {
       const id = String(row[0])
+      const meta = metaById.get(id)
       return {
-        title: titleById.get(id) ?? id,
+        title: meta?.title ?? id,
+        thumbnailUrl: meta?.thumbnailUrl ?? null,
         views: valueAt(row, 'views') ?? 0,
         likes: valueAt(row, 'likes') ?? 0,
         comments: valueAt(row, 'comments') ?? 0,
         shares: valueAt(row, 'shares'),
       }
     }),
+    fetchError: null,
   }
 }

@@ -4,7 +4,7 @@ import { DataGate } from '@/components/connections/data-gate'
 import { ReportBuilder } from '@/components/explore/report-builder'
 import { getSite } from '@/lib/data/sites'
 import { getRealExploreRows } from '@/lib/data/site-explore'
-import { parseRangeParam } from '@/lib/domain/date-range-param'
+import { parseCustomRangeParams, parseRangeParam } from '@/lib/domain/date-range-param'
 import { resolveDateRange } from '@/mock/dates'
 import { formatDateRange } from '@/lib/format'
 
@@ -15,14 +15,18 @@ export default async function ExplorePage({
   searchParams,
 }: {
   readonly params: Promise<{ readonly siteId: string }>
-  readonly searchParams: Promise<{ readonly range?: string }>
+  readonly searchParams: Promise<{ readonly range?: string; readonly from?: string; readonly to?: string }>
 }) {
   const { siteId } = await params
-  const { range: rangeParam } = await searchParams
+  const { range: rangeParam, from, to } = await searchParams
   const site = await getSite(siteId)
   if (!site) notFound()
 
-  const range = resolveDateRange(parseRangeParam(rangeParam), new Date())
+  const range = resolveDateRange(
+    parseRangeParam(rangeParam),
+    new Date(),
+    parseCustomRangeParams(from, to) ?? undefined,
+  )
 
   const rows = await getRealExploreRows(site.id, {
     startDate: range.start,

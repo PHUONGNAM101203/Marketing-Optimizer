@@ -2,18 +2,20 @@
 
 import Link from 'next/link'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
-import { useActionState } from 'react'
-import { Check, ChevronDown, Plus, RefreshCw, Search } from 'lucide-react'
+import { useActionState, useState } from 'react'
+import { Calendar, Check, ChevronDown, Plus, RefreshCw, Search } from 'lucide-react'
 import { DropdownMenu } from 'radix-ui'
 import { cn } from '@/lib/cn'
 import { Button } from '@/components/ui/button'
 import { StatusDot } from '@/components/ui/badge'
+import { DatePickerField } from '@/components/ui/date-picker-field'
+import { DialogContent, DialogRoot } from '@/components/ui/dialog'
 import { ThemeToggle } from '@/components/layout/theme-toggle'
 import { SiteFavicon } from '@/components/brand/site-favicon'
 import { resyncSiteAction, type ResyncState } from '@/lib/actions/sync'
-import { parseRangeParam } from '@/lib/domain/date-range-param'
+import { parseCustomRangeParams, parseRangeParam } from '@/lib/domain/date-range-param'
 import { DATE_RANGE_LABELS, type DateRangePreset, type Site } from '@/lib/domain/site'
-import { formatRelativeTime } from '@/lib/format'
+import { formatDateRange, formatRelativeTime } from '@/lib/format'
 
 /* Hallmark · component: topbar · theme: studied-DNA (Ink & Signal)
  *
@@ -46,7 +48,12 @@ export interface TopbarProps {
 }
 
 export function Topbar({ site, sites, lastSyncedAt, hasConnections, now }: TopbarProps) {
-  const preset = parseRangeParam(useSearchParams().get('range') ?? undefined)
+  const searchParams = useSearchParams()
+  const preset = parseRangeParam(searchParams.get('range') ?? undefined)
+  const customRange = parseCustomRangeParams(
+    searchParams.get('from') ?? undefined,
+    searchParams.get('to') ?? undefined,
+  )
   return (
     <header
       className={cn(
@@ -95,7 +102,7 @@ export function Topbar({ site, sites, lastSyncedAt, hasConnections, now }: Topba
           </span>
         )}
 
-        <DateRangeMenu preset={preset} />
+        <DateRangeMenu preset={preset} customRange={customRange} />
 
         <SyncAllButton siteId={site.id} />
 
@@ -192,59 +199,163 @@ function SiteSwitcher({
   )
 }
 
-function DateRangeMenu({ preset }: { readonly preset: DateRangePreset }) {
+function DateRangeMenu({
+  preset,
+  customRange,
+}: {
+  readonly preset: DateRangePreset
+  readonly customRange: { readonly start: string; readonly end: string } | null
+}) {
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
+  const [customDialogOpen, setCustomDialogOpen] = useState(false)
+  const [from, setFrom] = useState(customRange?.start ?? '')
+  const [to, setTo] = useState(customRange?.end ?? '')
 
   const choose = (next: DateRangePreset) => {
     const params = new URLSearchParams(searchParams.toString())
     params.set('range', next)
+    params.delete('from')
+    params.delete('to')
     router.push(`${pathname}?${params.toString()}`)
   }
 
-  return (
-    <DropdownMenu.Root>
-      <DropdownMenu.Trigger asChild>
-        <Button variant="secondary" size="sm" className="gap-1.5">
-          {DATE_RANGE_LABELS[preset]}
-          <ChevronDown aria-hidden className="size-3.5" />
-        </Button>
-      </DropdownMenu.Trigger>
+  const applyCustom = () => {
+    if (!from || !to || from > to) return
+    const params = new URLSearchParams(searchParams.toString())
+    params.set('range', 'custom')
+    params.set('from', from)
+    params.set('to', to)
+    router.push(`${pathname}?${params.toString()}`)
+    setCustomDialogOpen(false)
+  }
 
-      <DropdownMenu.Portal>
-        <DropdownMenu.Content
-          align="end"
-          sideOffset={6}
-          className={cn(
-            'z-50 min-w-[12rem] rounded-[var(--radius-lg)] p-1',
-            'border border-[var(--color-rule)] bg-[var(--color-paper)]',
-            'shadow-[0_8px_28px_-12px_rgb(0_0_0/0.18)]',
-          )}
-        >
-          {DATE_PRESETS.map((option) => (
+  const triggerLabel =
+    preset === 'custom' && customRange
+      ? formatDateRange(customRange.start, customRange.end)
+      : DATE_RANGE_LABELS[preset]
+
+  return (
+    <>
+      <DropdownMenu.Root>
+        <DropdownMenu.Trigger asChild>
+          <Button variant="secondary" size="sm" className="gap-1.5">
+            {triggerLabel}
+            <ChevronDown aria-hidden className="size-3.5" />
+          </Button>
+        </DropdownMenu.Trigger>
+
+        <DropdownMenu.Portal>
+          <DropdownMenu.Content
+            align="end"
+            sideOffset={6}
+            className={cn(
+              'z-50 min-w-[12rem] rounded-[var(--radius-lg)] p-1',
+              'border border-[var(--color-rule)] bg-[var(--color-paper)]',
+              'shadow-[0_8px_28px_-12px_rgb(0_0_0/0.18)]',
+            )}
+          >
+            {DATE_PRESETS.map((option) => (
+              <DropdownMenu.Item
+                key={option}
+                onSelect={() => choose(option)}
+                className={cn(
+                  'flex cursor-pointer items-center gap-2 rounded-[var(--radius-sm)] px-2 py-1.5',
+                  'text-[length:var(--text-sm)] text-[var(--color-ink)] outline-none',
+                  'data-[highlighted]:bg-[var(--color-paper-3)]',
+                )}
+              >
+                <Check
+                  aria-hidden
+                  className={cn(
+                    'size-3.5 shrink-0',
+                    option === preset ? 'text-[var(--color-signal)]' : 'text-transparent',
+                  )}
+                />
+                {DATE_RANGE_LABELS[option]}
+              </DropdownMenu.Item>
+            ))}
+
+            <div className="my-1 border-t border-[var(--color-rule)]" />
+
+            {/* Mở Dialog riêng thay vì điều hướng ngay — cần 2 ngày (từ/đến)
+                trước khi có một khoảng ngày hợp lệ để chuyển tới, khác các
+                preset ở trên chỉ cần một lượt bấm. */}
             <DropdownMenu.Item
-              key={option}
-              onSelect={() => choose(option)}
+              onSelect={(event) => {
+                event.preventDefault()
+                setCustomDialogOpen(true)
+              }}
               className={cn(
                 'flex cursor-pointer items-center gap-2 rounded-[var(--radius-sm)] px-2 py-1.5',
                 'text-[length:var(--text-sm)] text-[var(--color-ink)] outline-none',
                 'data-[highlighted]:bg-[var(--color-paper-3)]',
               )}
             >
-              <Check
+              <Calendar
                 aria-hidden
                 className={cn(
                   'size-3.5 shrink-0',
-                  option === preset ? 'text-[var(--color-signal)]' : 'text-transparent',
+                  preset === 'custom' ? 'text-[var(--color-signal)]' : 'text-[var(--color-ink-3)]',
                 )}
               />
-              {DATE_RANGE_LABELS[option]}
+              Tuỳ chỉnh…
             </DropdownMenu.Item>
-          ))}
-        </DropdownMenu.Content>
-      </DropdownMenu.Portal>
-    </DropdownMenu.Root>
+          </DropdownMenu.Content>
+        </DropdownMenu.Portal>
+      </DropdownMenu.Root>
+
+      <DialogRoot open={customDialogOpen} onOpenChange={setCustomDialogOpen}>
+        <DialogContent
+          title="Chọn khoảng ngày tuỳ chỉnh"
+          description="Chọn đúng khoảng ngày bạn biết có dữ liệu — ví dụ ngày đăng video thay vì phỏng đoán theo preset có sẵn."
+        >
+          <div className="flex flex-col gap-4">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="flex flex-col gap-1.5">
+                <label className="text-[length:var(--text-sm)] font-medium text-[var(--color-ink)]">
+                  Từ ngày
+                </label>
+                <DatePickerField
+                  name="from"
+                  defaultValue={from}
+                  onValueChange={setFrom}
+                />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <label className="text-[length:var(--text-sm)] font-medium text-[var(--color-ink)]">
+                  Đến ngày
+                </label>
+                <DatePickerField
+                  name="to"
+                  defaultValue={to}
+                  minDate={from || undefined}
+                  onValueChange={setTo}
+                />
+              </div>
+            </div>
+
+            {from && to && from > to ? (
+              <p className="text-[length:var(--text-xs)] text-[var(--color-negative)]">
+                Ngày kết thúc phải sau ngày bắt đầu.
+              </p>
+            ) : null}
+
+            <Button
+              type="button"
+              variant="primary"
+              size="md"
+              className="w-full"
+              disabled={!from || !to || from > to}
+              onClick={applyCustom}
+            >
+              Áp dụng
+            </Button>
+          </div>
+        </DialogContent>
+      </DialogRoot>
+    </>
   )
 }
 

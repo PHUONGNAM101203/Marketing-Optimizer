@@ -33,7 +33,12 @@ interface FacebookPage {
   readonly id?: string
   readonly name?: string
   readonly website?: string
-  readonly instagram_business_account?: { readonly id?: string; readonly username?: string }
+  readonly picture?: { readonly data?: { readonly url?: string } }
+  readonly instagram_business_account?: {
+    readonly id?: string
+    readonly username?: string
+    readonly profile_picture_url?: string
+  }
 }
 
 const pageMatchesDomain = (page: FacebookPage, targetDomain: string): boolean => {
@@ -52,7 +57,10 @@ export const discoverMetaAccounts = async (
   const targetDomain = normalizeHostname(domain)
 
   const url = new URL(PAGES_ENDPOINT)
-  url.searchParams.set('fields', 'name,website,instagram_business_account{id,username}')
+  url.searchParams.set(
+    'fields',
+    'name,website,picture{url},instagram_business_account{id,username,profile_picture_url}',
+  )
   const response = await fetch(url.toString(), { headers: authHeader(accessToken) })
   if (!response.ok) return []
 
@@ -65,6 +73,7 @@ export const discoverMetaAccounts = async (
       provider: 'facebook' as const,
       externalAccountId: page.id as string,
       accountName: page.name ?? (page.id as string),
+      avatarUrl: page.picture?.data?.url ?? null,
     }))
 
   const instagramAccounts: DiscoveredAccount[] = matchingPages
@@ -77,6 +86,7 @@ export const discoverMetaAccounts = async (
       externalAccountId: page.instagram_business_account.id as string,
       accountName:
         page.instagram_business_account.username ?? page.name ?? (page.instagram_business_account.id as string),
+      avatarUrl: page.instagram_business_account.profile_picture_url ?? null,
     }))
 
   return [...facebookAccounts, ...instagramAccounts]

@@ -6,12 +6,13 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { EmptyState } from '@/components/ui/feedback'
 import { ProviderMark } from '@/components/connections/provider-mark'
+import { ChannelAvatar } from '@/components/channels/channel-avatar'
 import { ChannelDetailBody } from '@/components/channels/channel-detail-body'
 import { ExternalChannelLink } from '@/components/connections/external-channel-link'
 import { getSite } from '@/lib/data/sites'
 import { getChannelDetail } from '@/lib/data/site-channel-detail'
 import { getChannelDailySeries, getChannelSummaries } from '@/lib/data/site-channels'
-import { parseRangeParam } from '@/lib/domain/date-range-param'
+import { parseCustomRangeParams, parseRangeParam } from '@/lib/domain/date-range-param'
 import { resolveDateRange } from '@/mock/dates'
 import { PROVIDER_META, isProviderId } from '@/lib/domain/providers'
 import { formatDateRange } from '@/lib/format'
@@ -40,17 +41,23 @@ export default async function ChannelDetailPage({
   readonly params: Promise<{ readonly siteId: string; readonly provider: string }>
   readonly searchParams: Promise<{
     readonly range?: string
+    readonly from?: string
+    readonly to?: string
     readonly status?: string
     readonly page?: string
   }>
 }) {
   const { siteId, provider } = await params
-  const { range: rangeParam, status: statusParam, page: pageParam } = await searchParams
+  const { range: rangeParam, from, to, status: statusParam, page: pageParam } = await searchParams
   const site = await getSite(siteId)
   if (!site || !isProviderId(provider)) notFound()
 
   const meta = PROVIDER_META[provider]
-  const range = resolveDateRange(parseRangeParam(rangeParam), new Date())
+  const range = resolveDateRange(
+    parseRangeParam(rangeParam),
+    new Date(),
+    parseCustomRangeParams(from, to) ?? undefined,
+  )
   const productFilter = statusParam && isProductStatusFilter(statusParam) ? statusParam : undefined
   const page = Math.max(1, Number(pageParam) || 1)
 
@@ -80,7 +87,14 @@ export default async function ChannelDetailPage({
         <PageHeader
           title={meta.label}
           description={
-            detail && detail.kind !== 'unsupported' ? detail.accountName : 'Chưa liên kết tài khoản'
+            detail && detail.kind !== 'unsupported' ? (
+              <span className="flex items-center gap-2.5">
+                <ChannelAvatar avatarUrl={detail.avatarUrl} provider={provider} size="sm" />
+                {detail.accountName}
+              </span>
+            ) : (
+              'Chưa liên kết tài khoản'
+            )
           }
           action={
             detail && detail.kind !== 'unsupported' ? (
@@ -131,6 +145,8 @@ export default async function ChannelDetailPage({
           siteId={site.id}
           provider={provider}
           rangeParam={rangeParam}
+          fromParam={from}
+          toParam={to}
           productFilter={productFilter}
           page={page}
         />

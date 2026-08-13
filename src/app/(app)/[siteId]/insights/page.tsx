@@ -9,7 +9,7 @@ import { Callout, EmptyState } from '@/components/ui/feedback'
 import { ProviderMark } from '@/components/connections/provider-mark'
 import { getSite } from '@/lib/data/sites'
 import { getRealInsights } from '@/lib/data/site-insights'
-import { parseRangeParam } from '@/lib/domain/date-range-param'
+import { parseCustomRangeParams, parseRangeParam } from '@/lib/domain/date-range-param'
 import { resolveDateRange } from '@/mock/dates'
 import {
   ACTION_KIND_LABELS,
@@ -37,14 +37,18 @@ export default async function InsightsPage({
   searchParams,
 }: {
   readonly params: Promise<{ readonly siteId: string }>
-  readonly searchParams: Promise<{ readonly range?: string }>
+  readonly searchParams: Promise<{ readonly range?: string; readonly from?: string; readonly to?: string }>
 }) {
   const { siteId } = await params
-  const { range: rangeParam } = await searchParams
+  const { range: rangeParam, from, to } = await searchParams
   const site = await getSite(siteId)
   if (!site) notFound()
 
-  const range = resolveDateRange(parseRangeParam(rangeParam), new Date())
+  const range = resolveDateRange(
+    parseRangeParam(rangeParam),
+    new Date(),
+    parseCustomRangeParams(from, to) ?? undefined,
+  )
   const all = await getRealInsights(site.id, range)
 
   // Hàng rào chống bịa số: insight không truy được về hàng metric thật thì

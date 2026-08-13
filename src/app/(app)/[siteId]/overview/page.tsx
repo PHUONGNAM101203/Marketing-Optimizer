@@ -31,7 +31,7 @@ import {
 import { SiteProfileCard } from '@/components/audit/site-profile-card'
 import { PageSpeedReport } from '@/components/audit/pagespeed-report'
 import { ChannelTrendCard } from '@/components/overview/channel-trend-card'
-import { parseRangeParam } from '@/lib/domain/date-range-param'
+import { parseCustomRangeParams, parseRangeParam } from '@/lib/domain/date-range-param'
 import { resolveDateRange } from '@/mock/dates'
 import {
   CHARTABLE_PROVIDERS,
@@ -70,14 +70,18 @@ export default async function OverviewPage({
   searchParams,
 }: {
   readonly params: Promise<{ readonly siteId: string }>
-  readonly searchParams: Promise<{ readonly range?: string }>
+  readonly searchParams: Promise<{ readonly range?: string; readonly from?: string; readonly to?: string }>
 }) {
   const { siteId } = await params
-  const { range: rangeParam } = await searchParams
+  const { range: rangeParam, from, to } = await searchParams
   const site = await getSite(siteId)
   if (!site) notFound()
 
-  const range = resolveDateRange(parseRangeParam(rangeParam), new Date())
+  const range = resolveDateRange(
+    parseRangeParam(rangeParam),
+    new Date(),
+    parseCustomRangeParams(from, to) ?? undefined,
+  )
   const previousRange = { start: range.previousStart, end: range.previousEnd }
 
   // Số liệu MOCK — minh hoạ cho khối chi phí quảng cáo, luôn bị khoá mờ bên

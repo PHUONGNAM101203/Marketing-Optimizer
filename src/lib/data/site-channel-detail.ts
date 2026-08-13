@@ -64,60 +64,100 @@ export type ChannelDetail =
       readonly kind: 'ga4'
       readonly accountName: string
       readonly externalAccountId: string
+      /** Ảnh đại diện kênh — lưu một lần lúc kết nối (`connections.avatar_url`),
+       * không refetch mỗi lần tải trang. `null` cho các nền tảng không có khái
+       * niệm "kênh" (Ads/Analytics/Search Console/Tag Manager/Merchant Center). */
+      readonly avatarUrl: string | null
       readonly data: Ga4Explore
     }
   | {
       readonly kind: 'gsc'
       readonly accountName: string
       readonly externalAccountId: string
+      /** Ảnh đại diện kênh — lưu một lần lúc kết nối (`connections.avatar_url`),
+       * không refetch mỗi lần tải trang. `null` cho các nền tảng không có khái
+       * niệm "kênh" (Ads/Analytics/Search Console/Tag Manager/Merchant Center). */
+      readonly avatarUrl: string | null
       readonly data: GscExplore
     }
   | {
       readonly kind: 'gtm'
       readonly accountName: string
       readonly externalAccountId: string
+      /** Ảnh đại diện kênh — lưu một lần lúc kết nối (`connections.avatar_url`),
+       * không refetch mỗi lần tải trang. `null` cho các nền tảng không có khái
+       * niệm "kênh" (Ads/Analytics/Search Console/Tag Manager/Merchant Center). */
+      readonly avatarUrl: string | null
       readonly data: GtmExplore
     }
   | {
       readonly kind: 'youtube'
       readonly accountName: string
       readonly externalAccountId: string
+      /** Ảnh đại diện kênh — lưu một lần lúc kết nối (`connections.avatar_url`),
+       * không refetch mỗi lần tải trang. `null` cho các nền tảng không có khái
+       * niệm "kênh" (Ads/Analytics/Search Console/Tag Manager/Merchant Center). */
+      readonly avatarUrl: string | null
       readonly data: YoutubeExplore
     }
   | {
       readonly kind: 'google-ads'
       readonly accountName: string
       readonly externalAccountId: string
+      /** Ảnh đại diện kênh — lưu một lần lúc kết nối (`connections.avatar_url`),
+       * không refetch mỗi lần tải trang. `null` cho các nền tảng không có khái
+       * niệm "kênh" (Ads/Analytics/Search Console/Tag Manager/Merchant Center). */
+      readonly avatarUrl: string | null
       readonly data: GoogleAdsExplore
     }
   | {
       readonly kind: 'merchant-center'
       readonly accountName: string
       readonly externalAccountId: string
+      /** Ảnh đại diện kênh — lưu một lần lúc kết nối (`connections.avatar_url`),
+       * không refetch mỗi lần tải trang. `null` cho các nền tảng không có khái
+       * niệm "kênh" (Ads/Analytics/Search Console/Tag Manager/Merchant Center). */
+      readonly avatarUrl: string | null
       readonly data: MerchantCenterExplore
     }
   | {
       readonly kind: 'meta-ads'
       readonly accountName: string
       readonly externalAccountId: string
+      /** Ảnh đại diện kênh — lưu một lần lúc kết nối (`connections.avatar_url`),
+       * không refetch mỗi lần tải trang. `null` cho các nền tảng không có khái
+       * niệm "kênh" (Ads/Analytics/Search Console/Tag Manager/Merchant Center). */
+      readonly avatarUrl: string | null
       readonly data: CampaignExplore
     }
   | {
       readonly kind: 'instagram'
       readonly accountName: string
       readonly externalAccountId: string
+      /** Ảnh đại diện kênh — lưu một lần lúc kết nối (`connections.avatar_url`),
+       * không refetch mỗi lần tải trang. `null` cho các nền tảng không có khái
+       * niệm "kênh" (Ads/Analytics/Search Console/Tag Manager/Merchant Center). */
+      readonly avatarUrl: string | null
       readonly data: InstagramExplore
     }
   | {
       readonly kind: 'tiktok'
       readonly accountName: string
       readonly externalAccountId: string
+      /** Ảnh đại diện kênh — lưu một lần lúc kết nối (`connections.avatar_url`),
+       * không refetch mỗi lần tải trang. `null` cho các nền tảng không có khái
+       * niệm "kênh" (Ads/Analytics/Search Console/Tag Manager/Merchant Center). */
+      readonly avatarUrl: string | null
       readonly data: TiktokExplore
     }
   | {
       readonly kind: 'facebook'
       readonly accountName: string
       readonly externalAccountId: string
+      /** Ảnh đại diện kênh — lưu một lần lúc kết nối (`connections.avatar_url`),
+       * không refetch mỗi lần tải trang. `null` cho các nền tảng không có khái
+       * niệm "kênh" (Ads/Analytics/Search Console/Tag Manager/Merchant Center). */
+      readonly avatarUrl: string | null
       readonly data: FacebookExplore
     }
   | { readonly kind: 'unsupported' }
@@ -159,7 +199,7 @@ export const getChannelDetail = async (
   const supabase = await createClient()
   const { data: connection } = await supabase
     .from('connections')
-    .select('id, external_account_id, account_name')
+    .select('id, external_account_id, account_name, avatar_url')
     .eq('site_id', siteId)
     .eq('provider', provider)
     .limit(1)
@@ -174,6 +214,7 @@ export const getChannelDetail = async (
 
   const accountName = connection.account_name
   const externalAccountId = connection.external_account_id
+  const avatarUrl = connection.avatar_url
 
   switch (provider) {
     case 'ga4':
@@ -181,6 +222,7 @@ export const getChannelDetail = async (
         kind: 'ga4',
         accountName,
         externalAccountId,
+        avatarUrl,
         data: await fetchGa4Explore(tokenResult.accessToken, connection.external_account_id, range),
       }
     case 'gsc':
@@ -188,6 +230,7 @@ export const getChannelDetail = async (
         kind: 'gsc',
         accountName,
         externalAccountId,
+        avatarUrl,
         data: await fetchGscExplore(tokenResult.accessToken, connection.external_account_id, range),
       }
     case 'gtm':
@@ -195,6 +238,7 @@ export const getChannelDetail = async (
         kind: 'gtm',
         accountName,
         externalAccountId,
+        avatarUrl,
         data: await fetchGtmExplore(tokenResult.accessToken, connection.external_account_id),
       }
     case 'youtube':
@@ -202,6 +246,7 @@ export const getChannelDetail = async (
         kind: 'youtube',
         accountName,
         externalAccountId,
+        avatarUrl,
         data: await fetchYoutubeExplore(
           tokenResult.accessToken,
           connection.external_account_id,
@@ -218,6 +263,7 @@ export const getChannelDetail = async (
         kind: 'merchant-center',
         accountName,
         externalAccountId,
+        avatarUrl,
         data: { products, truncated, filter: productFilter ?? null },
       }
     }
@@ -236,6 +282,7 @@ export const getChannelDetail = async (
         kind: 'google-ads',
         accountName,
         externalAccountId,
+        avatarUrl,
         data: { campaigns: groupCampaignRows(rows) },
       }
     }
@@ -249,6 +296,7 @@ export const getChannelDetail = async (
         kind: 'meta-ads',
         accountName,
         externalAccountId,
+        avatarUrl,
         data: { campaigns: groupCampaignRows(rows) },
       }
     }
@@ -257,6 +305,7 @@ export const getChannelDetail = async (
         kind: 'tiktok',
         accountName,
         externalAccountId,
+        avatarUrl,
         // Không truyền `externalAccountId` — Display API không có khái niệm
         // "chọn tài khoản", token đã gắn chết với đúng một tài khoản rồi.
         data: await fetchTiktokContentExplore(tokenResult.accessToken, range),
@@ -266,6 +315,7 @@ export const getChannelDetail = async (
         kind: 'instagram',
         accountName,
         externalAccountId,
+        avatarUrl,
         data: await fetchInstagramExplore(tokenResult.accessToken, connection.external_account_id, range),
       }
     case 'facebook':
@@ -273,6 +323,7 @@ export const getChannelDetail = async (
         kind: 'facebook',
         accountName,
         externalAccountId,
+        avatarUrl,
         data: await fetchFacebookContentExplore(tokenResult.accessToken, connection.external_account_id, range),
       }
     default:

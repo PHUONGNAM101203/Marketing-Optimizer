@@ -74,6 +74,7 @@ const requestToken = async (
 interface TiktokUserInfoData {
   readonly open_id?: string
   readonly display_name?: string
+  readonly avatar_url?: string
 }
 
 export const tiktokAdapter: OAuthFamilyAdapter = {
@@ -114,7 +115,7 @@ export const tiktokAdapter: OAuthFamilyAdapter = {
     // (người vừa đăng nhập). `listAccounts` vẫn giữ hình dạng mảng cho khớp
     // interface chung, nhưng luôn trả về đúng MỘT phần tử.
     const url = new URL(USER_INFO_ENDPOINT)
-    url.searchParams.set('fields', 'open_id,display_name')
+    url.searchParams.set('fields', 'open_id,display_name,avatar_url')
     const response = await fetch(url.toString(), { headers: { authorization: `Bearer ${accessToken}` } })
     if (!response.ok) return []
 
@@ -126,6 +127,7 @@ export const tiktokAdapter: OAuthFamilyAdapter = {
       provider: 'tiktok',
       externalAccountId: user.open_id,
       accountName: user.display_name ?? user.open_id,
+      avatarUrl: user.avatar_url ?? null,
     }
     return [account]
   },
@@ -150,16 +152,29 @@ const VIDEO_LIST_ENDPOINT = 'https://open.tiktokapis.com/v2/video/list/'
 export interface TiktokExplore {
   readonly topVideos: readonly {
     readonly title: string
+    readonly coverImageUrl: string | null
     readonly views: number
     readonly likes: number
     readonly comments: number
     readonly shares: number
   }[]
+  /** `null` = tải thành công (danh sách CÓ THỂ rỗng — chọn khoảng ngày cũ
+   * hơn video gần nhất, hoặc video không công khai — đó là trạng thái bình
+   * thường). Khác `null` = TikTok từ chối/lỗi request, kèm lý do thô để phân
+   * biệt với "chưa có video nào" — KHÔNG được lẫn hai trường hợp này, vì
+   * TikTok Display API trả HTTP 200 kể cả khi có lỗi logic (mã lỗi nằm
+   * trong `body.error.code`, không phải status code). */
+  readonly fetchError: string | null
 }
 
 interface TiktokVideoItem {
   readonly id?: string
   readonly title?: string
+  /** Chú thích thật của hầu hết video — `title` phần lớn để trống vì ứng
+   * dụng TikTok không có ô nhập "tiêu đề" riêng cho bài đăng thường, chỉ có
+   * ô caption/mô tả. Ưu tiên field này trước `title`. */
+  readonly video_description?: string
+  readonly cover_image_url?: string
   readonly view_count?: number
   readonly like_count?: number
   readonly comment_count?: number
@@ -174,7 +189,7 @@ export const fetchTiktokContentExplore = async (
   const url = new URL(VIDEO_LIST_ENDPOINT)
   url.searchParams.set(
     'fields',
-    'id,title,view_count,like_count,comment_count,share_count,create_time',
+    'id,title,video_description,cover_image_url,view_count,like_count,comment_count,share_count,create_time',
   )
 
   const response = await fetch(url.toString(), {
@@ -185,9 +200,22 @@ export const fetchTiktokContentExplore = async (
     },
     body: JSON.stringify({ max_count: 20 }),
   })
-  if (!response.ok) return { topVideos: [] }
+  if (!response.ok) {
+    return { topVideos: [], fetchError: `TikTok trả lỗi HTTP ${response.status}` }
+  }
 
-  const body = (await response.json()) as { data?: { videos?: readonly TiktokVideoItem[] } }
+  const body = (await response.json()) as {
+    readonly data?: { readonly videos?: readonly TiktokVideoItem[] }
+    readonly error?: { readonly code?: string; readonly message?: string }
+  }
+
+  // HTTP 200 không đảm bảo thành công — xem docblock trên interface.
+  if (body.error && body.error.code && body.error.code !== 'ok') {
+    return {
+      topVideos: [],
+      fetchError: body.error.message ?? `TikTok từ chối yêu cầu (${body.error.code})`,
+    }
+  }
 
   const rangeStartSeconds = Math.floor(new Date(`${range.startDate}T00:00:00Z`).getTime() / 1000)
   const rangeEndSeconds = Math.floor(new Date(`${range.endDate}T23:59:59Z`).getTime() / 1000)
@@ -199,7 +227,8 @@ export const fetchTiktokContentExplore = async (
         (video.create_time >= rangeStartSeconds && video.create_time <= rangeEndSeconds),
     )
     .map((video) => ({
-      title: (video.title ?? '(không có tiêu đề)').slice(0, 80),
+      title: (video.video_description || video.title || '(không có chú thích)').slice(0, 80),
+      coverImageUrl: video.cover_image_url ?? null,
       views: video.view_count ?? 0,
       likes: video.like_count ?? 0,
       comments: video.comment_count ?? 0,
@@ -208,5 +237,5 @@ export const fetchTiktokContentExplore = async (
     .sort((a, b) => b.views - a.views)
     .slice(0, 10)
 
-  return { topVideos }
+  return { topVideos, fetchError: null }
 }

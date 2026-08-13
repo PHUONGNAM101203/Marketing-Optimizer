@@ -34,6 +34,10 @@ export interface DiscoveredAccount {
   readonly provider: ProviderId
   readonly externalAccountId: string
   readonly accountName: string
+  /** Ảnh đại diện kênh (YouTube/TikTok/Instagram/Facebook) — `null`/thiếu ở
+   * các nền tảng không có khái niệm "kênh" (Ads/Analytics/GSC/GTM/Merchant
+   * Center). Lưu một lần vào `connections.avatar_url` lúc kết nối. */
+  readonly avatarUrl?: string | null
 }
 
 export interface OAuthFamilyAdapter {
