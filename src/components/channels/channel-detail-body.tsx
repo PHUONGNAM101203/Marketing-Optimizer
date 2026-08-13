@@ -167,9 +167,16 @@ export function ChannelDetailBody({
             title="Video xem nhiều nhất"
             rows={detail.data.topVideos.map((row) => ({
               dimension: row.title,
-              cells: [formatCompact(row.views)],
+              cells: [
+                formatCompact(row.views),
+                formatCompact(row.likes),
+                formatCompact(row.comments),
+                // `shares` là `null` khi YouTube Analytics API không trả cột
+                // này cho tài khoản — không đoán 0, hiện gạch ngang.
+                row.shares === null ? '—' : formatCompact(row.shares),
+              ],
             }))}
-            columns={['Lượt xem']}
+            columns={['Lượt xem', 'Lượt thích', 'Bình luận', 'Chia sẻ']}
           />
         </div>
       )
@@ -234,9 +241,9 @@ export function ChannelDetailBody({
             title="Bài đăng có tương tác cao nhất"
             rows={detail.data.topPosts.map((row) => ({
               dimension: row.caption,
-              cells: [formatCompact(row.engagement)],
+              cells: [formatCompact(row.likes), formatCompact(row.comments)],
             }))}
-            columns={['Tương tác']}
+            columns={['Lượt thích', 'Bình luận']}
           />
         </div>
       )
@@ -258,9 +265,9 @@ export function ChannelDetailBody({
             title="Bài đăng có tương tác cao nhất"
             rows={detail.data.topPosts.map((row) => ({
               dimension: row.message,
-              cells: [formatCompact(row.engagement)],
+              cells: [formatCompact(row.reactions), formatCompact(row.comments), formatCompact(row.shares)],
             }))}
-            columns={['Tương tác']}
+            columns={['Cảm xúc', 'Bình luận', 'Chia sẻ']}
           />
         </div>
       )
@@ -300,9 +307,14 @@ export function ChannelDetailBody({
             title="Video xem nhiều nhất"
             rows={detail.data.topVideos.map((row) => ({
               dimension: row.title,
-              cells: [formatCompact(row.views)],
+              cells: [
+                formatCompact(row.views),
+                formatCompact(row.likes),
+                formatCompact(row.comments),
+                formatCompact(row.shares),
+              ],
             }))}
-            columns={['Lượt xem']}
+            columns={['Lượt xem', 'Lượt thích', 'Bình luận', 'Chia sẻ']}
           />
         </div>
       )

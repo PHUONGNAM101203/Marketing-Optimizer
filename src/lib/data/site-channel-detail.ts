@@ -259,21 +259,21 @@ export const getChannelDetail = async (
         externalAccountId,
         // Không truyền `externalAccountId` — Display API không có khái niệm
         // "chọn tài khoản", token đã gắn chết với đúng một tài khoản rồi.
-        data: await fetchTiktokContentExplore(tokenResult.accessToken),
+        data: await fetchTiktokContentExplore(tokenResult.accessToken, range),
       }
     case 'instagram':
       return {
         kind: 'instagram',
         accountName,
         externalAccountId,
-        data: await fetchInstagramExplore(tokenResult.accessToken, connection.external_account_id),
+        data: await fetchInstagramExplore(tokenResult.accessToken, connection.external_account_id, range),
       }
     case 'facebook':
       return {
         kind: 'facebook',
         accountName,
         externalAccountId,
-        data: await fetchFacebookContentExplore(tokenResult.accessToken, connection.external_account_id),
+        data: await fetchFacebookContentExplore(tokenResult.accessToken, connection.external_account_id, range),
       }
     default:
       return { kind: 'unsupported' }

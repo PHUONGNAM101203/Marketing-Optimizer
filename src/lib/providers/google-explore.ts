@@ -237,8 +237,23 @@ export const fetchGtmExplore = async (
 // ─── YouTube ────────────────────────────────────────────────────────────────
 
 export interface YoutubeExplore {
-  readonly topVideos: readonly { readonly title: string; readonly views: number }[]
+  readonly topVideos: readonly {
+    readonly title: string
+    readonly views: number
+    readonly likes: number
+    readonly comments: number
+    /** `null` khi Analytics API không trả cột này cho tài khoản — KHÔNG suy
+     * ra 0, vì 0 lượt chia sẻ thật và "không đọc được" là hai việc khác nhau
+     * (xem UI: cột chỉ hiện khi ít nhất một video có giá trị khác null). */
+    readonly shares: number | null
+  }[]
 }
+
+/** 4 metric cùng dimension `video`, cùng một lệnh gọi — CHƯA verify với tài
+ * khoản thật là `shares` có luôn được trả về hay không (khác `views`, vốn đã
+ * chạy thật). Nếu Analytics API từ chối cả yêu cầu vì `shares` không hợp lệ
+ * cho loại báo cáo video, bỏ nó khỏi mảng này khi có log lỗi thật để xác nhận. */
+const VIDEO_METRICS = ['views', 'likes', 'comments', 'shares'] as const
 
 export const fetchYoutubeExplore = async (
   accessToken: string,
@@ -250,7 +265,7 @@ export const fetchYoutubeExplore = async (
   reportUrl.searchParams.set('startDate', range.startDate)
   reportUrl.searchParams.set('endDate', range.endDate)
   reportUrl.searchParams.set('dimensions', 'video')
-  reportUrl.searchParams.set('metrics', 'views')
+  reportUrl.searchParams.set('metrics', VIDEO_METRICS.join(','))
   reportUrl.searchParams.set('sort', '-views')
   reportUrl.searchParams.set('maxResults', '10')
 
@@ -258,10 +273,22 @@ export const fetchYoutubeExplore = async (
   if (!reportResponse.ok) return { topVideos: [] }
 
   const reportData = (await reportResponse.json()) as {
+    readonly columnHeaders?: readonly { readonly name?: string }[]
     readonly rows?: readonly (readonly (string | number)[])[]
   }
   const rows = reportData.rows ?? []
   if (rows.length === 0) return { topVideos: [] }
+
+  // Đọc vị trí cột theo `columnHeaders` Google TRẢ VỀ, không giả định khớp
+  // đúng thứ tự đã yêu cầu ở `metrics` — an toàn hơn nếu API bỏ qua một
+  // metric không hỗ trợ (vd. `shares`) mà vẫn trả 200 cho các cột còn lại.
+  const columnIndex = new Map(
+    (reportData.columnHeaders ?? []).map((column, index) => [column.name, index]),
+  )
+  const valueAt = (row: readonly (string | number)[], metric: string): number | null => {
+    const index = columnIndex.get(metric)
+    return index === undefined ? null : Number(row[index] ?? 0)
+  }
 
   const videoIds = rows.map((row) => String(row[0]))
   const videosResponse = await fetch(
@@ -284,7 +311,13 @@ export const fetchYoutubeExplore = async (
   return {
     topVideos: rows.map((row) => {
       const id = String(row[0])
-      return { title: titleById.get(id) ?? id, views: Number(row[1] ?? 0) }
+      return {
+        title: titleById.get(id) ?? id,
+        views: valueAt(row, 'views') ?? 0,
+        likes: valueAt(row, 'likes') ?? 0,
+        comments: valueAt(row, 'comments') ?? 0,
+        shares: valueAt(row, 'shares'),
+      }
     }),
   }
 }

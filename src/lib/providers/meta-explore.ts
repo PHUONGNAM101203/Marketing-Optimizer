@@ -10,7 +10,11 @@ import 'server-only'
 const GRAPH_VERSION = 'v25.0'
 
 export interface InstagramExplore {
-  readonly topPosts: readonly { readonly caption: string; readonly engagement: number }[]
+  readonly topPosts: readonly {
+    readonly caption: string
+    readonly likes: number
+    readonly comments: number
+  }[]
 }
 
 interface InstagramMediaItem {
@@ -21,12 +25,20 @@ interface InstagramMediaItem {
   readonly timestamp?: string
 }
 
+/** `since`/`until` là mốc NGÀY (YYYY-MM-DD), Graph API tự hiểu — cùng cách
+ * lọc theo khoảng ngày với GA4/GSC/YouTube ở trên, để bảng xếp hạng cũng đổi
+ * theo bộ lọc ngày ở đầu trang thay vì luôn cố định "25 bài gần nhất". Không
+ * có `shares` — Instagram Graph API không trả số lượt chia sẻ cho bài đăng
+ * qua field cơ bản này (khác Facebook Page ở dưới). */
 export const fetchInstagramExplore = async (
   accessToken: string,
   externalAccountId: string,
+  range: { readonly startDate: string; readonly endDate: string },
 ): Promise<InstagramExplore> => {
   const url = new URL(`https://graph.facebook.com/${GRAPH_VERSION}/${externalAccountId}/media`)
   url.searchParams.set('fields', 'caption,like_count,comments_count,timestamp')
+  url.searchParams.set('since', range.startDate)
+  url.searchParams.set('until', range.endDate)
   url.searchParams.set('limit', '25')
 
   const response = await fetch(url.toString(), {
@@ -39,9 +51,10 @@ export const fetchInstagramExplore = async (
   const topPosts = (data.data ?? [])
     .map((item) => ({
       caption: (item.caption ?? '(không có chú thích)').slice(0, 80),
-      engagement: (item.like_count ?? 0) + (item.comments_count ?? 0),
+      likes: item.like_count ?? 0,
+      comments: item.comments_count ?? 0,
     }))
-    .sort((a, b) => b.engagement - a.engagement)
+    .sort((a, b) => b.likes + b.comments - (a.likes + a.comments))
     .slice(0, 10)
 
   return { topPosts }
@@ -55,7 +68,12 @@ export const fetchInstagramExplore = async (
  * tử (2025), field trên node bài viết ổn định hơn qua các đợt đổi đó.
  */
 export interface FacebookExplore {
-  readonly topPosts: readonly { readonly message: string; readonly engagement: number }[]
+  readonly topPosts: readonly {
+    readonly message: string
+    readonly reactions: number
+    readonly comments: number
+    readonly shares: number
+  }[]
 }
 
 interface FacebookPostItem {
@@ -67,15 +85,20 @@ interface FacebookPostItem {
   readonly shares?: { readonly count?: number }
 }
 
+/** `since`/`until` cùng cơ chế Instagram ở trên — lọc theo `created_time`
+ * của bài viết, để bảng xếp hạng đổi theo bộ lọc ngày ở đầu trang. */
 export const fetchFacebookContentExplore = async (
   accessToken: string,
   pageId: string,
+  range: { readonly startDate: string; readonly endDate: string },
 ): Promise<FacebookExplore> => {
   const url = new URL(`https://graph.facebook.com/${GRAPH_VERSION}/${pageId}/published_posts`)
   url.searchParams.set(
     'fields',
     'message,created_time,reactions.summary(total_count).limit(0),comments.summary(total_count).limit(0),shares',
   )
+  url.searchParams.set('since', range.startDate)
+  url.searchParams.set('until', range.endDate)
   url.searchParams.set('limit', '25')
 
   const response = await fetch(url.toString(), { headers: { authorization: `Bearer ${accessToken}` } })
@@ -86,12 +109,14 @@ export const fetchFacebookContentExplore = async (
   const topPosts = (data.data ?? [])
     .map((item) => ({
       message: (item.message ?? '(không có nội dung)').slice(0, 80),
-      engagement:
-        (item.reactions?.summary?.total_count ?? 0) +
-        (item.comments?.summary?.total_count ?? 0) +
-        (item.shares?.count ?? 0),
+      reactions: item.reactions?.summary?.total_count ?? 0,
+      comments: item.comments?.summary?.total_count ?? 0,
+      shares: item.shares?.count ?? 0,
     }))
-    .sort((a, b) => b.engagement - a.engagement)
+    .sort(
+      (a, b) =>
+        b.reactions + b.comments + b.shares - (a.reactions + a.comments + a.shares),
+    )
     .slice(0, 10)
 
   return { topPosts }

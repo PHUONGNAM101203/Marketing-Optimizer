@@ -137,25 +137,45 @@ export const tiktokAdapter: OAuthFamilyAdapter = {
  * LẤY TRỰC TIẾP mỗi lần tải trang, không lưu `metrics_daily` — video mới
  * đăng thay đổi thứ hạng liên tục, lưu lại chỉ tốn chỗ không ai dùng lại.
  *
- * `video/list` không hỗ trợ sort — tự sắp lại sau khi lấy về, chỉ lấy 1 trang
- * (tối đa `max_count`, TikTok giới hạn cứng 20/lần) vì trang chi tiết chỉ
- * cần "video nổi bật gần đây", không phải toàn bộ lịch sử kênh.
+ * `video/list` không hỗ trợ tham số lọc theo ngày (khác GA4/GSC/YouTube ở
+ * trên) NÊN cũng không hỗ trợ sort theo server — tự lọc theo `create_time`
+ * (Unix giây, có sẵn trong response) và tự sắp lại ở client, chỉ lấy 1 trang
+ * (tối đa `max_count`, TikTok giới hạn cứng 20/lần, luôn là 20 video ĐĂNG GẦN
+ * NHẤT bất kể khoảng ngày chọn). Nghĩa là chọn một khoảng ngày cũ hơn 20 video
+ * gần nhất sẽ ra danh sách rỗng — giới hạn thật của API một trang, không phải
+ * lỗi, không đoán thêm dữ liệu để lấp chỗ trống.
  */
 const VIDEO_LIST_ENDPOINT = 'https://open.tiktokapis.com/v2/video/list/'
 
 export interface TiktokExplore {
-  readonly topVideos: readonly { readonly title: string; readonly views: number }[]
+  readonly topVideos: readonly {
+    readonly title: string
+    readonly views: number
+    readonly likes: number
+    readonly comments: number
+    readonly shares: number
+  }[]
 }
 
 interface TiktokVideoItem {
   readonly id?: string
   readonly title?: string
   readonly view_count?: number
+  readonly like_count?: number
+  readonly comment_count?: number
+  readonly share_count?: number
+  readonly create_time?: number
 }
 
-export const fetchTiktokContentExplore = async (accessToken: string): Promise<TiktokExplore> => {
+export const fetchTiktokContentExplore = async (
+  accessToken: string,
+  range: { readonly startDate: string; readonly endDate: string },
+): Promise<TiktokExplore> => {
   const url = new URL(VIDEO_LIST_ENDPOINT)
-  url.searchParams.set('fields', 'id,title,view_count,like_count,comment_count,share_count')
+  url.searchParams.set(
+    'fields',
+    'id,title,view_count,like_count,comment_count,share_count,create_time',
+  )
 
   const response = await fetch(url.toString(), {
     method: 'POST',
@@ -169,10 +189,21 @@ export const fetchTiktokContentExplore = async (accessToken: string): Promise<Ti
 
   const body = (await response.json()) as { data?: { videos?: readonly TiktokVideoItem[] } }
 
+  const rangeStartSeconds = Math.floor(new Date(`${range.startDate}T00:00:00Z`).getTime() / 1000)
+  const rangeEndSeconds = Math.floor(new Date(`${range.endDate}T23:59:59Z`).getTime() / 1000)
+
   const topVideos = (body.data?.videos ?? [])
+    .filter(
+      (video) =>
+        video.create_time === undefined ||
+        (video.create_time >= rangeStartSeconds && video.create_time <= rangeEndSeconds),
+    )
     .map((video) => ({
       title: (video.title ?? '(không có tiêu đề)').slice(0, 80),
       views: video.view_count ?? 0,
+      likes: video.like_count ?? 0,
+      comments: video.comment_count ?? 0,
+      shares: video.share_count ?? 0,
     }))
     .sort((a, b) => b.views - a.views)
     .slice(0, 10)
