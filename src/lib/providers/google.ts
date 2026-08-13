@@ -26,12 +26,13 @@ import type { OAuthFamilyAdapter, TokenSet } from './types'
 const AUTHORIZE_ENDPOINT = 'https://accounts.google.com/o/oauth2/v2/auth'
 const TOKEN_ENDPOINT = 'https://oauth2.googleapis.com/token'
 
+// YouTube (youtube.readonly / yt-analytics.readonly) KHÔNG còn ở đây — tách
+// thành family OAuth riêng (`providers/youtube.ts`) để đăng nhập bằng một
+// tài khoản Google khác hẳn tài khoản GA4/GSC/GTM/Ads/Merchant Center.
 const SCOPES = [
   'https://www.googleapis.com/auth/analytics.readonly',
   'https://www.googleapis.com/auth/webmasters.readonly',
   'https://www.googleapis.com/auth/tagmanager.readonly',
-  'https://www.googleapis.com/auth/youtube.readonly',
-  'https://www.googleapis.com/auth/yt-analytics.readonly',
 ] as const
 
 export const GOOGLE_ADS_SCOPE = 'https://www.googleapis.com/auth/adwords'

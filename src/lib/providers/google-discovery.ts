@@ -10,18 +10,24 @@ import type { DiscoveredAccount } from './types'
  * việc thứ ba, khác cả hai: "một access token này mở ra được những tài sản
  * nào, và cái nào trong số đó là CỦA WEBSITE NÀY".
  *
- * Năm sản phẩm, năm mức độ tin cậy domain khác nhau:
+ * `discoverGoogleAccounts` gộp bốn sản phẩm (GA4/GSC/GTM/Merchant Center) —
+ * bốn mức độ tin cậy domain khác nhau:
  *   · GA4, Search Console — domain xác minh được chắc chắn qua API, LỌC CỨNG.
  *     Không khớp thì bỏ qua, không đoán.
  *   · Tag Manager — container CÓ THỂ khai báo `domainName`, nhưng phần lớn
  *     không khai báo. Lọc khi có, KHÔNG có domainName nào khớp thì bỏ qua
  *     toàn bộ thay vì đoán — cùng nguyên tắc với GA4/GSC.
- *   · YouTube — kênh không có khái niệm domain trong API. Bù lại bằng
- *     `mine=true`: chỉ trả kênh CHÍNH tài khoản Google này sở hữu, không phải
- *     mọi kênh nó quản lý hộ — phạm vi đã đủ hẹp để không cần lọc thêm.
  *   · Merchant Center — tài khoản có `websiteUrl` xác minh được, LỌC CỨNG
  *     giống GA4/GSC. Chỉ trả về khi CHÍNH tài khoản đó (không phải MCA cha)
  *     khai báo đúng domain — không đoán qua tài khoản con.
+ *
+ * YouTube (`discoverYoutubeAccounts`, cuối file) TÁCH RIÊNG khỏi hàm trên —
+ * từ khi YouTube trở thành family OAuth độc lập (đăng nhập bằng tài khoản
+ * Google có thể khác hẳn tài khoản GA4/GSC/GTM), gộp chung sẽ trộn nhầm hai
+ * lượt cấp quyền khác nhau. Kênh cũng không có khái niệm domain trong API —
+ * bù lại bằng `mine=true`: chỉ trả kênh CHÍNH tài khoản Google đang đăng nhập
+ * sở hữu, không phải mọi kênh nó quản lý hộ — phạm vi đã đủ hẹp để không cần
+ * lọc domain.
  */
 
 const GA4_ACCOUNT_SUMMARIES_ENDPOINT =
@@ -318,16 +324,23 @@ export const discoverGoogleAccounts = async (
 ): Promise<readonly DiscoveredAccount[]> => {
   const targetDomain = normalizeHostname(domain)
 
-  const [ga4, gsc, gtm, youtube, merchantCenter] = await Promise.all([
+  const [ga4, gsc, gtm, merchantCenter] = await Promise.all([
     listGa4Properties(accessToken, targetDomain),
     listSearchConsoleSites(accessToken, targetDomain),
     listGtmContainers(accessToken, targetDomain),
-    listYoutubeChannels(accessToken),
     listMerchantCenterAccounts(accessToken, targetDomain),
   ])
 
-  return [...ga4, ...gsc, ...gtm, ...youtube, ...merchantCenter]
+  return [...ga4, ...gsc, ...gtm, ...merchantCenter]
 }
+
+/** YouTube giờ là family OAuth riêng (`providers/youtube.ts`) — tài khoản
+ * Google đăng nhập ở đó có thể khác hẳn tài khoản dùng cho GA4/GSC/GTM ở
+ * trên, nên tách khỏi `discoverGoogleAccounts`. `domain` bỏ qua vì kênh
+ * YouTube không có khái niệm domain trong API (xem docblock đầu file). */
+export const discoverYoutubeAccounts = async (
+  accessToken: string,
+): Promise<readonly DiscoveredAccount[]> => listYoutubeChannels(accessToken)
 
 /** Dùng riêng ở luồng nâng quyền (`mode === 'merchant-center'`) — sau khi
  * token đã có thêm scope Content API, dò NGAY tài khoản khớp domain thay vì

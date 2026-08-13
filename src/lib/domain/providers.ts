@@ -21,7 +21,7 @@ export const PROVIDERS = [
 
 export type ProviderId = (typeof PROVIDERS)[number]
 
-export type ProviderFamily = 'google' | 'meta' | 'tiktok'
+export type ProviderFamily = 'google' | 'youtube' | 'meta' | 'tiktok'
 
 /** Nhóm chức năng — dùng để gom thẻ ở trang Connections. */
 export type ProviderCategory = 'ads' | 'analytics' | 'search' | 'social' | 'tooling' | 'commerce'
@@ -102,7 +102,7 @@ export const PROVIDER_META: Readonly<Record<ProviderId, ProviderMeta>> = {
     id: 'youtube',
     label: 'YouTube',
     shortLabel: 'YouTube',
-    family: 'google',
+    family: 'youtube',
     category: 'social',
     capabilities: ['content', 'traffic'],
     colorToken: '--color-series-5',
@@ -187,10 +187,19 @@ export const PROVIDER_FAMILIES: readonly ProviderFamilyMeta[] = [
     label: 'Google',
     actionLabel: 'Kết nối tài khoản Google',
     description:
-      'Một lần cấp quyền lấy được cả sáu sản phẩm. Chọn tài khoản Google đang quản lý website của bạn.',
-    providers: ['ga4', 'gsc', 'gtm', 'youtube', 'google-ads', 'merchant-center'],
+      'Một lần cấp quyền lấy được cả năm sản phẩm. Chọn tài khoản Google đang quản lý website của bạn.',
+    providers: ['ga4', 'gsc', 'gtm', 'google-ads', 'merchant-center'],
     // Google Ads đòi developer token được Google duyệt riêng, không phải chỉ OAuth.
     gatedProviders: ['google-ads'],
+  },
+  {
+    id: 'youtube',
+    label: 'YouTube',
+    actionLabel: 'Đăng nhập YouTube',
+    description:
+      'Tách riêng khỏi Google ở trên — đăng nhập bằng đúng tài khoản Google đang quản lý kênh YouTube, có thể khác hẳn tài khoản quản lý Analytics/Search Console.',
+    providers: ['youtube'],
+    gatedProviders: [],
   },
   {
     id: 'meta',

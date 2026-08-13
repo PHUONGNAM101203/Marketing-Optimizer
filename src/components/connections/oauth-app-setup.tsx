@@ -30,6 +30,15 @@ const GUIDE_STEPS: Readonly<Record<ProviderFamily, readonly string[]>> = {
     'Ở mục "Authorized redirect URIs", dán đúng địa chỉ bên dưới, rồi bấm Create.',
     'Google hiện ra Client ID và Client secret — dán vào form bên dưới.',
   ],
+  youtube: [
+    'Family này TÁCH RIÊNG khỏi "Google" ở trên — dành cho trường hợp kênh YouTube do một tài khoản Google KHÁC quản lý, không phải tài khoản quản lý Analytics/Search Console.',
+    'Có thể dùng LẠI đúng Client ID/Secret đã tạo cho family Google phía trên — về kỹ thuật đó chỉ là danh tính ứng dụng, không gắn với một tài khoản Google cụ thể nào. Muốn tách quota/nhật ký riêng thì tạo một OAuth Client mới ở console.cloud.google.com — cả hai cách đều hoạt động.',
+    'Nếu tạo app mới: vào APIs & Services → Library, bật "YouTube Data API v3" và "YouTube Analytics API".',
+    'Vào APIs & Services → OAuth consent screen → Scopes, thêm youtube.readonly và yt-analytics.readonly nếu chưa có.',
+    'QUAN TRỌNG nếu app còn ở chế độ Testing: vào mục "Test users", thêm ĐÚNG email của tài khoản Google quản lý kênh YouTube (khác tài khoản GA4 ở trên) — thiếu bước này Google chặn ngay ở màn hình đăng nhập.',
+    'Vào APIs & Services → Credentials → Create Credentials → OAuth client ID (bỏ qua nếu dùng lại Client ID/Secret cũ) — Authorized redirect URIs dán đúng địa chỉ bên dưới.',
+    'Dán Client ID/Secret vào form bên dưới, rồi bấm "Đăng nhập YouTube" và chọn đúng tài khoản Google quản lý kênh — nếu trình duyệt đang đăng nhập sẵn tài khoản GA4, chọn "Sử dụng tài khoản khác" ở màn hình Google.',
+  ],
   meta: [
     'Vào developers.facebook.com/apps, bấm "Create App" → chọn loại "Business".',
     'Trong App Dashboard, bấm "Add Product" → thêm "Marketing API" (cho Facebook Ads). Với Instagram, Meta đã gộp vào sản phẩm "Instagram" (không còn "Instagram Graph API" riêng) — chọn luồng "Instagram API with Facebook Login for Business" (đọc dữ liệu tài khoản Instagram Business/Creator đã liên kết với Trang Facebook, qua Business Manager). Tài khoản Instagram phải là Business hoặc Creator và đã liên kết với một Trang Facebook — chuyển đổi và liên kết Trang trước nếu chưa.',
@@ -52,12 +61,14 @@ const GUIDE_STEPS: Readonly<Record<ProviderFamily, readonly string[]>> = {
 
 const FAMILY_LABELS: Readonly<Record<ProviderFamily, string>> = {
   google: 'Google',
+  youtube: 'YouTube',
   meta: 'Meta',
   tiktok: 'TikTok',
 }
 
 const CONSOLE_LINKS: Readonly<Record<ProviderFamily, string>> = {
   google: 'https://console.cloud.google.com/apis/credentials',
+  youtube: 'https://console.cloud.google.com/apis/credentials',
   meta: 'https://developers.facebook.com/apps',
   tiktok: 'https://developers.tiktok.com/apps',
 }

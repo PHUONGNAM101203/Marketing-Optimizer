@@ -2,6 +2,7 @@ import type { ProviderFamily, ProviderId } from '@/lib/domain/providers'
 import type { OAuthFamilyAdapter } from './types'
 import type { MetricsAdapter } from './metrics-types'
 import { googleAdapter } from './google'
+import { youtubeAdapter } from './youtube'
 import { METRICS_ADAPTERS as GOOGLE_METRICS_ADAPTERS } from './google-metrics'
 import { googleAdsMetricsAdapter } from './google-ads-metrics'
 import { merchantCenterMetricsAdapter } from './google-merchant-metrics'
@@ -17,6 +18,7 @@ import { tiktokMetricsAdapter } from './tiktok-metrics'
  */
 export const OAUTH_ADAPTERS: Readonly<Partial<Record<ProviderFamily, OAuthFamilyAdapter>>> = {
   google: googleAdapter,
+  youtube: youtubeAdapter,
   meta: metaAdapter,
   tiktok: tiktokAdapter,
 }
