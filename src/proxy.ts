@@ -61,8 +61,12 @@ export const config = {
   matcher: [
     /*
      * Bỏ qua tài nguyên tĩnh và ảnh — chạy proxy cho chúng chỉ tốn thời
-     * gian mà không kiểm tra gì.
+     * gian mà không kiểm tra gì. `.txt`/`.html` cũng loại trừ ở đây — đó là
+     * hai định dạng file xác minh sở hữu domain (TikTok Developer Portal
+     * dùng .txt, Google Search Console có thể dùng .html) đặt thẳng trong
+     * `public/`; trình xác minh của các nền tảng đó gọi KHÔNG kèm cookie
+     * đăng nhập, nên nếu proxy chặn thì xác minh domain sẽ luôn thất bại.
      */
-    '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|woff2?)$).*)',
+    '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|woff2?|txt|html)$).*)',
   ],
 }
