@@ -30,7 +30,16 @@ const schema = z.object({
     .refine((value) => value.length === 0 || value.length >= 10, 'Client Secret trông không hợp lệ'),
   // Chỉ family 'google' + có dùng Google Ads mới cần. Để trống thì không đụng
   // gì tới giá trị đã lưu — cùng quy ước với clientSecret.
-  developerToken: z.string().trim().optional().default(''),
+  //
+  // `z.string().optional()` CHỈ chấp nhận `undefined`, không chấp nhận
+  // `null` — mà field này chỉ tồn tại trong DOM ở family 'google'
+  // (`oauth-app-setup.tsx`), nên `formData.get('developerToken')` trả về
+  // `null` (không phải `undefined`) ở mọi family khác. Zod fail ngay ở bước
+  // kiểm kiểu với thông điệp chung "Invalid input: expected string, received
+  // null" — đúng lỗi người dùng gặp khi lưu OAuth app cho YouTube/TikTok/Meta.
+  // `preprocess` chuẩn hoá cả `null` lẫn `undefined` về '' TRƯỚC khi Zod kiểm
+  // kiểu, nên không còn phân biệt field có mặt trong DOM hay không.
+  developerToken: z.preprocess((value) => value ?? '', z.string().trim()),
 })
 
 export interface SaveOAuthAppState {
