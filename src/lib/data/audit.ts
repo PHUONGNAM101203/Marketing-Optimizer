@@ -1,0 +1,112 @@
+import 'server-only'
+
+import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
+import type { AuditFinding, AuditRun, AuditRunStatus, PageSpeedResult, SiteProfile } from '@/lib/domain/audit'
+import type { PageCitabilityScore } from '@/lib/domain/geo'
+import type { PageSignals } from '@/lib/audit/crawler'
+
+interface AuditRunRow {
+  readonly id: string
+  readonly site_id: string
+  readonly status: string
+  readonly pages_scanned: number
+  readonly sitemap_url_count: number
+  readonly truncated: boolean
+  readonly blocked_by_bot_protection: boolean
+  readonly seo_score: number | null
+  readonly geo_score: number | null
+  readonly aio_score: number | null
+  readonly findings: unknown
+  readonly page_citability: unknown
+  readonly site_profile: unknown
+  readonly pagespeed: unknown
+  readonly error: string | null
+  readonly started_at: string
+  readonly completed_at: string | null
+}
+
+/**
+ * Ngân sách một lượt quét tối đa là 240s (crawl) + tới ~45s (PSI) + overhead
+ * — không thể nào thật sự còn "đang chạy" quá lâu hơn thế nhiều. Row nào vẫn
+ * `status: 'running'` sau ngưỡng này chắc chắn đã bị NGẮT GIỮA CHỪNG (client
+ * đóng kết nối do tải lại trang/đóng tab, hoặc nền tảng hosting cắt ngang) —
+ * server action khi đó không bao giờ chạy tới đoạn ghi 'completed'/'failed',
+ * để lại row kẹt mãi ở 'running' với dữ liệu rỗng. Tự nhận diện ở đây để
+ * hiện đúng "lượt quét bị gián đoạn, thử lại" thay vì một giao diện dở dang
+ * (tab điểm số toàn "—", không giải thích được vì sao) mãi mãi.
+ */
+const STALE_RUNNING_THRESHOLD_MS = 6 * 60 * 1000
+
+const toAuditRun = (row: AuditRunRow): AuditRun => {
+  const isStaleRunning =
+    row.status === 'running' &&
+    Date.now() - new Date(row.started_at).getTime() > STALE_RUNNING_THRESHOLD_MS
+
+  return {
+    id: row.id,
+    siteId: row.site_id,
+    status: isStaleRunning ? 'failed' : (row.status as AuditRunStatus),
+    pagesScanned: row.pages_scanned,
+    sitemapUrlCount: row.sitemap_url_count,
+    truncated: row.truncated,
+    blockedByBotProtection: row.blocked_by_bot_protection,
+    seoScore: row.seo_score,
+    geoScore: row.geo_score,
+    aioScore: row.aio_score,
+    findings: (row.findings as readonly AuditFinding[] | null) ?? [],
+    pageCitability: (row.page_citability as readonly PageCitabilityScore[] | null) ?? [],
+    siteProfile: row.site_profile as SiteProfile | null,
+    pagespeed: row.pagespeed as PageSpeedResult | null,
+    error: isStaleRunning
+      ? 'Lượt quét trước bị gián đoạn giữa chừng (máy chủ khởi động lại hoặc gặp sự cố) — bấm "Quét tiếp" để chạy lại. Phần đã quét được ở các lượt trước đó (nếu có) không mất, lượt sau vẫn cộng dồn tiếp.'
+      : row.error,
+    startedAt: row.started_at,
+    completedAt: row.completed_at,
+  }
+}
+
+export const getLatestAuditRun = async (siteId: string): Promise<AuditRun | null> => {
+  const supabase = await createClient()
+  const { data, error } = await supabase
+    .from('audit_runs')
+    .select('*')
+    .eq('site_id', siteId)
+    .order('started_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  if (error) throw new Error(`Không đọc được lượt quét: ${error.message}`)
+  return data ? toAuditRun(data as AuditRunRow) : null
+}
+
+/**
+ * Trang đã quét THÀNH CÔNG ở lượt gần nhất — dùng để lượt quét MỚI ưu tiên
+ * những URL chưa từng quét, và ghép (merge) thành một tập cộng dồn thay vì
+ * mỗi lượt "Quét lại" lại quét đúng phần đầu sitemap rồi hết giờ ở cùng một
+ * chỗ. Xem `actions/audit.ts::runSiteAuditAction`.
+ *
+ * CỐ TÌNH lọc `page_signals is not null` thay vì chỉ lấy row mới nhất theo
+ * `started_at` — một lượt quét bị NGẮT GIỮA CHỪNG (xem `STALE_RUNNING_THRESHOLD_MS`
+ * ở trên) tạo ra row mới nhất nhưng `page_signals` rỗng; nếu lấy đúng row đó
+ * làm "tiến độ đã có", lượt quét kế tiếp sẽ ghép vào một tập RỖNG và xoá sạch
+ * mọi tiến độ cộng dồn từ trước — tệ hơn cả việc không sửa gì.
+ *
+ * Dùng ADMIN client, không dùng phiên người dùng — hàm này chỉ được gọi từ
+ * bên trong `after()` (chạy SAU khi response đã gửi cho client), bối cảnh
+ * cookie của request gốc không còn đáng tin cậy để dựa vào lúc đó.
+ */
+export const getLatestAuditPageSignals = async (siteId: string): Promise<readonly PageSignals[]> => {
+  const supabase = createAdminClient()
+  const { data, error } = await supabase
+    .from('audit_runs')
+    .select('page_signals')
+    .eq('site_id', siteId)
+    .not('page_signals', 'is', null)
+    .order('started_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  if (error) throw new Error(`Không đọc được lượt quét trước: ${error.message}`)
+  return (data?.page_signals as unknown as readonly PageSignals[] | null) ?? []
+}

@@ -1,0 +1,237 @@
+@import "tailwindcss";
+@import "../lib/design/tokens.css";
+
+/* Every colour, font and radius below resolves to a token in tokens.css.
+   Raw hex, raw oklch() and bare font-family declarations are not allowed
+   outside that file — if a value is missing, add it there and reference it. */
+@theme inline {
+  --color-paper: var(--color-paper);
+  --color-paper-2: var(--color-paper-2);
+  --color-paper-3: var(--color-paper-3);
+  --color-paper-inset: var(--color-paper-inset);
+
+  --color-ink: var(--color-ink);
+  --color-ink-2: var(--color-ink-2);
+  --color-ink-3: var(--color-ink-3);
+  --color-ink-inverse: var(--color-ink-inverse);
+
+  --color-rule: var(--color-rule);
+  --color-rule-strong: var(--color-rule-strong);
+
+  --color-accent: var(--color-accent);
+  --color-accent-hover: var(--color-accent-hover);
+  --color-accent-ink: var(--color-accent-ink);
+
+  --color-signal: var(--color-signal);
+  --color-signal-hover: var(--color-signal-hover);
+  --color-signal-soft: var(--color-signal-soft);
+  --color-signal-ink: var(--color-signal-ink);
+
+  --color-positive: var(--color-positive);
+  --color-positive-soft: var(--color-positive-soft);
+  --color-negative: var(--color-negative);
+  --color-negative-soft: var(--color-negative-soft);
+  --color-caution: var(--color-caution);
+  --color-caution-soft: var(--color-caution-soft);
+
+  --color-series-1: var(--color-series-1);
+  --color-series-2: var(--color-series-2);
+  --color-series-3: var(--color-series-3);
+  --color-series-4: var(--color-series-4);
+  --color-series-5: var(--color-series-5);
+  --color-series-6: var(--color-series-6);
+  --color-series-7: var(--color-series-7);
+  --color-series-8: var(--color-series-8);
+  --color-chart-grid: var(--color-chart-grid);
+
+  --font-display: var(--font-display);
+  --font-body: var(--font-body);
+  --font-numeric: var(--font-numeric);
+
+  --text-display: var(--text-display);
+  --text-display-s: var(--text-display-s);
+  --text-4xl: var(--text-4xl);
+  --text-3xl: var(--text-3xl);
+  --text-2xl: var(--text-2xl);
+  --text-xl: var(--text-xl);
+  --text-base: var(--text-base);
+  --text-sm: var(--text-sm);
+  --text-xs: var(--text-xs);
+  --text-2xs: var(--text-2xs);
+
+  --radius-xs: var(--radius-xs);
+  --radius-sm: var(--radius-sm);
+  --radius-md: var(--radius-md);
+  --radius-lg: var(--radius-lg);
+
+  --ease-out: var(--ease-out);
+  --ease-in: var(--ease-in);
+  --ease-in-out: var(--ease-in-out);
+}
+
+@layer base {
+  /* clip, never hidden — `hidden` on the root kills position:sticky */
+  html,
+  body {
+    overflow-x: clip;
+  }
+
+  html {
+    background: var(--color-paper);
+  }
+
+  body {
+    background: var(--color-paper);
+    color: var(--color-ink);
+    font-family: var(--font-body);
+    font-size: var(--text-base);
+    line-height: var(--leading-body);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  /* Display type is always roman. Vietnamese stacked diacritics need the
+     extra leading room that --leading-tight already reserves. */
+  h1,
+  h2,
+  h3,
+  h4 {
+    font-family: var(--font-display);
+    font-style: normal;
+    font-weight: 700;
+    line-height: var(--leading-tight);
+    letter-spacing: var(--tracking-tight);
+    /* long Vietnamese compounds must break rather than push the canvas wide */
+    overflow-wrap: anywhere;
+    min-width: 0;
+  }
+
+  /* Every number in this product is compared against another number in the
+     row above it. Proportional figures make that comparison impossible. */
+  [data-numeric],
+  th,
+  td {
+    font-family: var(--font-numeric);
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum" 1, "cv05" 1;
+  }
+
+  /* Instant, never animated — a ring that fades in is a ring you miss. */
+  :focus-visible {
+    outline: 2px solid var(--color-focus);
+    outline-offset: 2px;
+    border-radius: var(--radius-xs);
+  }
+
+  ::selection {
+    background: var(--color-signal-soft);
+    color: var(--color-ink);
+  }
+}
+
+@layer components {
+  /* Hạt grain.
+     Đây là thứ tách một mặt phẳng "vẽ bằng vector" khỏi một mặt phẳng "có
+     chất". Không có nó, nền phẳng tuyệt đối — và mắt đọc phẳng tuyệt đối là
+     đồ máy sinh. Nhiễu sinh bằng feTurbulence ngay trong CSS, không tải ảnh. */
+  .grain::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    opacity: 0.4;
+    mix-blend-mode: multiply;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)' opacity='0.13'/%3E%3C/svg%3E");
+  }
+
+  :root[data-theme='dark'] .grain::after,
+  :root:not([data-theme='light']) .grain::after {
+    mix-blend-mode: screen;
+    opacity: 0.28;
+  }
+
+  /* Quầng sáng nền. Rất nhạt và RẤT rộng — một vệt tím đậm giữa màn hình là
+     đúng cái tell của trang landing do AI sinh. Ở đây nó chỉ làm giấy ấm lên
+     quanh chỗ mắt nhìn, gần như không nhận ra được nếu tắt đi mới thấy thiếu. */
+  .aurora {
+    background:
+      radial-gradient(
+        62% 48% at 50% 34%,
+        oklch(72% 0.085 282 / 0.22) 0%,
+        transparent 68%
+      ),
+      radial-gradient(
+        48% 40% at 82% 12%,
+        oklch(80% 0.075 60 / 0.20) 0%,
+        transparent 70%
+      ),
+      radial-gradient(
+        55% 45% at 14% 82%,
+        oklch(78% 0.06 200 / 0.16) 0%,
+        transparent 72%
+      );
+  }
+
+  :root[data-theme='dark'] .aurora,
+  :root:not([data-theme='light']) .aurora {
+    background:
+      radial-gradient(
+        62% 48% at 50% 34%,
+        oklch(55% 0.13 282 / 0.28) 0%,
+        transparent 68%
+      ),
+      radial-gradient(
+        48% 40% at 82% 12%,
+        oklch(50% 0.10 60 / 0.18) 0%,
+        transparent 70%
+      ),
+      radial-gradient(
+        55% 45% at 14% 82%,
+        oklch(52% 0.09 200 / 0.16) 0%,
+        transparent 72%
+      );
+  }
+
+  /* Mặt phẳng lùi phía sau thẻ chính.
+     Chiều sâu thật đến từ ba tín hiệu cùng lúc — chồng lấp, thu nhỏ, và nhoè
+     dần. Chỉ đổ bóng thì vẫn phẳng. */
+  .plane {
+    animation: plane-settle 700ms var(--ease-out) backwards;
+  }
+
+  .card-enter {
+    animation: card-enter 620ms var(--ease-out) backwards;
+  }
+}
+
+@keyframes plane-settle {
+  from {
+    opacity: 0;
+    transform: translateY(14px) scale(0.97);
+  }
+}
+
+@keyframes card-enter {
+  from {
+    opacity: 0;
+    transform: translateY(18px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .plane,
+  .card-enter {
+    animation: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 150ms !important;
+    scroll-behavior: auto !important;
+  }
+}

@@ -1,0 +1,281 @@
+/* Hallmark · macrostructure: Workbench · nav: N3 side-rail · footer: none (app chrome)
+ * theme: studied-DNA (source: image — "AdMetrics Pro" / Google Stitch, 4 screens)
+ * elevated on three axes vs the source:
+ *   accent      cyan-blue #2563EB (the AI-dashboard default) → ink primary + indigo-violet signal
+ *   paper       cool blue-gray → warm white
+ *   treatments  icon-in-tinted-square + card-on-gray → hairline rules + tabular numerals
+ * paper oklch(99% 0.003 85) · ink oklch(21% 0.012 265) · signal oklch(47% 0.19 282)
+ * display: Be Vietnam Pro (Vietnamese-native diacritics) · body + numerals: Inter
+ * studied: yes · genre: modern-minimal
+ * chart palette: dataviz reference instance — adjacent-pairlist validated on #FDFCFA
+ *   worst adjacent CVD ΔE 9.1 (protan) · worst normal-vision ΔE 19.6
+ *   3 slots below 3:1 contrast → relief rule active: legend + direct labels + table view REQUIRED
+ * pre-emit critique: P5 H5 E4 S5 R5 V4
+ */
+
+:root {
+  color-scheme: light;
+
+  /* ── Paper ────────────────────────────────────────────────────────────
+     Warm white, not the cool blue-gray of the source. Warm paper against
+     cool-tilted ink is what makes a light UI read composed rather than
+     clinical — the single cheapest upgrade over the reference. */
+  --color-paper: oklch(99% 0.003 85);
+  --color-paper-2: oklch(97.2% 0.004 85);
+  --color-paper-3: oklch(94.6% 0.005 85);
+  --color-paper-inset: oklch(96% 0.004 85);
+
+  /* ── Ink ──────────────────────────────────────────────────────────────
+     Faint cool tilt against warm paper. Never pure #000 — pure black on
+     warm paper reads as a hole punched in the page. */
+  --color-ink: oklch(21% 0.012 265);
+  --color-ink-2: oklch(44% 0.011 265);
+  --color-ink-3: oklch(60% 0.009 265);
+  --color-ink-inverse: oklch(99% 0.003 85);
+
+  /* ── Rules ────────────────────────────────────────────────────────────
+     Hairlines carry the structure that the source carried with cards. */
+  --color-rule: oklch(91.5% 0.004 85);
+  --color-rule-strong: oklch(85% 0.005 85);
+  --rule-hair: 1px;
+
+  /* ── Accent · primary action ──────────────────────────────────────────
+     Near-black, not a colour. This is the Ink & Signal move: the loudest
+     thing on screen is ink, so the one chromatic can stay quiet. */
+  --color-accent: oklch(24% 0.018 265);
+  --color-accent-hover: oklch(16% 0.018 265);
+  --color-accent-ink: oklch(99% 0.003 85);
+
+  /* ── Signal · interaction ─────────────────────────────────────────────
+     The single chromatic. Focus rings, active nav, links. Footprint held
+     under 5% — the source ran its blue at 5–15% and that is why it read
+     generated. */
+  --color-signal: oklch(47% 0.19 282);
+  --color-signal-hover: oklch(41% 0.19 282);
+  --color-signal-soft: oklch(95.5% 0.028 282);
+  --color-signal-ink: oklch(99% 0.003 85);
+  --color-focus: oklch(47% 0.19 282);
+
+  /* ── Semantic · metric direction ──────────────────────────────────────
+     Reserved. Never reused as a chart series. Always paired with an icon
+     or a sign, never colour alone. Which direction is "good" depends on
+     the metric — spend rising is not automatically negative. */
+  --color-positive: oklch(48% 0.13 155);
+  --color-positive-soft: oklch(95.5% 0.035 155);
+  --color-negative: oklch(52% 0.18 27);
+  --color-negative-soft: oklch(95.5% 0.03 27);
+  --color-caution: oklch(60% 0.13 75);
+  --color-caution-soft: oklch(95.5% 0.04 75);
+
+  /* ── Chart series ─────────────────────────────────────────────────────
+     dataviz reference instance. The ORDER is the CVD-safety mechanism, not
+     cosmetics — do not re-order. Provider→slot mapping is fixed in
+     lib/domain/providers.ts and must never be reassigned by a filter: colour
+     follows the entity, never its rank. Valid for lines / bars / stacks
+     (adjacent pairlist). For scatter or bubble (all-pairs) cap at the first
+     THREE slots and fold the rest into "Khác".
+     Slot 9 added when `facebook` (organic content, chartable) joined the
+     provider list — every one of slots 1-8 was already claimed by a
+     DIFFERENT chartable provider (gtm/merchant-center silently ride slot 4/8
+     since they never chart), so a 9th slot was the only option that doesn't
+     make two simultaneously-chartable entities share a colour. Re-validated
+     with `dataviz` skill's validate_palette.js (adjacent pairlist, both
+     modes) before adding — re-run it before ever adding a 10th. */
+  --color-series-1: #2a78d6; /* blue    → Google Ads */
+  --color-series-2: #eb6834; /* orange  → Facebook Ads */
+  --color-series-3: #1baf7a; /* aqua    → GA4          · contrast 2.75 → needs label relief */
+  --color-series-4: #eda100; /* yellow  → TikTok       · contrast 2.11 → needs label relief */
+  --color-series-5: #e87ba4; /* magenta → Search Console · contrast 2.63 → needs label relief */
+  --color-series-6: #008300; /* green   → YouTube */
+  --color-series-7: #4a3aa7; /* violet  → Instagram */
+  --color-series-8: #e34948; /* red     → Tag Manager (never charted — tagging only) */
+  --color-series-9: #1f8fae; /* cyan    → Facebook (organic content) */
+  --color-chart-surface: var(--color-paper);
+  --color-chart-grid: oklch(93.5% 0.004 85);
+
+  /* ── Type ─────────────────────────────────────────────────────────────
+     Be Vietnam Pro was drawn by a Vietnamese foundry: stacked diacritics
+     (ế ộ ữ ẫ) sit correctly at display sizes, which is exactly where
+     general-purpose faces collide with the cap-height.
+     Inter carries body and every number — it has a real tabular set, and
+     a metrics table without tabular figures is a column that will not
+     align. */
+  /* The -loaded vars are emitted by next/font in app/layout.tsx and carry the
+     hashed family name of the actual subsetted file. Referencing them rather
+     than the literal family name is what guarantees the Vietnamese subset is
+     the one in use. */
+  --font-display: var(--font-display-loaded), system-ui, sans-serif;
+  --font-body: var(--font-body-loaded), system-ui, sans-serif;
+  --font-numeric: var(--font-body-loaded), system-ui, sans-serif;
+
+  --text-display: 2.75rem; /* 44 — page title */
+  --text-display-s: 2.25rem; /* 36 */
+  --text-4xl: 2rem; /* 32 — hero metric */
+  --text-3xl: 1.75rem; /* 28 */
+  --text-2xl: 1.375rem; /* 22 — card title */
+  --text-xl: 1.125rem; /* 18 */
+  --text-base: 0.9375rem; /* 15 — body */
+  --text-sm: 0.875rem; /* 14 */
+  --text-xs: 0.8125rem; /* 13 */
+  --text-2xs: 0.75rem; /* 12 — micro-label */
+
+  --leading-tight: 1.12;
+  --leading-snug: 1.3;
+  --leading-body: 1.55;
+
+  --tracking-tight: -0.02em;
+  --tracking-label: 0.06em;
+
+  /* ── Space · 4pt ──────────────────────────────────────────────────────── */
+  --space-3xs: 0.25rem;
+  --space-2xs: 0.5rem;
+  --space-xs: 0.75rem;
+  --space-sm: 1rem;
+  --space-md: 1.5rem;
+  --space-lg: 2rem;
+  --space-xl: 3rem;
+  --space-2xl: 4rem;
+  --space-3xl: 6rem;
+
+  /* ── Radius ───────────────────────────────────────────────────────────
+     Tighter than the source's 16px. Large radii read soft and consumer;
+     restraint reads like a tool. */
+  --radius-xs: 0.25rem;
+  --radius-sm: 0.375rem;
+  --radius-md: 0.5rem;
+  --radius-lg: 0.75rem;
+  --radius-full: 9999px;
+
+  /* ── Elevation ────────────────────────────────────────────────────────
+     Bóng NHIỀU LỚP, không phải một lớp.
+     Một `box-shadow` duy nhất luôn đọc ra là giả: vật thật đổ bóng tiếp xúc
+     rất đậm và rất hẹp ngay dưới mép, rồi loang ra nhạt dần và rộng dần. Bốn
+     lớp dưới đây mô phỏng đúng dải đó, và đây là khác biệt giữa "có bóng" với
+     "trông đắt tiền".
+     Mọi lớp đều lệch xuống dưới: một nguồn sáng duy nhất từ trên. */
+  --shadow-raise:
+    0 1px 2px -1px oklch(20% 0.02 265 / 0.10),
+    0 3px 6px -2px oklch(20% 0.02 265 / 0.06);
+  --shadow-float:
+    0 1px 2px -1px oklch(20% 0.02 265 / 0.10),
+    0 4px 10px -3px oklch(20% 0.02 265 / 0.07),
+    0 16px 28px -10px oklch(20% 0.02 265 / 0.09);
+  --shadow-lift:
+    0 1px 2px -1px oklch(20% 0.02 265 / 0.11),
+    0 6px 14px -4px oklch(20% 0.02 265 / 0.08),
+    0 22px 40px -12px oklch(20% 0.02 265 / 0.10),
+    0 54px 90px -28px oklch(20% 0.02 265 / 0.12);
+
+  /* ── Motion ───────────────────────────────────────────────────────────── */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in: cubic-bezier(0.7, 0, 0.84, 0);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --dur-fast: 120ms;
+  --dur-base: 180ms;
+  --dur-slow: 280ms;
+
+  /* ── Shell ────────────────────────────────────────────────────────────
+     Rail is narrower than the source's 320px — the extra 48px buys the
+     data canvas a column it can actually use. */
+  --rail-w: 16.5rem;
+  --topbar-h: 3.5rem;
+  --canvas-max: 90rem;
+}
+
+/* ── Dark ───────────────────────────────────────────────────────────────
+   Selected, not flipped. Series steps come from the dataviz reference's
+   dark column — they are the same eight hues re-stepped for a dark
+   surface, and they were validated as a set against it.
+   Declared under both scopes so an explicit toggle wins in both
+   directions and the OS setting still works when no toggle is set. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+
+    --color-paper: oklch(17.5% 0.008 265);
+    --color-paper-2: oklch(21% 0.009 265);
+    --color-paper-3: oklch(25% 0.010 265);
+    --color-paper-inset: oklch(20% 0.009 265);
+
+    --color-ink: oklch(96% 0.004 85);
+    --color-ink-2: oklch(74% 0.008 265);
+    --color-ink-3: oklch(58% 0.009 265);
+    --color-ink-inverse: oklch(17.5% 0.008 265);
+
+    --color-rule: oklch(28% 0.010 265);
+    --color-rule-strong: oklch(36% 0.011 265);
+
+    --color-accent: oklch(96% 0.004 85);
+    --color-accent-hover: oklch(86% 0.006 85);
+    --color-accent-ink: oklch(17.5% 0.008 265);
+
+    --color-signal: oklch(70% 0.15 282);
+    --color-signal-hover: oklch(78% 0.14 282);
+    --color-signal-soft: oklch(28% 0.06 282);
+    --color-signal-ink: oklch(17.5% 0.008 265);
+    --color-focus: oklch(70% 0.15 282);
+
+    --color-positive: oklch(70% 0.14 155);
+    --color-positive-soft: oklch(26% 0.05 155);
+    --color-negative: oklch(68% 0.16 27);
+    --color-negative-soft: oklch(26% 0.06 27);
+    --color-caution: oklch(76% 0.13 75);
+    --color-caution-soft: oklch(27% 0.05 75);
+
+    --color-series-1: #3987e5;
+    --color-series-2: #d95926;
+    --color-series-3: #199e70;
+    --color-series-4: #c98500;
+    --color-series-5: #d55181;
+    --color-series-6: #008300;
+    --color-series-7: #9085e9;
+    --color-series-8: #e66767;
+    --color-series-9: #2f9db6;
+    --color-chart-grid: oklch(26% 0.010 265);
+  }
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --color-paper: oklch(17.5% 0.008 265);
+  --color-paper-2: oklch(21% 0.009 265);
+  --color-paper-3: oklch(25% 0.010 265);
+  --color-paper-inset: oklch(20% 0.009 265);
+
+  --color-ink: oklch(96% 0.004 85);
+  --color-ink-2: oklch(74% 0.008 265);
+  --color-ink-3: oklch(58% 0.009 265);
+  --color-ink-inverse: oklch(17.5% 0.008 265);
+
+  --color-rule: oklch(28% 0.010 265);
+  --color-rule-strong: oklch(36% 0.011 265);
+
+  --color-accent: oklch(96% 0.004 85);
+  --color-accent-hover: oklch(86% 0.006 85);
+  --color-accent-ink: oklch(17.5% 0.008 265);
+
+  --color-signal: oklch(70% 0.15 282);
+  --color-signal-hover: oklch(78% 0.14 282);
+  --color-signal-soft: oklch(28% 0.06 282);
+  --color-signal-ink: oklch(17.5% 0.008 265);
+  --color-focus: oklch(70% 0.15 282);
+
+  --color-positive: oklch(70% 0.14 155);
+  --color-positive-soft: oklch(26% 0.05 155);
+  --color-negative: oklch(68% 0.16 27);
+  --color-negative-soft: oklch(26% 0.06 27);
+  --color-caution: oklch(76% 0.13 75);
+  --color-caution-soft: oklch(27% 0.05 75);
+
+  --color-series-1: #3987e5;
+  --color-series-2: #d95926;
+  --color-series-3: #199e70;
+  --color-series-4: #c98500;
+  --color-series-5: #d55181;
+  --color-series-6: #008300;
+  --color-series-7: #9085e9;
+  --color-series-8: #e66767;
+  --color-series-9: #2f9db6;
+  --color-chart-grid: oklch(26% 0.010 265);
+}
