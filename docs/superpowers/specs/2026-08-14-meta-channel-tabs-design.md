@@ -77,8 +77,26 @@ before its Dashboard's backend was ready.
 **Phase 2 (separate follow-up, not planned/built yet):** the two Dashboard
 widgets that depend on a new backend contract — top-all-time and
 trending-fast (week/month/year). A sibling session is building the data
-layer for this now; the exact contract (proposed, not yet confirmed final)
-is:
+layer for this now; the contract below is CONFIRMED (negotiated live over
+cross-session messaging while writing this spec) — two changes from the
+first draft:
+
+- `latestSnapshotAt: string | null` added alongside `earliestSnapshotAt`
+  (same rationale as TikTok's equivalent field — cheap "last synced when"
+  signal, the RPC already computes `max(date)`).
+- `thumbnailUrl`/`permalinkUrl` will be **real data, not always `null`** —
+  Facebook's post-node fetch already returns `full_picture` and Instagram's
+  media fetch already returns `media_url`/`permalink` in the same response
+  their sync job already calls (no extra request), so the backend session
+  will store and return them for real. This does NOT retroactively change
+  this spec's Phase-1 decision to build a ranked list, not a dense grid, for
+  the Overview tab (posts still have no "view count," and a caption-first
+  list remains the right shape for this content type) — but see the
+  Overview-tab section below for a small, low-cost use of this: showing a
+  small thumbnail per row, once Phase 1's own live-fetch adapter also
+  requests these fields (below).
+
+The confirmed contract:
 
 ```ts
 export interface ContentSummary {
@@ -103,8 +121,20 @@ export interface ContentTrendingResult {
     readonly year: readonly ContentGrowthSummary[]
   }
   readonly earliestSnapshotAt: string | null
+  readonly latestSnapshotAt: string | null
 }
 ```
+
+Per the sibling session's confirmation, this type lives in a new
+`src/lib/providers/content-trending-types.ts`, reusing
+`TRENDING_WINDOW_DAYS`/`hasEnoughHistory`/`MAX_TOP_ALL_TIME` from
+`video-trending-types.ts` rather than redefining them (only the
+engagement-vs-views ranking metric and a lower minimum-engagement floor
+differ). The backend session owns wiring `trending: ContentTrendingResult`
+directly into `ChannelDetail`'s `facebook`/`instagram` cases in
+`site-channel-detail.ts` — Phase 2 UI work will only ever need to read
+`channelDetail.trending`, exactly like the TikTok Dashboard does today,
+with no knowledge of the snapshot table/RPC underneath.
 
 This is deliberately a NEW, parallel type family (not a rename/extension of
 `VideoTrendingResult` in `src/lib/providers/video-trending-types.ts`) so
@@ -124,6 +154,13 @@ Both `InstagramExplore`/`FacebookExplore` gain:
 - `permalinkUrl: string | null` — requires adding `permalink` (Instagram
   media object) / `permalink_url` (Facebook post object) to each function's
   requested `fields` string.
+- `thumbnailUrl: string | null` — requires adding `full_picture` (Facebook)
+  / `media_url` (Instagram) to the same `fields` string. Confirmed by the
+  sibling session building Phase 2: both fields come back in the same
+  response their own fetch already makes, so there's no extra request cost
+  to requesting them here too. Used for a small thumbnail in the Overview
+  tab's post-list rows (see below) — this does not change the Phase-1
+  decision to keep a list layout rather than a dense grid.
 - `fetchError: string | null`, following `TiktokExplore`'s exact pattern:
   `null` on success (list may be empty — normal), a message on a failed
   `fetch()` (non-ok response). Neither Graph endpoint here has TikTok's
@@ -141,12 +178,12 @@ diligence TikTok's fix wave already established as the right process here).
 
 One new component, `src/components/channels/meta/meta-channel-header.tsx`,
 used by BOTH the `facebook` and `instagram` cases (not duplicated) — takes
-`stats: readonly { label: string; value: number }[]` as a prop instead of
-hardcoding field names, since the two platforms' three header numbers differ
-by name. Otherwise structurally identical to TikTok's header (large avatar,
-account name as the H1, badge, date-range label, external-link action) —
-avatar and account name are already populated for both platforms via
-`meta-discovery.ts`, confirmed working today.
+the same prop shape as `TiktokChannelHeader` (`siteId`, `detail` narrowed to
+the facebook-or-instagram `ChannelDetail` variant, `dailySeries`,
+`connected`, `dateRangeLabel`) and internally branches on `detail.kind` to
+pick the right 3 field names/labels for the header's stat row, exactly
+mirroring how `TiktokChannelHeader` already computes its own stats
+internally from `dailySeries` rather than receiving them pre-computed.
 
 - Instagram stats: Reach / Lượt hiển thị / Lượt xem trang cá nhân (from
   `extra.reach` / `extra.impressions` / `extra.profileViews`).
@@ -183,11 +220,15 @@ target opening `src/components/channels/meta/meta-post-detail-dialog.tsx`.
 Row content, left to right: a rank number (1-10, matching the visual
 language `TiktokVideoRankingList` already established for ranked lists on
 this app — order already reflects the adapter's own engagement sort, the
-number is purely a scannability aid, not a separate computation), truncated
-caption/message with a `title=` tooltip, exact post date (`formatDate` from
-`createdAt`), and the platform's engagement numbers inline. Clicking opens
-the dialog: full caption, all engagement numbers at a larger size, exact
-date/time (`formatDateTime`), and a "Xem bài đăng gốc" link when
+number is purely a scannability aid, not a separate computation), a small
+(`size-10`, same dimensions `TiktokVideoRankingList` already uses) thumbnail
+when `thumbnailUrl` is present else a plain placeholder square (same
+fallback pattern as that component), truncated caption/message with a
+`title=` tooltip, exact post date (`formatDate` from `createdAt`), and the
+platform's engagement numbers inline. Clicking opens
+the dialog: the larger `thumbnailUrl` image when present (same treatment as
+TikTok's dialog), full caption, all engagement numbers at a larger size,
+exact date/time (`formatDateTime`), and a "Xem bài đăng gốc" link when
 `permalinkUrl` is present (mirrors TikTok's "Xem trên TikTok" link exactly).
 
 Deliberate non-reuse of `TiktokVideoRankingList`/`TiktokVideoCard-`
