@@ -5,6 +5,7 @@ import { SideRail } from '@/components/layout/side-rail'
 import { Topbar } from '@/components/layout/topbar'
 import { getCurrentProfile, getSite, listSites, setLastSiteId } from '@/lib/data/sites'
 import { getConnectionSummary } from '@/lib/data/connections'
+import { createClient } from '@/lib/supabase/server'
 
 /**
  * Shell của khu vực ứng dụng.
@@ -37,8 +38,14 @@ export default async function SiteLayout({
   // Chỉ ghi khi site thực sự đổi so với lần trước — tránh ghi lại mỗi lần
   // chuyển trang/tab trong cùng một site. after() chạy sau khi response đã
   // trả về nên không thêm độ trễ cho việc render.
+  //
+  // Client Supabase phải tạo Ở ĐÂY, lúc render (đọc cookie ngay bây giờ) rồi
+  // truyền vào qua closure — KHÔNG được tự tạo bên trong callback của
+  // after(): after() chạy sau vòng đời render, gọi cookies() lúc đó bị Next
+  // ném lỗi runtime (xem node_modules/next/dist/docs/.../after.md).
   if (profile.lastSiteId !== site.id) {
-    after(() => setLastSiteId(profile.userId, site.id))
+    const supabase = await createClient()
+    after(() => setLastSiteId(supabase, profile.userId, site.id))
   }
 
   return (

@@ -1,6 +1,8 @@
 import 'server-only'
 
+import type { SupabaseClient } from '@supabase/supabase-js'
 import { createClient } from '@/lib/supabase/server'
+import type { Database } from '@/lib/supabase/database.types'
 import type { Site, SiteMember, SiteRole } from '@/lib/domain/site'
 
 /**
@@ -135,9 +137,18 @@ export const getCurrentProfile = async () => {
  * Ghi lại site đang xem, theo tài khoản. Gọi từ `after()` trong layout của
  * site — không được throw ra ngoài request đang render, nên tự nuốt lỗi ở
  * đây và chỉ log.
+ *
+ * Nhận `supabase` làm tham số thay vì tự `createClient()`: client đó đọc
+ * cookie qua `next/headers`, một Request-time API — gọi được trong Server
+ * Component lúc render, nhưng gọi bên trong callback của `after()` thì Next
+ * ném lỗi runtime (after chạy sau khi vòng đời render đã kết thúc). Nơi gọi
+ * phải tự tạo client lúc render rồi truyền vào đây qua closure.
  */
-export const setLastSiteId = async (userId: string, siteId: string): Promise<void> => {
-  const supabase = await createClient()
+export const setLastSiteId = async (
+  supabase: SupabaseClient<Database>,
+  userId: string,
+  siteId: string,
+): Promise<void> => {
   const { error } = await supabase
     .from('profiles')
     .update({ last_site_id: siteId })
