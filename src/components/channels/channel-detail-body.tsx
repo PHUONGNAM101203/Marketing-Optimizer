@@ -10,10 +10,13 @@ import { Pagination } from '@/components/ui/pagination'
 import type { ChannelDetail } from '@/lib/data/site-channel-detail'
 import type { ChannelDailyPoint } from '@/lib/data/site-channels'
 import type { ProductApprovalStatus } from '@/lib/providers/google-merchant'
-import type { DateRangePreset } from '@/lib/domain/site'
+import { DATE_RANGE_LABELS, type DateRangePreset } from '@/lib/domain/site'
 import type { ProviderId } from '@/lib/domain/providers'
 import { formatCompact, formatCurrencyCompact, formatNumber, formatPercent } from '@/lib/format'
 import { microsToUnits } from '@/lib/metrics/types'
+import { UrlTabs } from '@/components/ui/tabs'
+import { TiktokVideoGrid } from '@/components/channels/tiktok/tiktok-video-grid'
+import { TiktokDashboard } from '@/components/channels/tiktok/tiktok-dashboard'
 
 /**
  * Thân trang chi tiết kênh — MỖI nền tảng một hình dạng khác hẳn, cố tình
@@ -278,50 +281,53 @@ export function ChannelDetailBody({
       )
 
     case 'tiktok': {
-      const latest = dailySeries.length > 0 ? dailySeries[dailySeries.length - 1] : null
-      const latestExtra = latest?.extra ?? {}
-      return (
-        <div className="flex flex-col gap-6">
-          <div className="grid grid-cols-3 gap-3">
-            <MerchantStat label="Follower" value={latestExtra.followerCount ?? 0} />
-            <MerchantStat label="Lượt thích" value={latestExtra.likesCount ?? 0} />
-            <MerchantStat label="Số video" value={latestExtra.videoCount ?? 0} />
-          </div>
-
-          {dailySeries.length > 0 ? (
-            <Card>
-              <CardHeader
-                title="Follower theo lần đồng bộ"
-                description="TikTok Display API không có báo cáo lịch sử theo ngày — mỗi điểm là trạng thái tài khoản TẠI lần đồng bộ đó, không phải phát sinh trong ngày."
+      const followerTrend =
+        dailySeries.length > 0 ? (
+          <Card>
+            <CardHeader
+              title="Follower theo lần đồng bộ"
+              description="TikTok Display API không có báo cáo lịch sử theo ngày — mỗi điểm là trạng thái tài khoản TẠI lần đồng bộ đó, không phải phát sinh trong ngày."
+            />
+            <CardBody>
+              <TrendChart
+                data={dailySeries.map((point) => ({
+                  date: point.date,
+                  follower: point.extra.followerCount ?? 0,
+                }))}
+                series={[{ key: 'follower', label: 'Follower', colorToken: '--color-signal', kind: 'line' }]}
+                format="number"
               />
-              <CardBody>
-                <TrendChart
-                  data={dailySeries.map((point) => ({
-                    date: point.date,
-                    follower: point.extra.followerCount ?? 0,
-                  }))}
-                  series={[{ key: 'follower', label: 'Follower', colorToken: '--color-signal', kind: 'line' }]}
-                  format="number"
-                />
-              </CardBody>
-            </Card>
-          ) : null}
+            </CardBody>
+          </Card>
+        ) : null
 
-          <VideoCardGrid
-            label="Video"
-            title="Video xem nhiều nhất"
-            emptyDescription="Chưa có video công khai trong khoảng ngày này — TikTok chỉ trả về 20 video đăng gần nhất, chọn khoảng ngày mới hơn nếu cần."
-            fetchError={detail.data.fetchError}
-            videos={detail.data.topVideos.map((row) => ({
-              title: row.title,
-              thumbnailUrl: row.coverImageUrl,
-              views: row.views,
-              likes: row.likes,
-              comments: row.comments,
-              shares: row.shares,
-            }))}
-          />
-        </div>
+      return (
+        <UrlTabs
+          ariaLabel="Chế độ xem"
+          tabs={[
+            {
+              id: 'overview',
+              label: 'Tổng quan',
+              panel: (
+                <div className="flex flex-col gap-6">
+                  {followerTrend}
+                  <TiktokVideoGrid videos={detail.data.topVideos} fetchError={detail.data.fetchError} />
+                </div>
+              ),
+            },
+            {
+              id: 'dashboard',
+              label: 'Dashboard',
+              panel: (
+                <TiktokDashboard
+                  topVideosInRange={detail.data.topVideos}
+                  trending={detail.trending}
+                  rangeLabel={DATE_RANGE_LABELS[preset]}
+                />
+              ),
+            },
+          ]}
+        />
       )
     }
 
