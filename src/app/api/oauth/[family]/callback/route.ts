@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { encrypt } from '@/lib/crypto'
+import { findGoogleSourceConnection } from '@/lib/data/google-source-connection'
 import { getSite } from '@/lib/data/sites'
 import { getSiteOAuthCredentials } from '@/lib/data/site-oauth-apps'
 import { isProviderFamily } from '@/lib/domain/providers'
@@ -83,13 +84,15 @@ export async function GET(
     // Merchant Center dò được domain nên tự kết nối luôn bên dưới.
     if (mode === 'ads' || mode === 'merchant-center') {
       const admin = createAdminClient()
-      const { data: existing } = await admin
-        .from('connections')
-        .select('id')
-        .eq('site_id', siteId)
-        .in('provider', ['ga4', 'gsc', 'gtm', 'youtube'])
-        .limit(1)
-        .maybeSingle()
+      // Phải dùng ĐÚNG helper mà lúc đọc báo cáo Ads/Merchant Center sau này
+      // cũng dùng (`findGoogleSourceConnection`) — trước đây đây là một
+      // query riêng, không `order by`, có thể chọn TRÚNG một connection
+      // Google khác của Site (khi Site có nhiều hơn một trong
+      // ga4/gsc/gtm/youtube) so với connection mà bên đọc sẽ chọn. Kết quả:
+      // token vừa nâng quyền bị ghi vào connection A, còn lúc đọc lại mượn
+      // token từ connection B (vẫn giữ quyền cũ) — Google xác nhận đã cấp
+      // quyền nhưng app vẫn báo "cần cấp thêm quyền" mãi mãi.
+      const existing = await findGoogleSourceConnection(admin, siteId)
 
       if (!existing) return failure('no-google-connection', siteId)
 
