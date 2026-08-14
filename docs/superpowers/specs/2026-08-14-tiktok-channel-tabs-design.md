@@ -28,13 +28,23 @@ stat tiles in a row below) with a TikTok-profile-style block, **for the TikTok
 channel page only** — other providers keep their current `PageHeader` layout:
 
 - Large circular avatar (`ChannelAvatar`, upsized) on the left.
-- To its right, stacked: channel display name (large), `@handle` below it in
-  muted text.
-- On the same row as the name block (or wrapping below on narrow screens): three
+- To its right: channel display name (large — this is `connections.account_name`,
+  the only identity string the TikTok adapter currently stores).
+  **Deviation from the reference:** the reference shows an `@handle` under the
+  name; this app's TikTok adapter (`tiktokAdapter.listAccounts` in
+  `src/lib/providers/tiktok.ts`) only requests `open_id,display_name,avatar_url`
+  from `user/info/` — no `username`/handle field is fetched or stored anywhere
+  in `connections`. Fetching it would need a new scope (`user.info.profile`)
+  requiring its own TikTok app-review approval — real backend/OAuth scope work,
+  out of bounds for this UI-only plan. So the `@handle` line is **not built**;
+  the header shows name only. Revisit if/when that scope is added.
+- On the same row as the name (or wrapping below on narrow screens): three
   inline stats — Follower / Lượt thích / Số video — styled as label+value pairs
   matching the reference, not as separate `Card` tiles.
 - Existing elements that must still appear somewhere in the header area: back
-  link to "Tất cả kênh", connect-status badge, synced-at label, date-range label.
+  link to "Tất cả kênh", connect-status badge, date-range label. (Sync-recency
+  is already shown globally in `Topbar`, not per-page — dropped from this list,
+  it was never actually part of the per-page header to begin with.)
 
 New component: `src/components/channels/tiktok/tiktok-channel-header.tsx`.
 
@@ -48,15 +58,22 @@ border-signal indicator) but as `<Link>`s that set `?tab=...` instead of
 This fills a real gap (no generic `Tabs` primitive exists yet) and is written
 generically enough for other pages to reuse later — not TikTok-specific.
 
-The channel page (`page.tsx`) reads `tab` from `searchParams` alongside the
-existing `range`/`from`/`to` params:
+**Correction post-implementation of the sibling snapshot-pipeline spec:**
+`getChannelDetail`'s `case 'tiktok'` (`src/lib/data/site-channel-detail.ts`)
+already fetches `data` (`fetchTiktokContentExplore`) and `trending`
+(`getTiktokVideoTrending`) together via one `Promise.all`, unconditionally —
+this is shared plumbing with the YouTube branch and isn't something this UI
+plan can special-case per tab without forking that shared function for one
+provider. So there's no "fetch trending only on the Dashboard tab"
+optimization to build here: `detail.trending` is always present by the time
+`ChannelDetailBody` renders, regardless of which tab is active.
 
-- `tab=overview` (default): fetch exactly what's fetched today
-  (`getChannelDetail`, `getChannelDailySeries`) — **no behavior change, no new
-  cost** for the common case.
-- `tab=dashboard`: additionally call `getTiktokVideoTrending(connectionId)` for
-  the `trending` data. This keeps the Overview tab cheap and avoids computing
-  trending data on every page load when the user never opens Dashboard.
+`UrlTabs` is therefore a **pure client-side rendering toggle**, not a
+data-fetching switch: it reads `tab` from `useSearchParams()` (default
+`overview`), renders `<Link href="?tab=...">` items that preserve the other
+current search params (`range`/`from`/`to`), and shows one of two already-
+resolved panels. No Server Component prop-threading of `tab` is needed —
+both panels receive the same fully-populated `detail` as props.
 
 ## Tab 1: Tổng quan (Overview)
 
@@ -111,8 +128,9 @@ New component: `src/components/channels/tiktok/tiktok-video-detail-dialog.tsx`.
 
 ## Tab 2: Dashboard
 
-Four independent widgets. The first two reuse data already on the page today;
-the last two consume the new `trending` field (only fetched on this tab).
+Four independent widgets, all reading from the same already-fetched `detail`
+(no per-tab data fetching, see the corrected "Tabs" section above). The first
+two reuse `detail.data.topVideos`; the last two consume `detail.trending`.
 
 1. **Top 10 video xem nhiều nhất (theo khoảng lọc đang chọn)** — reuses
    `detail.data.topVideos` (already date-filtered + sorted by views desc by
@@ -135,8 +153,8 @@ the last two consume the new `trending` field (only fetched on this tab).
    state per window independently (a video appearing in `month` but not
    `week` is expected, not an error — see pipeline spec's minimum-view-floor
    note; and after the positive-only filter, a window can end up empty even
-   if the raw array wasn't). If empty: "Chưa có video tăng trưởng tích cực
-   trong {khung}."
+   if the raw array wasn't) — see "Error handling" below for the exact
+   `earliestSnapshotAt`-based empty-state copy per window.
 4. **Thống kê tổng lượt react / comment / share** — sums `likes`, `comments`,
    `shares` across `detail.data.topVideos` (same filtered set as widget 1),
    shown as 3 `StatTile`s. Explicitly reuses widget 1's data — no new fetch.
@@ -150,29 +168,43 @@ New components:
 ## Data flow summary
 
 ```
-page.tsx (Server Component)
-  reads: tab, range/from/to (existing), site, channel summaries (existing)
-  tab=overview → getChannelDetail (unchanged) → TiktokChannelHeader + TiktokVideoGrid
-  tab=dashboard → getChannelDetail (unchanged, still needed for widgets 1+4)
-                + getTiktokVideoTrending(connectionId) (new call, this tab only)
-                → TiktokChannelHeader + TiktokDashboard
+page.tsx (Server Component, unchanged fetch shape)
+  reads: range/from/to (existing), site, channel summaries (existing)
+  getChannelDetail → detail.data (topVideos) + detail.trending (always both, existing behavior)
+  → for provider 'tiktok': TiktokChannelHeader (replaces PageHeader block)
+  → ChannelDetailBody → case 'tiktok' → UrlTabs(['overview','dashboard'])
+       overview panel  → TiktokVideoGrid(detail.data.topVideos)
+       dashboard panel → TiktokDashboard(detail.data.topVideos, detail.trending)
 ```
 
 `ChannelDetailBody`'s existing `switch (detail.kind)` dispatcher gets a new
-branch path: for `kind: 'tiktok'`, delegate to the tab components above instead
-of the current inline JSX (lines ~280-326), keeping other providers untouched.
+branch path: for `kind: 'tiktok'`, delegate to `UrlTabs` + the two panel
+components above instead of the current inline JSX (lines ~280-326), keeping
+other providers untouched.
 
 ## Error handling
 
 - `fetchTiktokContentExplore` failure (existing `fetchError` field): unchanged
   behavior, surfaces via `Callout`, same as today — affects Overview grid and
   Dashboard widgets 1+4 (shared source).
-- `getTiktokVideoTrending` failure: Dashboard widgets 2+3 show an isolated
-  `Callout` error state scoped to just those two widgets, not the whole tab —
-  widgets 1+4 must still render if `getChannelDetail` succeeded independently.
-- Per the pipeline spec, TikTok connections not yet synced (`video_metrics_daily`
-  empty) yield empty `topAllTime`/`trendingFast` arrays, not errors — rendered
-  as each widget's own empty state, not a `Callout`.
+- `getTiktokVideoTrending` (`src/lib/data/video-trending.ts`) never throws or
+  surfaces a Supabase error to the caller — a failed read silently resolves to
+  the same empty shape as "no snapshots yet" (`topAllTime: []`, all three
+  `trendingFast` windows `[]`, `earliestSnapshotAt: null`). So widgets 2+3
+  have no distinct error state to build — an empty response, whatever its
+  cause, always renders as each widget's own empty state (see below), never a
+  `Callout`. This also means it can never reject the `Promise.all` in
+  `getChannelDetail`, so widgets 1+4 (from `fetchTiktokContentExplore`) are
+  never at risk of being taken down by a trending-side failure.
+- Empty-state copy per widget, using `earliestSnapshotAt` to distinguish
+  "not enough history yet" from "genuinely nothing" per window: for
+  `trendingFast[window]`, if `earliestSnapshotAt` is `null` or newer than
+  `TRENDING_WINDOW_DAYS[window]` days ago, show "Đang tích lũy dữ liệu cho
+  {khung} — quay lại sau."; otherwise (enough history exists but the window
+  is still empty, e.g. everything filtered out by the positive-growth or
+  min-view-floor rules) show "Chưa có video tăng trưởng tích cực trong
+  {khung}." `topAllTime` empty has one copy regardless: "Chưa có dữ liệu —
+  video sẽ xuất hiện sau lần đồng bộ tiếp theo."
 
 ## Out of scope
 
