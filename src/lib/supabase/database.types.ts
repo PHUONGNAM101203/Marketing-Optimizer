@@ -235,6 +235,7 @@ export type Database = {
           created_at: string
           full_name: string | null
           id: string
+          last_site_id: string | null
           locale: string
         }
         Insert: {
@@ -242,6 +243,7 @@ export type Database = {
           created_at?: string
           full_name?: string | null
           id: string
+          last_site_id?: string | null
           locale?: string
         }
         Update: {
@@ -249,9 +251,18 @@ export type Database = {
           created_at?: string
           full_name?: string | null
           id?: string
+          last_site_id?: string | null
           locale?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "profiles_last_site_id_fkey"
+            columns: ["last_site_id"]
+            isOneToOne: false
+            referencedRelation: "sites"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       site_members: {
         Row: {

@@ -118,7 +118,7 @@ export const getCurrentProfile = async () => {
 
   const { data } = await supabase
     .from('profiles')
-    .select('full_name, avatar_url')
+    .select('full_name, avatar_url, last_site_id')
     .eq('id', user.id)
     .maybeSingle()
 
@@ -127,5 +127,21 @@ export const getCurrentProfile = async () => {
     email: user.email ?? '',
     displayName: data?.full_name ?? user.email?.split('@')[0] ?? 'Bạn',
     avatarUrl: data?.avatar_url ?? null,
+    lastSiteId: data?.last_site_id ?? null,
   }
+}
+
+/**
+ * Ghi lại site đang xem, theo tài khoản. Gọi từ `after()` trong layout của
+ * site — không được throw ra ngoài request đang render, nên tự nuốt lỗi ở
+ * đây và chỉ log.
+ */
+export const setLastSiteId = async (userId: string, siteId: string): Promise<void> => {
+  const supabase = await createClient()
+  const { error } = await supabase
+    .from('profiles')
+    .update({ last_site_id: siteId })
+    .eq('id', userId)
+
+  if (error) console.error(`Không ghi được last_site_id: ${error.message}`)
 }
