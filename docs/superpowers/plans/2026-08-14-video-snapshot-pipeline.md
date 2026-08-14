@@ -356,7 +356,7 @@ git commit -m "feat: write daily TikTok video snapshots during connection sync"
 - Create: `src/lib/providers/video-trending-types.ts`
 
 **Interfaces:**
-- Produces: `VideoSummary`, `VideoGrowthSummary`, `VideoTrendingResult` — consumed by Task 5 (`src/lib/data/video-trending.ts`), Task 6 (`src/lib/providers/google-explore.ts`), and Task 7 (`src/lib/data/site-channel-detail.ts`).
+- Produces: `VideoSummary`, `VideoGrowthSummary`, `VideoTrendingResult`, `TRENDING_WINDOW_DAYS`, `MIN_TRENDING_VIEWS` — consumed by Task 5 (`src/lib/data/video-trending.ts`), Task 6 (`src/lib/providers/google-explore.ts`), and Task 7 (`src/lib/data/site-channel-detail.ts`).
 
 - [ ] **Step 1: Write the types file**
 
@@ -384,14 +384,32 @@ export interface VideoSummary {
 
 export interface VideoGrowthSummary extends VideoSummary {
   readonly growthDelta: number
-  /** `null` khi mốc so sánh có 0 lượt xem — không chia được cho 0. */
+  /** `null` khi mốc so sánh có 0 lượt xem — không chia được cho 0 (trong
+   * thực tế không xảy ra vì cả hai nguồn đều lọc theo `MIN_TRENDING_VIEWS`
+   * trước khi tính, nhưng kiểu vẫn khai báo đúng khả năng lý thuyết). */
   readonly growthPct: number | null
+}
+
+/** Ba cửa sổ CỐ ĐỊNH cho "tăng nhanh" — độc lập với khoảng ngày trang đang
+ * chọn (khác mọi số liệu khác trên trang), để UI tự chuyển đổi phía client
+ * không cần gọi lại server. */
+export interface VideoTrendingWindows {
+  readonly week: readonly VideoGrowthSummary[]
+  readonly month: readonly VideoGrowthSummary[]
+  readonly year: readonly VideoGrowthSummary[]
 }
 
 export interface VideoTrendingResult {
   readonly topAllTime: readonly VideoSummary[]
-  readonly trendingFast: readonly VideoGrowthSummary[]
+  readonly trendingFast: VideoTrendingWindows
 }
+
+export const TRENDING_WINDOW_DAYS = { week: 7, month: 30, year: 365 } as const
+
+/** Video có dưới ngần này view ở đầu cửa sổ bị loại khỏi "tăng nhanh" — %
+ * tăng của một video 2 view lên 20 view (900%) không có ý nghĩa, chỉ là
+ * nhiễu do chia cho một số gần 0. */
+export const MIN_TRENDING_VIEWS = 50
 ```
 
 - [ ] **Step 2: Type-check**
@@ -414,8 +432,8 @@ git commit -m "feat: add shared VideoTrendingResult types"
 - Create: `src/lib/data/video-trending.ts`
 
 **Interfaces:**
-- Consumes: `VideoSummary`, `VideoGrowthSummary`, `VideoTrendingResult` (Task 4), `createClient` from `@/lib/supabase/server` (session-scoped, RLS-protected — same pattern as `src/lib/data/site-metrics.ts`), `video_metrics_daily` table (Task 1).
-- Produces: `getTiktokVideoTrending(connectionId: string, range: { startDate: string; endDate: string }): Promise<VideoTrendingResult>` — consumed by Task 7.
+- Consumes: `VideoSummary`, `VideoGrowthSummary`, `VideoTrendingResult`, `TRENDING_WINDOW_DAYS`, `MIN_TRENDING_VIEWS` (Task 4), `createClient` from `@/lib/supabase/server` (session-scoped, RLS-protected — same pattern as `src/lib/data/site-metrics.ts`), `video_metrics_daily` table (Task 1, including its `database.types.ts` entry).
+- Produces: `getTiktokVideoTrending(connectionId: string): Promise<VideoTrendingResult>` — consumed by Task 7. No date/range parameter — see Task 4's `VideoTrendingWindows` doc comment for why.
 
 - [ ] **Step 1: Write the read function**
 
@@ -424,10 +442,12 @@ Create `src/lib/data/video-trending.ts`:
 ```ts
 import 'server-only'
 
-import type {
-  VideoGrowthSummary,
-  VideoSummary,
-  VideoTrendingResult,
+import {
+  MIN_TRENDING_VIEWS,
+  TRENDING_WINDOW_DAYS,
+  type VideoGrowthSummary,
+  type VideoSummary,
+  type VideoTrendingResult,
 } from '@/lib/providers/video-trending-types'
 import { createClient } from '@/lib/supabase/server'
 
@@ -452,15 +472,41 @@ const toSummary = (row: VideoMetricsRow): VideoSummary => ({
   shares: row.shares,
 })
 
+const toIsoDate = (date: Date): string => date.toISOString().slice(0, 10)
+
 /**
- * "Top mọi thời gian" và "tăng nhanh" cho TikTok, đọc từ `video_metrics_daily`.
- * `range` = đúng khoảng ngày trang đang chọn (topbar) — nhất quán với mọi
- * số liệu khác trên trang chi tiết kênh, không phải một cửa sổ riêng.
+ * Tăng trưởng của MỘT video trong `windowDays` ngày gần nhất. Mốc bắt đầu =
+ * snapshot gần nhất TRƯỚC (hoặc đúng) ngày cắt; nếu chưa có snapshot nào cũ
+ * đến vậy (connection mới, chưa đủ lịch sử), lùi về snapshot sớm nhất đang
+ * có — "tăng trưởng từ lúc bắt đầu theo dõi", chấp nhận đánh giá thấp hơn
+ * tăng trưởng thật thay vì không hiện gì. `snapshots` phải đã sắp theo ngày
+ * tăng dần.
  */
-export const getTiktokVideoTrending = async (
-  connectionId: string,
-  range: { readonly startDate: string; readonly endDate: string },
-): Promise<VideoTrendingResult> => {
+const computeGrowth = (
+  snapshots: readonly VideoMetricsRow[],
+  windowDays: number,
+): VideoGrowthSummary | null => {
+  const endSnapshot = snapshots[snapshots.length - 1]!
+  const cutoff = toIsoDate(new Date(Date.now() - windowDays * 86_400_000))
+  const startSnapshot = [...snapshots].reverse().find((row) => row.date <= cutoff) ?? snapshots[0]!
+
+  if (startSnapshot === endSnapshot) return null
+  if (startSnapshot.views < MIN_TRENDING_VIEWS) return null
+
+  const growthDelta = endSnapshot.views - startSnapshot.views
+  return { ...toSummary(endSnapshot), growthDelta, growthPct: growthDelta / startSnapshot.views }
+}
+
+const TRENDING_WINDOW_KEYS = ['week', 'month', 'year'] as const
+
+/**
+ * "Top mọi thời gian" và "tăng nhanh" (tuần/tháng/năm) cho TikTok, đọc từ
+ * `video_metrics_daily`. Không nhận tham số ngày — `topAllTime` luôn là
+ * snapshot mới nhất mỗi video, `trendingFast` luôn tính đúng 3 cửa sổ cố
+ * định, độc lập với khoảng ngày trang đang chọn (xem
+ * docs/superpowers/specs/2026-08-14-video-snapshot-pipeline-design.md).
+ */
+export const getTiktokVideoTrending = async (connectionId: string): Promise<VideoTrendingResult> => {
   const supabase = await createClient()
   const { data } = await supabase
     .from('video_metrics_daily')
@@ -469,7 +515,9 @@ export const getTiktokVideoTrending = async (
     .order('date', { ascending: true })
 
   const rows = (data ?? []) as readonly VideoMetricsRow[]
-  if (rows.length === 0) return { topAllTime: [], trendingFast: [] }
+  if (rows.length === 0) {
+    return { topAllTime: [], trendingFast: { week: [], month: [], year: [] } }
+  }
 
   const byVideo = new Map<string, VideoMetricsRow[]>()
   for (const row of rows) {
@@ -482,21 +530,16 @@ export const getTiktokVideoTrending = async (
     .map((snapshots) => toSummary(snapshots[snapshots.length - 1]!))
     .sort((a, b) => b.views - a.views)
 
-  const trendingFast: VideoGrowthSummary[] = []
+  const trendingFast = { week: [] as VideoGrowthSummary[], month: [] as VideoGrowthSummary[], year: [] as VideoGrowthSummary[] }
   for (const snapshots of byVideo.values()) {
-    // `snapshots` đã sắp theo ngày tăng dần (kế thừa từ `order` phía trên).
-    const endSnapshot = [...snapshots].reverse().find((row) => row.date <= range.endDate)
-    const startSnapshot = snapshots.find((row) => row.date >= range.startDate) ?? snapshots[0]
-    if (!endSnapshot || !startSnapshot || endSnapshot === startSnapshot) continue
-
-    const growthDelta = endSnapshot.views - startSnapshot.views
-    trendingFast.push({
-      ...toSummary(endSnapshot),
-      growthDelta,
-      growthPct: startSnapshot.views > 0 ? growthDelta / startSnapshot.views : null,
-    })
+    for (const windowKey of TRENDING_WINDOW_KEYS) {
+      const growth = computeGrowth(snapshots, TRENDING_WINDOW_DAYS[windowKey])
+      if (growth) trendingFast[windowKey].push(growth)
+    }
   }
-  trendingFast.sort((a, b) => b.growthDelta - a.growthDelta)
+  for (const windowKey of TRENDING_WINDOW_KEYS) {
+    trendingFast[windowKey].sort((a, b) => (b.growthPct ?? 0) - (a.growthPct ?? 0))
+  }
 
   return { topAllTime, trendingFast }
 }
@@ -505,7 +548,7 @@ export const getTiktokVideoTrending = async (
 - [ ] **Step 2: Type-check**
 
 Run: `npx tsc --noEmit`
-Expected: no new errors referencing `src/lib/data/video-trending.ts`. If `video_metrics_daily` isn't in `database.types.ts` yet (Task 1 Step 3 was skipped because no local Supabase link), this file will fail to type-check against the generated `Database` type — note that as a known follow-up rather than reworking this task.
+Expected: no new errors referencing `src/lib/data/video-trending.ts`. Task 1 already includes a hand-written `video_metrics_daily` entry in `database.types.ts`, so this should type-check cleanly against the `Database` type.
 
 - [ ] **Step 3: Commit**
 
@@ -522,18 +565,20 @@ git commit -m "feat: add TikTok video trending read layer"
 - Modify: `src/lib/providers/google-explore.ts` (append after `fetchYoutubeExplore`, currently ending around line 350)
 
 **Interfaces:**
-- Consumes: `VideoSummary`, `VideoGrowthSummary`, `VideoTrendingResult` (Task 4), `authHeader` (already defined in this file, line 11).
-- Produces: `getYoutubeVideoTrending(accessToken: string, channelId: string, range: { startDate: string; endDate: string }): Promise<VideoTrendingResult>` — consumed by Task 7.
+- Consumes: `VideoSummary`, `VideoGrowthSummary`, `VideoTrendingResult`, `TRENDING_WINDOW_DAYS`, `MIN_TRENDING_VIEWS` (Task 4), `authHeader` (already defined in this file, line 11).
+- Produces: `getYoutubeVideoTrending(accessToken: string, channelId: string): Promise<VideoTrendingResult>` — consumed by Task 7. No date/range parameter — see Task 4's `VideoTrendingWindows` doc comment for why.
 
 - [ ] **Step 1: Append the trending function**
 
 At the end of `src/lib/providers/google-explore.ts`, add the import at the top of the file first (after the existing file-level comment block, before `const authHeader = ...` on line 11):
 
 ```ts
-import type {
-  VideoGrowthSummary,
-  VideoSummary,
-  VideoTrendingResult,
+import {
+  MIN_TRENDING_VIEWS,
+  TRENDING_WINDOW_DAYS,
+  type VideoGrowthSummary,
+  type VideoSummary,
+  type VideoTrendingResult,
 } from './video-trending-types'
 ```
 
@@ -543,37 +588,82 @@ Then append at the end of the file:
 // ─── YouTube — trending/top-all-time ───────────────────────────────────────
 
 const toIsoDate = (date: Date): string => date.toISOString().slice(0, 10)
-const addDays = (isoDate: string, days: number): string =>
-  toIsoDate(new Date(new Date(`${isoDate}T00:00:00Z`).getTime() + days * 86_400_000))
+const daysAgo = (days: number): string => toIsoDate(new Date(Date.now() - days * 86_400_000))
 
-const YOUTUBE_TRENDING_METRICS = ['views', 'likes', 'comments', 'shares'] as const
-// Trần trên số video lấy về mỗi lượt gọi — tài khoản có hàng nghìn video
-// vẫn chỉ tốn 1 lượt gọi report + 1 lượt gọi videos.list, không phân trang
-// thêm cho tính năng này (khác `fetchAllTiktokVideos`, nơi TikTok bắt buộc
-// phải phân trang vì không có cách sort/lọc theo server).
+const YOUTUBE_ALL_METRICS = ['views', 'likes', 'comments', 'shares'] as const
+// Trần trên số video lấy về mỗi lượt gọi — tài khoản có hàng nghìn video vẫn
+// chỉ tốn 2 lượt gọi report tổng cộng cho toàn bộ tính năng này (khác
+// `fetchAllTiktokVideos`, nơi TikTok bắt buộc phải phân trang vì không có
+// cách sort/lọc theo server).
 const MAX_TRENDING_VIDEOS = 200
 
-const fetchYoutubeVideoMetrics = async (
+interface YoutubeReportRow {
+  readonly columnHeaders?: readonly { readonly name?: string }[]
+  readonly rows?: readonly (readonly (string | number)[])[]
+}
+
+const fetchYoutubeMetaById = async (
+  accessToken: string,
+  videoIds: readonly string[],
+): Promise<Map<string, { readonly title: string; readonly thumbnailUrl: string | null }>> => {
+  const metaById = new Map<string, { readonly title: string; readonly thumbnailUrl: string | null }>()
+  if (videoIds.length === 0) return metaById
+
+  const videosResponse = await fetch(
+    `https://www.googleapis.com/youtube/v3/videos?part=snippet&id=${videoIds.join(',')}`,
+    { headers: authHeader(accessToken) },
+  )
+  if (!videosResponse.ok) return metaById
+
+  const videosData = (await videosResponse.json()) as {
+    readonly items?: readonly {
+      readonly id?: string
+      readonly snippet?: {
+        readonly title?: string
+        readonly thumbnails?: {
+          readonly medium?: { readonly url?: string }
+          readonly default?: { readonly url?: string }
+        }
+      }
+    }[]
+  }
+  for (const item of videosData.items ?? []) {
+    if (!item.id) continue
+    metaById.set(item.id, {
+      title: item.snippet?.title ?? item.id,
+      thumbnailUrl:
+        item.snippet?.thumbnails?.medium?.url ?? item.snippet?.thumbnails?.default?.url ?? null,
+    })
+  }
+  return metaById
+}
+
+/**
+ * Tổng số liệu ALL-TIME (10 năm trở lại — YouTube Analytics trả 0 hàng cho
+ * khoảng trước ngày kênh tạo, không lỗi, nên dùng mốc cố định đủ xa thay vì
+ * phải tra ngày tạo kênh) cho từng video — dùng cho `topAllTime`, và làm mốc
+ * "cộng dồn tại đầu cửa sổ" để tính % tăng trưởng trong
+ * `getYoutubeVideoTrending` (cùng công thức TikTok dùng trên snapshot cộng
+ * dồn — xem `startViews` bên dưới), vì chuỗi views-theo-ngày ở
+ * `fetchYoutubeDailyViews` chỉ có views, không có 3 chỉ số kia.
+ */
+const fetchYoutubeAllTimeMetrics = async (
   accessToken: string,
   channelId: string,
-  range: { readonly startDate: string; readonly endDate: string },
 ): Promise<Map<string, VideoSummary>> => {
   const reportUrl = new URL('https://youtubeanalytics.googleapis.com/v2/reports')
   reportUrl.searchParams.set('ids', `channel==${channelId}`)
-  reportUrl.searchParams.set('startDate', range.startDate)
-  reportUrl.searchParams.set('endDate', range.endDate)
+  reportUrl.searchParams.set('startDate', daysAgo(3650))
+  reportUrl.searchParams.set('endDate', toIsoDate(new Date()))
   reportUrl.searchParams.set('dimensions', 'video')
-  reportUrl.searchParams.set('metrics', YOUTUBE_TRENDING_METRICS.join(','))
+  reportUrl.searchParams.set('metrics', YOUTUBE_ALL_METRICS.join(','))
   reportUrl.searchParams.set('sort', '-views')
   reportUrl.searchParams.set('maxResults', String(MAX_TRENDING_VIDEOS))
 
   const reportResponse = await fetch(reportUrl.toString(), { headers: authHeader(accessToken) })
   if (!reportResponse.ok) return new Map()
 
-  const reportData = (await reportResponse.json()) as {
-    readonly columnHeaders?: readonly { readonly name?: string }[]
-    readonly rows?: readonly (readonly (string | number)[])[]
-  }
+  const reportData = (await reportResponse.json()) as YoutubeReportRow
   const rows = reportData.rows ?? []
   if (rows.length === 0) return new Map()
 
@@ -585,34 +675,7 @@ const fetchYoutubeVideoMetrics = async (
     return index === undefined ? null : Number(row[index] ?? 0)
   }
 
-  const videoIds = rows.map((row) => String(row[0]))
-  const videosResponse = await fetch(
-    `https://www.googleapis.com/youtube/v3/videos?part=snippet&id=${videoIds.join(',')}`,
-    { headers: authHeader(accessToken) },
-  )
-  const metaById = new Map<string, { readonly title: string; readonly thumbnailUrl: string | null }>()
-  if (videosResponse.ok) {
-    const videosData = (await videosResponse.json()) as {
-      readonly items?: readonly {
-        readonly id?: string
-        readonly snippet?: {
-          readonly title?: string
-          readonly thumbnails?: {
-            readonly medium?: { readonly url?: string }
-            readonly default?: { readonly url?: string }
-          }
-        }
-      }[]
-    }
-    for (const item of videosData.items ?? []) {
-      if (!item.id) continue
-      metaById.set(item.id, {
-        title: item.snippet?.title ?? item.id,
-        thumbnailUrl:
-          item.snippet?.thumbnails?.medium?.url ?? item.snippet?.thumbnails?.default?.url ?? null,
-      })
-    }
-  }
+  const metaById = await fetchYoutubeMetaById(accessToken, rows.map((row) => String(row[0])))
 
   const result = new Map<string, VideoSummary>()
   for (const row of rows) {
@@ -632,47 +695,98 @@ const fetchYoutubeVideoMetrics = async (
 }
 
 /**
- * "Top mọi thời gian" và "tăng nhanh" cho YouTube — gọi thẳng YouTube
- * Analytics API, không lưu snapshot riêng (khác TikTok, xem
+ * Chuỗi views-theo-ngày của từng video trong 365 ngày gần nhất — MỘT lượt
+ * gọi duy nhất (`dimensions=video,day`), dùng để tính cả 3 cửa sổ tuần/
+ * tháng/năm bằng cách cộng dồn theo mốc ngày, thay vì gọi report riêng cho
+ * mỗi cửa sổ (sẽ tốn 6 lượt gọi thay vì 1).
+ */
+const fetchYoutubeDailyViews = async (
+  accessToken: string,
+  channelId: string,
+): Promise<Map<string, Map<string, number>>> => {
+  const reportUrl = new URL('https://youtubeanalytics.googleapis.com/v2/reports')
+  reportUrl.searchParams.set('ids', `channel==${channelId}`)
+  reportUrl.searchParams.set('startDate', daysAgo(365))
+  reportUrl.searchParams.set('endDate', toIsoDate(new Date()))
+  reportUrl.searchParams.set('dimensions', 'video,day')
+  reportUrl.searchParams.set('metrics', 'views')
+  reportUrl.searchParams.set('maxResults', String(MAX_TRENDING_VIDEOS * 366))
+
+  const reportResponse = await fetch(reportUrl.toString(), { headers: authHeader(accessToken) })
+  if (!reportResponse.ok) return new Map()
+
+  const reportData = (await reportResponse.json()) as YoutubeReportRow
+  const rows = reportData.rows ?? []
+  const columnIndex = new Map(
+    (reportData.columnHeaders ?? []).map((column, index) => [column.name, index]),
+  )
+  const videoIndex = columnIndex.get('video')
+  const dayIndex = columnIndex.get('day')
+  const viewsIndex = columnIndex.get('views')
+  if (videoIndex === undefined || dayIndex === undefined || viewsIndex === undefined) {
+    return new Map()
+  }
+
+  const byVideo = new Map<string, Map<string, number>>()
+  for (const row of rows) {
+    const videoId = String(row[videoIndex])
+    const day = String(row[dayIndex])
+    const views = Number(row[viewsIndex] ?? 0)
+    const days = byVideo.get(videoId) ?? new Map<string, number>()
+    days.set(day, views)
+    byVideo.set(videoId, days)
+  }
+  return byVideo
+}
+
+const TRENDING_WINDOW_KEYS = ['week', 'month', 'year'] as const
+
+/**
+ * "Top mọi thời gian" và "tăng nhanh" (tuần/tháng/năm) cho YouTube — gọi
+ * thẳng YouTube Analytics API (2 lượt gọi report tổng cộng), không lưu
+ * snapshot riêng (khác TikTok, xem
  * docs/superpowers/specs/2026-08-14-video-snapshot-pipeline-design.md).
- * "Tăng nhanh" = so `range` với đúng một khoảng cùng độ dài ngay trước đó.
+ * % tăng trưởng = views trong cửa sổ / views cộng dồn TRƯỚC cửa sổ đó
+ * (`allTime.views - growthDelta`) — cùng công thức TikTok dùng trên
+ * snapshot cộng dồn, chỉ khác cách lấy dữ liệu nguồn.
  */
 export const getYoutubeVideoTrending = async (
   accessToken: string,
   channelId: string,
-  range: { readonly startDate: string; readonly endDate: string },
 ): Promise<VideoTrendingResult> => {
-  const rangeLengthDays =
-    Math.round(
-      (new Date(`${range.endDate}T00:00:00Z`).getTime() -
-        new Date(`${range.startDate}T00:00:00Z`).getTime()) /
-        86_400_000,
-    ) + 1
-  const priorEnd = addDays(range.startDate, -1)
-  const priorStart = addDays(range.startDate, -rangeLengthDays)
-  // 10 năm — YouTube Analytics trả 0 hàng cho khoảng trước ngày kênh tạo,
-  // không lỗi, nên dùng một mốc cố định đủ xa thay vì phải tra ngày tạo kênh.
-  const allTimeStart = addDays(range.endDate, -3650)
-
-  const [current, prior, allTime] = await Promise.all([
-    fetchYoutubeVideoMetrics(accessToken, channelId, range),
-    fetchYoutubeVideoMetrics(accessToken, channelId, { startDate: priorStart, endDate: priorEnd }),
-    fetchYoutubeVideoMetrics(accessToken, channelId, { startDate: allTimeStart, endDate: range.endDate }),
+  const [allTime, dailyViews] = await Promise.all([
+    fetchYoutubeAllTimeMetrics(accessToken, channelId),
+    fetchYoutubeDailyViews(accessToken, channelId),
   ])
 
   const topAllTime = [...allTime.values()].sort((a, b) => b.views - a.views)
 
-  const trendingFast: VideoGrowthSummary[] = []
-  for (const video of current.values()) {
-    const priorViews = prior.get(video.externalVideoId)?.views ?? 0
-    const growthDelta = video.views - priorViews
-    trendingFast.push({
-      ...video,
-      growthDelta,
-      growthPct: priorViews > 0 ? growthDelta / priorViews : null,
-    })
+  // Tính MỘT LẦN MỖI REQUEST (không phải hằng số module) — tiến trình server
+  // sống lâu, hằng số module sẽ đóng băng ngày "hôm nay" ở lần import đầu
+  // tiên và sai dần cho mọi request sau đó.
+  const recentDates = Array.from({ length: 365 }, (_, i) => daysAgo(i))
+  const sumRecentViews = (days: ReadonlyMap<string, number>, windowDays: number): number => {
+    let total = 0
+    for (let i = 0; i < windowDays; i += 1) total += days.get(recentDates[i]!) ?? 0
+    return total
   }
-  trendingFast.sort((a, b) => b.growthDelta - a.growthDelta)
+
+  const trendingFast = { week: [] as VideoGrowthSummary[], month: [] as VideoGrowthSummary[], year: [] as VideoGrowthSummary[] }
+  for (const [videoId, days] of dailyViews) {
+    const meta = allTime.get(videoId)
+    if (!meta) continue
+
+    for (const windowKey of TRENDING_WINDOW_KEYS) {
+      const growthDelta = sumRecentViews(days, TRENDING_WINDOW_DAYS[windowKey])
+      const startViews = meta.views - growthDelta
+      if (startViews < MIN_TRENDING_VIEWS) continue
+
+      trendingFast[windowKey].push({ ...meta, growthDelta, growthPct: growthDelta / startViews })
+    }
+  }
+  for (const windowKey of TRENDING_WINDOW_KEYS) {
+    trendingFast[windowKey].sort((a, b) => (b.growthPct ?? 0) - (a.growthPct ?? 0))
+  }
 
   return { topAllTime, trendingFast }
 }
@@ -808,10 +922,11 @@ to:
           connection.external_account_id,
           range,
         ),
+        // Không truyền `range` — trending có 3 cửa sổ cố định riêng, độc lập
+        // với khoảng ngày trang đang chọn (xem Task 4/6 trong plan này).
         trending: await getYoutubeVideoTrending(
           tokenResult.accessToken,
           connection.external_account_id,
-          range,
         ),
       }
 ```
@@ -843,7 +958,9 @@ to:
         // Không truyền `externalAccountId` — Display API không có khái niệm
         // "chọn tài khoản", token đã gắn chết với đúng một tài khoản rồi.
         data: await fetchTiktokContentExplore(tokenResult.accessToken, range),
-        trending: await getTiktokVideoTrending(connection.id, range),
+        // Không truyền `range` — trending có 3 cửa sổ cố định riêng, độc lập
+        // với khoảng ngày trang đang chọn (xem Task 4/5 trong plan này).
+        trending: await getTiktokVideoTrending(connection.id),
       }
 ```
 
