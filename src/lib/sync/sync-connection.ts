@@ -5,6 +5,7 @@ import { isProviderId } from '@/lib/domain/providers'
 import { METRICS_ADAPTERS } from '@/lib/providers'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { resolveAccessToken } from './access-token'
+import { syncTiktokVideoSnapshots } from './sync-video-snapshots'
 
 /**
  * Đồng bộ MỘT connection: làm mới token nếu hết hạn, kéo 30 ngày số liệu gần
@@ -93,6 +94,14 @@ export async function syncConnection(connectionId: string): Promise<SyncResult> 
       )
 
       if (upsertError) return { ok: false, error: `metrics-write-failed: ${upsertError.message}` }
+    }
+
+    if (connection.provider === 'tiktok') {
+      await syncTiktokVideoSnapshots(connectionId, accessToken).catch((error) => {
+        console.error(
+          `Không đồng bộ được video snapshot: ${error instanceof Error ? error.message : String(error)}`,
+        )
+      })
     }
 
     await admin
