@@ -6,11 +6,14 @@ import {
   fetchGscExplore,
   fetchGtmExplore,
   fetchYoutubeExplore,
+  getYoutubeVideoTrending,
   type Ga4Explore,
   type GscExplore,
   type GtmExplore,
   type YoutubeExplore,
 } from '@/lib/providers/google-explore'
+import type { VideoTrendingResult } from '@/lib/providers/video-trending-types'
+import { getTiktokVideoTrending } from '@/lib/data/video-trending'
 import { fetchGoogleAdsCampaignMetrics } from '@/lib/providers/google-ads'
 import {
   fetchMerchantCenterProducts,
@@ -99,6 +102,7 @@ export type ChannelDetail =
        * niệm "kênh" (Ads/Analytics/Search Console/Tag Manager/Merchant Center). */
       readonly avatarUrl: string | null
       readonly data: YoutubeExplore
+      readonly trending: VideoTrendingResult
     }
   | {
       readonly kind: 'google-ads'
@@ -149,6 +153,7 @@ export type ChannelDetail =
        * niệm "kênh" (Ads/Analytics/Search Console/Tag Manager/Merchant Center). */
       readonly avatarUrl: string | null
       readonly data: TiktokExplore
+      readonly trending: VideoTrendingResult
     }
   | {
       readonly kind: 'facebook'
@@ -252,6 +257,12 @@ export const getChannelDetail = async (
           connection.external_account_id,
           range,
         ),
+        // Không truyền `range` — trending có 3 cửa sổ cố định riêng, độc lập
+        // với khoảng ngày trang đang chọn (xem Task 4/6 trong plan này).
+        trending: await getYoutubeVideoTrending(
+          tokenResult.accessToken,
+          connection.external_account_id,
+        ),
       }
     case 'merchant-center': {
       const { products, truncated } = await fetchMerchantCenterProducts(
@@ -309,6 +320,9 @@ export const getChannelDetail = async (
         // Không truyền `externalAccountId` — Display API không có khái niệm
         // "chọn tài khoản", token đã gắn chết với đúng một tài khoản rồi.
         data: await fetchTiktokContentExplore(tokenResult.accessToken, range),
+        // Không truyền `range` — trending có 3 cửa sổ cố định riêng, độc lập
+        // với khoảng ngày trang đang chọn (xem Task 4/5 trong plan này).
+        trending: await getTiktokVideoTrending(connection.id),
       }
     case 'instagram':
       return {
