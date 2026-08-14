@@ -37,12 +37,14 @@ export interface VideoTrendingWindows {
 export interface VideoTrendingResult {
   readonly topAllTime: readonly VideoSummary[]
   readonly trendingFast: VideoTrendingWindows
-  /** Ngày (YYYY-MM-DD) sớm nhất TRONG TẬP DỮ LIỆU ĐÃ LẤY VỀ — không phải
-   * "ngày kết nối thật" hay "video cũ nhất từng có". TikTok bị chặn dưới ở
-   * 366 ngày (đủ cho cửa sổ rộng nhất); YouTube có thể bị CẮT BỚT ngày cũ
-   * nếu báo cáo vượt `maxResults` (tài khoản nhiều video) — với kênh lâu
-   * năm, giá trị này có thể gần hơn hôm nay nhiều so với ngày kênh thật sự
-   * bắt đầu có dữ liệu. `null` khi tập dữ liệu rỗng — HOẶC vì chưa có
+  /** Ngày (YYYY-MM-DD) sớm nhất TRONG TẬP DỮ LIỆU ĐÃ LẤY VỀ. TikTok: ngày
+   * snapshot sớm nhất THẬT SỰ có (không còn bị chặn dưới ở 366 ngày như
+   * bản đầu — xem `get_video_trending_snapshots` trong
+   * `supabase/migrations/20260814000004_video_trending_snapshots_fn.sql`).
+   * YouTube: có thể bị CẮT BỚT ngày cũ nếu báo cáo vượt `maxResults` (tài
+   * khoản nhiều video) — với kênh lâu năm, giá trị này có thể gần hơn hôm
+   * nay nhiều so với ngày kênh thật sự bắt đầu có dữ liệu, không phải
+   * "ngày kết nối thật". `null` khi tập dữ liệu rỗng — HOẶC vì chưa có
    * snapshot/video nào, HOẶC vì lượt gọi API bị lỗi (xem log server) — hai
    * trường hợp không phân biệt được từ mỗi field này.
    *

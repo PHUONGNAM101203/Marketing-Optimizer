@@ -682,6 +682,30 @@ export type Database = {
         }
         Returns: Database["public"]["Tables"]["plan_items"]["Row"]
       }
+      get_video_trending_snapshots: {
+        Args: {
+          p_connection_id: string
+          p_cutoffs: string[]
+        }
+        Returns: {
+          external_video_id: string
+          title: string | null
+          cover_image_url: string | null
+          latest_date: string
+          latest_views: number
+          latest_likes: number
+          latest_comments: number
+          latest_shares: number
+          earliest_date: string | null
+          earliest_views: number | null
+          cutoff0_date: string | null
+          cutoff0_views: number | null
+          cutoff1_date: string | null
+          cutoff1_views: number | null
+          cutoff2_date: string | null
+          cutoff2_views: number | null
+        }[]
+      }
       has_site_role: {
         Args: {
           allowed: Database["public"]["Enums"]["site_role"][]

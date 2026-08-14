@@ -10,109 +10,134 @@ import {
 } from '@/lib/providers/video-trending-types'
 import { createClient } from '@/lib/supabase/server'
 
-interface VideoMetricsRow {
+const TRENDING_WINDOW_KEYS = ['week', 'month', 'year'] as const
+
+interface VideoTrendingRow {
   readonly external_video_id: string
-  readonly date: string
-  readonly views: number
-  readonly likes: number
-  readonly comments: number
-  readonly shares: number
   readonly title: string | null
   readonly cover_image_url: string | null
+  readonly latest_date: string
+  readonly latest_views: number
+  readonly latest_likes: number
+  readonly latest_comments: number
+  readonly latest_shares: number
+  readonly earliest_date: string | null
+  readonly earliest_views: number | null
+  readonly cutoff0_date: string | null
+  readonly cutoff0_views: number | null
+  readonly cutoff1_date: string | null
+  readonly cutoff1_views: number | null
+  readonly cutoff2_date: string | null
+  readonly cutoff2_views: number | null
 }
 
-const toSummary = (row: VideoMetricsRow): VideoSummary => ({
+const toSummary = (row: VideoTrendingRow): VideoSummary => ({
   externalVideoId: row.external_video_id,
   title: row.title ?? '(không có chú thích)',
   thumbnailUrl: row.cover_image_url,
-  views: row.views,
-  likes: row.likes,
-  comments: row.comments,
-  shares: row.shares,
+  views: row.latest_views,
+  likes: row.latest_likes,
+  comments: row.latest_comments,
+  shares: row.latest_shares,
 })
 
 const toIsoDate = (date: Date): string => date.toISOString().slice(0, 10)
 
+const EMPTY_RESULT = (): VideoTrendingResult => ({
+  topAllTime: [],
+  trendingFast: { week: [], month: [], year: [] },
+  earliestSnapshotAt: null,
+  latestSnapshotAt: null,
+})
+
 /**
- * Tăng trưởng của MỘT video trong `windowDays` ngày gần nhất. Mốc bắt đầu =
- * snapshot gần nhất TRƯỚC (hoặc đúng) ngày cắt; nếu chưa có snapshot nào cũ
- * đến vậy (connection mới, chưa đủ lịch sử), lùi về snapshot sớm nhất đang
- * có — "tăng trưởng từ lúc bắt đầu theo dõi", chấp nhận đánh giá thấp hơn
- * tăng trưởng thật thay vì không hiện gì. `snapshots` phải đã sắp theo ngày
- * tăng dần.
+ * Tăng trưởng của MỘT video cho MỘT cửa sổ, từ cặp (ngày, views) tại mốc cắt
+ * — nếu video chưa có snapshot nào cũ đến mốc cắt đó (`cutoffDate` null,
+ * connection mới/chưa đủ lịch sử), lùi về snapshot sớm nhất đang có —
+ * "tăng trưởng từ lúc bắt đầu theo dõi", chấp nhận đánh giá thấp hơn tăng
+ * trưởng thật thay vì không hiện gì.
  */
 const computeGrowth = (
-  snapshots: readonly VideoMetricsRow[],
-  windowDays: number,
+  row: VideoTrendingRow,
+  cutoffDate: string | null,
+  cutoffViews: number | null,
 ): VideoGrowthSummary | null => {
-  const endSnapshot = snapshots[snapshots.length - 1]!
-  const cutoff = toIsoDate(new Date(Date.now() - windowDays * 86_400_000))
-  const startSnapshot = [...snapshots].reverse().find((row) => row.date <= cutoff) ?? snapshots[0]!
+  const startDate = cutoffDate ?? row.earliest_date
+  const startViews = cutoffDate !== null ? cutoffViews : row.earliest_views
+  // `earliest_*` chỉ null khi video hoàn toàn không có snapshot nào — không
+  // thể xảy ra ở đây vì `row` đến từ nhánh `latest` (JOIN vào `earliest`),
+  // nhưng kiểu SQL LEFT JOIN vẫn khai báo nullable nên kiểm tra cho chắc.
+  if (startDate === null || startViews === null) return null
+  if (startDate === row.latest_date) return null
+  if (startViews < MIN_TRENDING_VIEWS) return null
 
-  if (startSnapshot === endSnapshot) return null
-  if (startSnapshot.views < MIN_TRENDING_VIEWS) return null
-
-  const growthDelta = endSnapshot.views - startSnapshot.views
-  return { ...toSummary(endSnapshot), growthDelta, growthPct: growthDelta / startSnapshot.views }
+  const growthDelta = row.latest_views - startViews
+  return { ...toSummary(row), growthDelta, growthPct: growthDelta / startViews }
 }
 
-const TRENDING_WINDOW_KEYS = ['week', 'month', 'year'] as const
-
 /**
- * "Top mọi thời gian" và "tăng nhanh" (tuần/tháng/năm) cho TikTok, đọc từ
- * `video_metrics_daily`. Không nhận tham số ngày — `topAllTime` luôn là
- * snapshot mới nhất mỗi video, `trendingFast` luôn tính đúng 3 cửa sổ cố
- * định, độc lập với khoảng ngày trang đang chọn (xem
+ * "Top mọi thời gian" và "tăng nhanh" (tuần/tháng/năm) cho TikTok. Không
+ * nhận tham số ngày — `topAllTime` luôn là snapshot mới nhất mỗi video,
+ * `trendingFast` luôn tính đúng 3 cửa sổ cố định, độc lập với khoảng ngày
+ * trang đang chọn (xem
  * docs/superpowers/specs/2026-08-14-video-snapshot-pipeline-design.md).
+ *
+ * Đọc qua RPC `get_video_trending_snapshots` (không phải `.from(...).select(...)`
+ * đọc trực tiếp `video_metrics_daily`) — bảng đó có thể có hàng nghìn dòng
+ * mỗi connection (video × ngày), vượt xa giới hạn `max_rows` mặc định của
+ * PostgREST (1000) chỉ sau vài chục ngày theo dõi vài video. RPC trả về
+ * ĐÚNG MỘT DÒNG MỖI VIDEO (không nhân theo ngày lịch sử lẫn không nhân theo
+ * "vai trò") — xem
+ * `supabase/migrations/20260814000004_video_trending_snapshots_fn.sql`.
  */
 export const getTiktokVideoTrending = async (connectionId: string): Promise<VideoTrendingResult> => {
   const supabase = await createClient()
-  const { data } = await supabase
-    .from('video_metrics_daily')
-    .select('external_video_id, date, views, likes, comments, shares, title, cover_image_url')
-    .eq('connection_id', connectionId)
-    // Chặn dưới 366 ngày — cửa sổ rộng nhất là "năm" (365 ngày) cộng một ngày
-    // dư. Không có chính sách xoá lịch sử, nên thiếu mốc này mỗi lần tải trang
-    // sẽ đọc TOÀN BỘ snapshot của connection và ngày càng nặng. `topAllTime`
-    // không bị ảnh hưởng: nó chỉ cần snapshot mới nhất của mỗi video.
-    .gte('date', toIsoDate(new Date(Date.now() - 366 * 86_400_000)))
-    .order('date', { ascending: true })
+  const cutoffs = TRENDING_WINDOW_KEYS.map((key) =>
+    toIsoDate(new Date(Date.now() - TRENDING_WINDOW_DAYS[key] * 86_400_000)),
+  )
 
-  const rows = (data ?? []) as readonly VideoMetricsRow[]
-  if (rows.length === 0) {
-    return {
-      topAllTime: [],
-      trendingFast: { week: [], month: [], year: [] },
-      earliestSnapshotAt: null,
-      latestSnapshotAt: null,
-    }
+  const { data, error } = await supabase.rpc('get_video_trending_snapshots', {
+    p_connection_id: connectionId,
+    p_cutoffs: cutoffs,
+  })
+
+  // Không throw — một trang chi tiết kênh không được sập chỉ vì phần
+  // trending lỗi (thiếu quyền EXECUTE, cache schema PostgREST cũ, sai kiểu
+  // tham số...). Log để còn biết đây là LỖI THẬT, không phải "chưa có dữ
+  // liệu" — hai trạng thái nhìn giống hệt nhau nếu không log.
+  if (error) {
+    console.error(`Không đọc được video trending (connection ${connectionId}): ${error.message}`)
+    return EMPTY_RESULT()
   }
 
-  // `rows` đã sắp theo ngày tăng dần (order phía trên) nên phần tử đầu/cuối
-  // chính là ngày sớm nhất/mới nhất trong tập đã lọc — xem doc comment ở
-  // `VideoTrendingResult` (earliestSnapshotAt/latestSnapshotAt) để biết ý
-  // nghĩa và giới hạn của hai mốc này.
-  const earliestSnapshotAt = rows[0]!.date
-  const latestSnapshotAt = rows[rows.length - 1]!.date
+  const rows = data ?? []
+  if (rows.length === 0) return EMPTY_RESULT()
 
-  const byVideo = new Map<string, VideoMetricsRow[]>()
-  for (const row of rows) {
-    const list = byVideo.get(row.external_video_id) ?? []
-    list.push(row)
-    byVideo.set(row.external_video_id, list)
-  }
-
-  const topAllTime = [...byVideo.values()]
-    .map((snapshots) => toSummary(snapshots[snapshots.length - 1]!))
+  const topAllTime = rows
+    .map(toSummary)
     .sort((a, b) => b.views - a.views)
     .slice(0, MAX_TOP_ALL_TIME)
 
+  let earliestSnapshotAt: string | null = null
+  let latestSnapshotAt: string | null = null
   const trendingFast = { week: [] as VideoGrowthSummary[], month: [] as VideoGrowthSummary[], year: [] as VideoGrowthSummary[] }
-  for (const snapshots of byVideo.values()) {
-    for (const windowKey of TRENDING_WINDOW_KEYS) {
-      const growth = computeGrowth(snapshots, TRENDING_WINDOW_DAYS[windowKey])
-      if (growth) trendingFast[windowKey].push(growth)
+
+  for (const row of rows) {
+    if (row.earliest_date !== null) {
+      if (earliestSnapshotAt === null || row.earliest_date < earliestSnapshotAt) {
+        earliestSnapshotAt = row.earliest_date
+      }
     }
+    if (latestSnapshotAt === null || row.latest_date > latestSnapshotAt) {
+      latestSnapshotAt = row.latest_date
+    }
+
+    const weekGrowth = computeGrowth(row, row.cutoff0_date, row.cutoff0_views)
+    if (weekGrowth) trendingFast.week.push(weekGrowth)
+    const monthGrowth = computeGrowth(row, row.cutoff1_date, row.cutoff1_views)
+    if (monthGrowth) trendingFast.month.push(monthGrowth)
+    const yearGrowth = computeGrowth(row, row.cutoff2_date, row.cutoff2_views)
+    if (yearGrowth) trendingFast.year.push(yearGrowth)
   }
   for (const windowKey of TRENDING_WINDOW_KEYS) {
     trendingFast[windowKey].sort((a, b) => (b.growthPct ?? 0) - (a.growthPct ?? 0))
