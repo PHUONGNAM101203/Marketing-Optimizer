@@ -8,6 +8,14 @@ import 'server-only'
  * mà không ai dùng lại.
  */
 
+import {
+  MIN_TRENDING_VIEWS,
+  TRENDING_WINDOW_DAYS,
+  type VideoGrowthSummary,
+  type VideoSummary,
+  type VideoTrendingResult,
+} from './video-trending-types'
+
 const authHeader = (accessToken: string) => ({ authorization: `Bearer ${accessToken}` })
 
 // ─── GA4 ────────────────────────────────────────────────────────────────────
@@ -347,4 +355,210 @@ export const fetchYoutubeExplore = async (
     }),
     fetchError: null,
   }
+}
+
+// ─── YouTube — trending/top-all-time ───────────────────────────────────────
+
+const toIsoDate = (date: Date): string => date.toISOString().slice(0, 10)
+const daysAgo = (days: number): string => toIsoDate(new Date(Date.now() - days * 86_400_000))
+
+const YOUTUBE_ALL_METRICS = ['views', 'likes', 'comments', 'shares'] as const
+// Trần trên số video lấy về mỗi lượt gọi — tài khoản có hàng nghìn video vẫn
+// chỉ tốn 2 lượt gọi report tổng cộng cho toàn bộ tính năng này (khác
+// `fetchAllTiktokVideos`, nơi TikTok bắt buộc phải phân trang vì không có
+// cách sort/lọc theo server).
+const MAX_TRENDING_VIDEOS = 200
+
+interface YoutubeReportRow {
+  readonly columnHeaders?: readonly { readonly name?: string }[]
+  readonly rows?: readonly (readonly (string | number)[])[]
+}
+
+const fetchYoutubeMetaById = async (
+  accessToken: string,
+  videoIds: readonly string[],
+): Promise<Map<string, { readonly title: string; readonly thumbnailUrl: string | null }>> => {
+  const metaById = new Map<string, { readonly title: string; readonly thumbnailUrl: string | null }>()
+  if (videoIds.length === 0) return metaById
+
+  const videosResponse = await fetch(
+    `https://www.googleapis.com/youtube/v3/videos?part=snippet&id=${videoIds.join(',')}`,
+    { headers: authHeader(accessToken) },
+  )
+  if (!videosResponse.ok) return metaById
+
+  const videosData = (await videosResponse.json()) as {
+    readonly items?: readonly {
+      readonly id?: string
+      readonly snippet?: {
+        readonly title?: string
+        readonly thumbnails?: {
+          readonly medium?: { readonly url?: string }
+          readonly default?: { readonly url?: string }
+        }
+      }
+    }[]
+  }
+  for (const item of videosData.items ?? []) {
+    if (!item.id) continue
+    metaById.set(item.id, {
+      title: item.snippet?.title ?? item.id,
+      thumbnailUrl:
+        item.snippet?.thumbnails?.medium?.url ?? item.snippet?.thumbnails?.default?.url ?? null,
+    })
+  }
+  return metaById
+}
+
+/**
+ * Tổng số liệu ALL-TIME (10 năm trở lại — YouTube Analytics trả 0 hàng cho
+ * khoảng trước ngày kênh tạo, không lỗi, nên dùng mốc cố định đủ xa thay vì
+ * phải tra ngày tạo kênh) cho từng video — dùng cho `topAllTime`, và làm mốc
+ * "cộng dồn tại đầu cửa sổ" để tính % tăng trưởng trong
+ * `getYoutubeVideoTrending` (cùng công thức TikTok dùng trên snapshot cộng
+ * dồn — xem `startViews` bên dưới), vì chuỗi views-theo-ngày ở
+ * `fetchYoutubeDailyViews` chỉ có views, không có 3 chỉ số kia.
+ */
+const fetchYoutubeAllTimeMetrics = async (
+  accessToken: string,
+  channelId: string,
+): Promise<Map<string, VideoSummary>> => {
+  const reportUrl = new URL('https://youtubeanalytics.googleapis.com/v2/reports')
+  reportUrl.searchParams.set('ids', `channel==${channelId}`)
+  reportUrl.searchParams.set('startDate', daysAgo(3650))
+  reportUrl.searchParams.set('endDate', toIsoDate(new Date()))
+  reportUrl.searchParams.set('dimensions', 'video')
+  reportUrl.searchParams.set('metrics', YOUTUBE_ALL_METRICS.join(','))
+  reportUrl.searchParams.set('sort', '-views')
+  reportUrl.searchParams.set('maxResults', String(MAX_TRENDING_VIDEOS))
+
+  const reportResponse = await fetch(reportUrl.toString(), { headers: authHeader(accessToken) })
+  if (!reportResponse.ok) return new Map()
+
+  const reportData = (await reportResponse.json()) as YoutubeReportRow
+  const rows = reportData.rows ?? []
+  if (rows.length === 0) return new Map()
+
+  const columnIndex = new Map(
+    (reportData.columnHeaders ?? []).map((column, index) => [column.name, index]),
+  )
+  const valueAt = (row: readonly (string | number)[], metric: string): number | null => {
+    const index = columnIndex.get(metric)
+    return index === undefined ? null : Number(row[index] ?? 0)
+  }
+
+  const metaById = await fetchYoutubeMetaById(accessToken, rows.map((row) => String(row[0])))
+
+  const result = new Map<string, VideoSummary>()
+  for (const row of rows) {
+    const id = String(row[0])
+    const meta = metaById.get(id)
+    result.set(id, {
+      externalVideoId: id,
+      title: meta?.title ?? id,
+      thumbnailUrl: meta?.thumbnailUrl ?? null,
+      views: valueAt(row, 'views') ?? 0,
+      likes: valueAt(row, 'likes') ?? 0,
+      comments: valueAt(row, 'comments') ?? 0,
+      shares: valueAt(row, 'shares'),
+    })
+  }
+  return result
+}
+
+/**
+ * Chuỗi views-theo-ngày của từng video trong 365 ngày gần nhất — MỘT lượt
+ * gọi duy nhất (`dimensions=video,day`), dùng để tính cả 3 cửa sổ tuần/
+ * tháng/năm bằng cách cộng dồn theo mốc ngày, thay vì gọi report riêng cho
+ * mỗi cửa sổ (sẽ tốn 6 lượt gọi thay vì 1).
+ */
+const fetchYoutubeDailyViews = async (
+  accessToken: string,
+  channelId: string,
+): Promise<Map<string, Map<string, number>>> => {
+  const reportUrl = new URL('https://youtubeanalytics.googleapis.com/v2/reports')
+  reportUrl.searchParams.set('ids', `channel==${channelId}`)
+  reportUrl.searchParams.set('startDate', daysAgo(365))
+  reportUrl.searchParams.set('endDate', toIsoDate(new Date()))
+  reportUrl.searchParams.set('dimensions', 'video,day')
+  reportUrl.searchParams.set('metrics', 'views')
+  reportUrl.searchParams.set('maxResults', String(MAX_TRENDING_VIDEOS * 366))
+
+  const reportResponse = await fetch(reportUrl.toString(), { headers: authHeader(accessToken) })
+  if (!reportResponse.ok) return new Map()
+
+  const reportData = (await reportResponse.json()) as YoutubeReportRow
+  const rows = reportData.rows ?? []
+  const columnIndex = new Map(
+    (reportData.columnHeaders ?? []).map((column, index) => [column.name, index]),
+  )
+  const videoIndex = columnIndex.get('video')
+  const dayIndex = columnIndex.get('day')
+  const viewsIndex = columnIndex.get('views')
+  if (videoIndex === undefined || dayIndex === undefined || viewsIndex === undefined) {
+    return new Map()
+  }
+
+  const byVideo = new Map<string, Map<string, number>>()
+  for (const row of rows) {
+    const videoId = String(row[videoIndex])
+    const day = String(row[dayIndex])
+    const views = Number(row[viewsIndex] ?? 0)
+    const days = byVideo.get(videoId) ?? new Map<string, number>()
+    days.set(day, views)
+    byVideo.set(videoId, days)
+  }
+  return byVideo
+}
+
+const TRENDING_WINDOW_KEYS = ['week', 'month', 'year'] as const
+
+/**
+ * "Top mọi thời gian" và "tăng nhanh" (tuần/tháng/năm) cho YouTube — gọi
+ * thẳng YouTube Analytics API (2 lượt gọi report tổng cộng), không lưu
+ * snapshot riêng (khác TikTok, xem
+ * docs/superpowers/specs/2026-08-14-video-snapshot-pipeline-design.md).
+ * % tăng trưởng = views trong cửa sổ / views cộng dồn TRƯỚC cửa sổ đó
+ * (`allTime.views - growthDelta`) — cùng công thức TikTok dùng trên
+ * snapshot cộng dồn, chỉ khác cách lấy dữ liệu nguồn.
+ */
+export const getYoutubeVideoTrending = async (
+  accessToken: string,
+  channelId: string,
+): Promise<VideoTrendingResult> => {
+  const [allTime, dailyViews] = await Promise.all([
+    fetchYoutubeAllTimeMetrics(accessToken, channelId),
+    fetchYoutubeDailyViews(accessToken, channelId),
+  ])
+
+  const topAllTime = [...allTime.values()].sort((a, b) => b.views - a.views)
+
+  // Tính MỘT LẦN MỖI REQUEST (không phải hằng số module) — tiến trình server
+  // sống lâu, hằng số module sẽ đóng băng ngày "hôm nay" ở lần import đầu
+  // tiên và sai dần cho mọi request sau đó.
+  const recentDates = Array.from({ length: 365 }, (_, i) => daysAgo(i))
+  const sumRecentViews = (days: ReadonlyMap<string, number>, windowDays: number): number => {
+    let total = 0
+    for (let i = 0; i < windowDays; i += 1) total += days.get(recentDates[i]!) ?? 0
+    return total
+  }
+
+  const trendingFast = { week: [] as VideoGrowthSummary[], month: [] as VideoGrowthSummary[], year: [] as VideoGrowthSummary[] }
+  for (const [videoId, days] of dailyViews) {
+    const meta = allTime.get(videoId)
+    if (!meta) continue
+
+    for (const windowKey of TRENDING_WINDOW_KEYS) {
+      const growthDelta = sumRecentViews(days, TRENDING_WINDOW_DAYS[windowKey])
+      const startViews = meta.views - growthDelta
+      if (startViews < MIN_TRENDING_VIEWS) continue
+
+      trendingFast[windowKey].push({ ...meta, growthDelta, growthPct: growthDelta / startViews })
+    }
+  }
+  for (const windowKey of TRENDING_WINDOW_KEYS) {
+    trendingFast[windowKey].sort((a, b) => (b.growthPct ?? 0) - (a.growthPct ?? 0))
+  }
+
+  return { topAllTime, trendingFast }
 }
