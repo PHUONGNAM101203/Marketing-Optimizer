@@ -77,6 +77,15 @@ Vercel Hobby plan — no new cron job). Inside `syncConnection` for provider
 
 ## Read layer — shared shape for TikTok and YouTube
 
+Revised after design review with the TikTok channel-detail UI session: rank
+by **growth rate (%), not absolute delta** — the goal is surfacing videos
+that are newly "hot," not videos that already have the most views (those
+are already covered by `topAllTime`). A tiny video going from 2 to 20 views
+is a 900% jump that means nothing, so a minimum-view floor guards the
+denominator. The UI also wants week/month/year as fixed, independent
+windows for this card — not tied to the page's date-range picker (that
+picker still governs everything else on the page, just not this card).
+
 ```ts
 interface VideoSummary {
   externalVideoId: string
@@ -89,45 +98,67 @@ interface VideoSummary {
 }
 
 interface VideoGrowthSummary extends VideoSummary {
-  growthDelta: number   // views gained over the window
-  growthPct: number | null // null if starting views was 0
+  growthDelta: number       // views gained over the window (absolute)
+  growthPct: number | null  // null if starting views was 0; this is the default sort key
 }
 
 interface VideoTrendingResult {
   topAllTime: readonly VideoSummary[]
-  trendingFast: readonly VideoGrowthSummary[]
+  trendingFast: {
+    week: readonly VideoGrowthSummary[]
+    month: readonly VideoGrowthSummary[]
+    year: readonly VideoGrowthSummary[]
+  }
 }
 ```
 
-Growth window = the page's already-selected date range (`{ startDate, endDate }`,
-same `range` object every other Explore fetcher already takes), not a
-separate hardcoded window — one less parameter, and it matches how every
-other metric on the page already respects the topbar date picker.
+`topAllTime` needs no date parameter — it's the latest known snapshot per
+video, sorted by views desc, full stop. `trendingFast` computes three fixed
+windows every call (week = 7 days, month = 30 days, year = 365 days) so the
+UI can toggle between them client-side with no extra round trip. Both
+`getTiktokVideoTrending` and `getYoutubeVideoTrending` therefore drop the
+`range` parameter entirely — neither function takes a date argument anymore.
 
-- `getTiktokVideoTrending(connectionId, range)` — reads
-  `video_metrics_daily`. `topAllTime` = latest snapshot per video (regardless
-  of range), sorted by views desc. `trendingFast` = for each video, views at
-  the snapshot closest to `range.endDate` minus views at the snapshot
-  closest to (but not after) `range.startDate`; videos with fewer than 2
-  snapshots in range are excluded (nothing to diff yet).
-- `getYoutubeVideoTrending(accessToken, channelId, range)` — calls YouTube
-  Analytics API twice (once for `range`, once for the equal-length window
-  immediately preceding it) and computes the same delta/pct shape;
-  `topAllTime` uses one wide-range call (a fixed 10-year lookback — YouTube
-  Analytics returns zero rows for a channel younger than that, which is
-  harmless).
+For each window, growth = views at the end of the window minus views at the
+start of the window (start = the window's length before today), both
+compared against a **minimum-view floor of 50** on the starting value — a
+video with fewer than 50 views at the start of the window is excluded from
+that window's `trendingFast` list (its % would be noise-dominated). Sort
+each window's list by `growthPct` desc.
 
-Both return the same `VideoTrendingResult` shape so the UI (owned by the
-TikTok channel-detail design session) renders one component regardless of
-platform, even though the data scope/pagination behavior underneath differs
-per the real capabilities of each platform's API.
+- `getTiktokVideoTrending(connectionId)` — reads all of
+  `video_metrics_daily` for the connection once, then computes `topAllTime`
+  and all three `trendingFast` windows from that one result set in memory
+  (cheap: at most a few hundred rows). For a window whose start-of-window
+  snapshot doesn't exist yet (new connection, less history than the window
+  needs), fall back to the earliest available snapshot as the baseline —
+  "growth since we started tracking," which under-counts true growth but
+  degrades gracefully instead of returning nothing.
+- `getYoutubeVideoTrending(accessToken, channelId)` — two Analytics API
+  calls total (not one per window, to keep quota/latency bounded):
+  1. One report with `dimensions=video,day` over the last 366 days,
+     `metrics=views` only, to get each video's daily view series. Window
+     deltas are computed by summing the appropriate day-buckets from this
+     single series — this is what keeps the call count at 2 instead of 6+.
+  2. One report with `dimensions=video` (no day breakdown) over a fixed
+     10-year lookback, all four metrics (views/likes/comments/shares), for
+     `topAllTime` and to attach current likes/comments/shares onto each
+     `trendingFast` entry (the daily-views series only has views).
 
-## Defaults (adjustable later without schema changes)
+Both return the same `VideoTrendingResult` shape so the UI renders one
+component regardless of platform, even though the data scope/pagination/
+API-call strategy underneath differs per the real capabilities of each
+platform's API.
 
-- Trending window: 7 days (less noisy than 24h, and new connections have
-  enough history within a week).
-- No minimum-snapshot-count edge case beyond "need 2 data points" — a video
-  seen for the first time just doesn't appear in `trendingFast` yet.
+## Defaults (adjustable later without schema/interface changes)
+
+- Trending windows: fixed week (7d) / month (30d) / year (365d), computed
+  every call rather than chosen by a caller-supplied parameter.
+- Minimum-view floor: 50 views at the start of the window, to keep
+  `growthPct` from being dominated by near-zero-denominator noise.
+- No minimum-snapshot-count edge case beyond "need 2 data points to diff" —
+  a video seen for the first time (or a window with no baseline snapshot at
+  all) just doesn't appear in that window's `trendingFast` list yet.
 
 ## Out of scope / explicitly not doing
 
