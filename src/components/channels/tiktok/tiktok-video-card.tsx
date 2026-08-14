@@ -18,6 +18,7 @@ export function TiktokVideoCard({ video }: { readonly video: TiktokVideoCardData
       <DialogTrigger asChild>
         <button
           type="button"
+          aria-label={`Xem chi tiết video: ${video.title}`}
           className={cn(
             'group relative aspect-[9/16] w-full overflow-hidden rounded-[var(--radius-md)]',
             'bg-[var(--color-paper-3)]',

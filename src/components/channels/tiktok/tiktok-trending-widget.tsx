@@ -1,12 +1,12 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useState } from 'react'
 import { Card, CardHeader } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { EmptyState } from '@/components/ui/feedback'
 import { formatCompact, formatNumber } from '@/lib/format'
 import {
-  TRENDING_WINDOW_DAYS,
+  hasEnoughHistory,
   type VideoGrowthSummary,
   type VideoTrendingWindows,
 } from '@/lib/providers/video-trending-types'
@@ -35,15 +35,11 @@ export function TiktokTrendingWidget({
 
   // Backend không tự loại video đứng yên/giảm — yêu cầu gốc là "thay đổi
   // đáng tích cực", nên lọc ở đây.
-  const positiveEntries = trendingFast[activeWindow].filter((entry) => (entry.growthPct ?? 0) > 0)
+  const positiveEntries = trendingFast[activeWindow]
+    .filter((entry) => (entry.growthPct ?? 0) > 0)
+    .slice(0, 10)
 
-  const hasEnoughHistory = useMemo(
-    () =>
-      earliestSnapshotAt !== null &&
-      // eslint-disable-next-line react-hooks/purity
-      new Date(earliestSnapshotAt).getTime() <= Date.now() - TRENDING_WINDOW_DAYS[activeWindow] * 86_400_000,
-    [activeWindow, earliestSnapshotAt],
-  )
+  const enoughHistory = hasEnoughHistory(earliestSnapshotAt, activeWindow)
 
   return (
     <Card>
@@ -68,9 +64,9 @@ export function TiktokTrendingWidget({
       <div className="flex flex-col gap-3 px-5 pb-5">
         {positiveEntries.length === 0 ? (
           <EmptyState
-            title={hasEnoughHistory ? 'Chưa có video tăng trưởng tích cực' : 'Đang tích lũy dữ liệu'}
+            title={enoughHistory ? 'Chưa có video tăng trưởng tích cực' : 'Đang tích lũy dữ liệu'}
             description={
-              hasEnoughHistory
+              enoughHistory
                 ? `Chưa có video nào tăng trưởng tích cực trong ${WINDOW_LABELS[activeWindow].toLowerCase()} này.`
                 : `Kết nối chưa đủ lịch sử cho khung ${WINDOW_LABELS[activeWindow].toLowerCase()} — quay lại sau khi đồng bộ thêm.`
             }

@@ -236,7 +236,7 @@ export const fetchTiktokContentExplore = async (
         (video.create_time >= rangeStartSeconds && video.create_time <= rangeEndSeconds),
     )
     .map((video) => ({
-      title: (video.video_description || video.title || '(không có chú thích)').slice(0, 80),
+      title: video.video_description || video.title || '(không có chú thích)',
       coverImageUrl: video.cover_image_url ?? null,
       views: video.view_count ?? 0,
       likes: video.like_count ?? 0,
