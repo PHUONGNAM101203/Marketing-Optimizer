@@ -28,16 +28,26 @@ const GRAPH_VERSION = 'v25.0'
 const AUTHORIZE_ENDPOINT = `https://www.facebook.com/${GRAPH_VERSION}/dialog/oauth`
 const TOKEN_ENDPOINT = `https://graph.facebook.com/${GRAPH_VERSION}/oauth/access_token`
 
-// `instagram_basic` bị Meta khai tử 27/1/2025, thay bằng `instagram_business_basic`
-// (đã có ở hướng dẫn kết nối — sửa nốt trong code thật ở đây, trước đó mới chỉ
-// sửa phần văn bản hướng dẫn). `read_insights` mới thêm — cần cho cả insight
-// bài viết Facebook Page (`facebook`, nội dung hữu cơ) lẫn Instagram, xem
-// nghiên cứu 2026 về Graph API v25.0.
+// ĐÃ XÁC MINH với App Meta thật (8/2026): `instagram_business_basic` bị
+// Facebook từ chối thẳng "Invalid Scopes" trên chính app này — quyền đó chỉ
+// tồn tại ở luồng "API setup with Instagram Login" (đăng nhập trực tiếp qua
+// Instagram), KHÔNG áp dụng cho luồng "API setup with Facebook Login" mà
+// adapter này triển khai (`AUTHORIZE_ENDPOINT` ở trên là dialog OAuth của
+// facebook.com, không phải Instagram). Với luồng Facebook Login, tên quyền
+// đúng vẫn là `instagram_basic` — xác nhận bằng cách đọc trực tiếp trang
+// "Quyền và tính năng" của app: `instagram_basic` đã có sẵn (nằm trong nhóm
+// quyền bắt buộc của use case "Quản lý nội dung trên Instagram"), còn
+// `instagram_business_basic` không xuất hiện trong danh sách quyền khả dụng
+// của app này. Tài liệu Meta về việc khai tử `instagram_basic` (27/1/2025) áp
+// dụng cho Instagram Basic Display API cũ, KHÔNG áp dụng cho quyền cùng tên
+// trong luồng Instagram API qua Facebook Login — hai thứ trùng tên nhưng
+// khác API, dễ nhầm khi chỉ tra tài liệu chung chung không đối chiếu với app
+// thật (bài học: ưu tiên lỗi "Invalid Scopes" thật từ chính app hơn tài liệu).
 const SCOPES = [
   'pages_show_list',
   'pages_read_engagement',
   'read_insights',
-  'instagram_business_basic',
+  'instagram_basic',
   'instagram_manage_insights',
   'business_management',
 ] as const
