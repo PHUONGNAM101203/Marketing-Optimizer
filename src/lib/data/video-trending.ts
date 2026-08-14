@@ -84,13 +84,16 @@ export const getTiktokVideoTrending = async (connectionId: string): Promise<Vide
       topAllTime: [],
       trendingFast: { week: [], month: [], year: [] },
       earliestSnapshotAt: null,
+      latestSnapshotAt: null,
     }
   }
 
-  // `rows` đã sắp theo ngày tăng dần (order phía trên) nên phần tử đầu tiên
-  // luôn là ngày sớm nhất trong tập đã lọc — UI dùng mốc này để biết cửa sổ
-  // nào (7/30/365 ngày) đã đủ dữ liệu, xem doc comment ở `VideoTrendingResult`.
+  // `rows` đã sắp theo ngày tăng dần (order phía trên) nên phần tử đầu/cuối
+  // chính là ngày sớm nhất/mới nhất trong tập đã lọc — xem doc comment ở
+  // `VideoTrendingResult` (earliestSnapshotAt/latestSnapshotAt) để biết ý
+  // nghĩa và giới hạn của hai mốc này.
   const earliestSnapshotAt = rows[0]!.date
+  const latestSnapshotAt = rows[rows.length - 1]!.date
 
   const byVideo = new Map<string, VideoMetricsRow[]>()
   for (const row of rows) {
@@ -115,5 +118,5 @@ export const getTiktokVideoTrending = async (connectionId: string): Promise<Vide
     trendingFast[windowKey].sort((a, b) => (b.growthPct ?? 0) - (a.growthPct ?? 0))
   }
 
-  return { topAllTime, trendingFast, earliestSnapshotAt }
+  return { topAllTime, trendingFast, earliestSnapshotAt, latestSnapshotAt }
 }

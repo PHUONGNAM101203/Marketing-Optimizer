@@ -624,13 +624,17 @@ export const getYoutubeVideoTrending = async (
 
   const topAllTime = [...allTime.values()].sort((a, b) => b.views - a.views).slice(0, MAX_TOP_ALL_TIME)
 
-  // Ngày sớm nhất THỰC SỰ có dữ liệu trong chuỗi views-theo-ngày — không
-  // suy từ độ dài cửa sổ đã yêu cầu (366 ngày) vì kênh có thể trẻ hơn, hoặc
-  // fetch có thể đã lỗi (Map rỗng). `null` khi không có video/ngày nào cả.
+  // Ngày sớm/muộn nhất THỰC SỰ có trong chuỗi views-theo-ngày — không suy từ
+  // độ dài cửa sổ đã yêu cầu (366 ngày), vì kênh có thể trẻ hơn, report có
+  // thể bị cắt bớt ngày cũ do vượt `maxResults`, hoặc fetch đã lỗi (Map
+  // rỗng). `latestSnapshotAt` thường trễ vài ngày so với hôm nay — YouTube
+  // Analytics có độ trễ báo cáo, không phải lỗi. `null` cả hai khi rỗng.
   let earliestSnapshotAt: string | null = null
+  let latestSnapshotAt: string | null = null
   for (const days of dailyViews.values()) {
     for (const date of days.keys()) {
       if (earliestSnapshotAt === null || date < earliestSnapshotAt) earliestSnapshotAt = date
+      if (latestSnapshotAt === null || date > latestSnapshotAt) latestSnapshotAt = date
     }
   }
 
@@ -661,5 +665,5 @@ export const getYoutubeVideoTrending = async (
     trendingFast[windowKey].sort((a, b) => (b.growthPct ?? 0) - (a.growthPct ?? 0))
   }
 
-  return { topAllTime, trendingFast, earliestSnapshotAt }
+  return { topAllTime, trendingFast, earliestSnapshotAt, latestSnapshotAt }
 }

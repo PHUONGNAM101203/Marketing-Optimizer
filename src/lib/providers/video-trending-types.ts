@@ -37,17 +37,46 @@ export interface VideoTrendingWindows {
 export interface VideoTrendingResult {
   readonly topAllTime: readonly VideoSummary[]
   readonly trendingFast: VideoTrendingWindows
-  /** Ngày (YYYY-MM-DD) sớm nhất có dữ liệu thật cho connection này — `null`
-   * nếu chưa có dữ liệu nào. Dùng để phân biệt "chưa đủ lịch sử cho cửa sổ
-   * X" (vd mới kết nối 3 ngày, cửa sổ tuần chưa đủ) với "thực sự không có
-   * video nào tăng trưởng" — không nên suy đoán bằng cách so 3 mảng
-   * week/month/year có giống hệt nhau không, vì trùng hợp thật vẫn có thể
-   * xảy ra. So `earliestSnapshotAt` với từng `TRENDING_WINDOW_DAYS[key]`
-   * để biết cửa sổ đó đã đủ dữ liệu chưa. */
+  /** Ngày (YYYY-MM-DD) sớm nhất TRONG TẬP DỮ LIỆU ĐÃ LẤY VỀ — không phải
+   * "ngày kết nối thật" hay "video cũ nhất từng có". TikTok bị chặn dưới ở
+   * 366 ngày (đủ cho cửa sổ rộng nhất); YouTube có thể bị CẮT BỚT ngày cũ
+   * nếu báo cáo vượt `maxResults` (tài khoản nhiều video) — với kênh lâu
+   * năm, giá trị này có thể gần hơn hôm nay nhiều so với ngày kênh thật sự
+   * bắt đầu có dữ liệu. `null` khi tập dữ liệu rỗng — HOẶC vì chưa có
+   * snapshot/video nào, HOẶC vì lượt gọi API bị lỗi (xem log server) — hai
+   * trường hợp không phân biệt được từ mỗi field này.
+   *
+   * Dùng `hasEnoughHistory()` bên dưới thay vì tự so sánh — đã xử lý đúng
+   * biên (đủ chính xác ngày). Một cửa sổ trả về rỗng dù đủ lịch sử vẫn có
+   * thể xảy ra (video bị lọc vì dưới `MIN_TRENDING_VIEWS`, hoặc chỉ có 1
+   * snapshot) — "đủ lịch sử" không đồng nghĩa "chắc chắn có video trending". */
   readonly earliestSnapshotAt: string | null
+  /** Ngày (YYYY-MM-DD) MỚI NHẤT trong tập dữ liệu đã lấy về — tín hiệu độ
+   * mới của đồng bộ. TikTok: ngày snapshot gần nhất còn ghi được (nếu đồng
+   * bộ bị gián đoạn lâu — vd token hết hạn — giá trị này sẽ cũ, báo hiệu số
+   * liệu "tăng nhanh" có thể đang tính trên khoảng trống dữ liệu chứ không
+   * phải tuần/tháng gần nhất thật). YouTube: ngày gần nhất Analytics API
+   * thực sự trả dữ liệu (thường trễ 2-3 ngày so với hôm nay, không phải lỗi).
+   * `null` cùng điều kiện với `earliestSnapshotAt`. */
+  readonly latestSnapshotAt: string | null
 }
 
 export const TRENDING_WINDOW_DAYS = { week: 7, month: 30, year: 365 } as const
+
+/** Cửa sổ `windowKey` có đủ lịch sử để tin cậy hay chưa — so `earliestSnapshotAt`
+ * với số ngày của cửa sổ đó, tính theo UTC (khớp cách server tính `cutoff` ở
+ * cả hai nguồn TikTok/YouTube) để tránh lệch một ngày nếu UI tự tính bằng giờ
+ * địa phương. `false` khi `earliestSnapshotAt` là `null` (chưa có dữ liệu). */
+export const hasEnoughHistory = (
+  earliestSnapshotAt: string | null,
+  windowKey: keyof typeof TRENDING_WINDOW_DAYS,
+): boolean => {
+  if (earliestSnapshotAt === null) return false
+  const cutoff = new Date(Date.now() - TRENDING_WINDOW_DAYS[windowKey] * 86_400_000)
+    .toISOString()
+    .slice(0, 10)
+  return earliestSnapshotAt <= cutoff
+}
 
 /** Trần trên số video trả về trong `topAllTime` — UI chỉ cần top 10, giữ dư
  * một chút thay vì trả nguyên danh sách (TikTok có thể lên tới ~1000 video,
