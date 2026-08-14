@@ -9,6 +9,7 @@ import { ProviderMark } from '@/components/connections/provider-mark'
 import { ChannelAvatar } from '@/components/channels/channel-avatar'
 import { ChannelDetailBody } from '@/components/channels/channel-detail-body'
 import { ExternalChannelLink } from '@/components/connections/external-channel-link'
+import { TiktokChannelHeader } from '@/components/channels/tiktok/tiktok-channel-header'
 import { getSite } from '@/lib/data/sites'
 import { getChannelDetail } from '@/lib/data/site-channel-detail'
 import { getChannelDailySeries, getChannelSummaries } from '@/lib/data/site-channels'
@@ -75,48 +76,58 @@ export default async function ChannelDetailPage({
 
   return (
     <PageShell>
-      <div>
-        <Link
-          href={`/${site.id}/channels`}
-          className="mb-3 inline-flex items-center gap-1 rounded-[var(--radius-sm)] text-[length:var(--text-sm)] text-[var(--color-ink-2)] hover:text-[var(--color-ink)]"
-        >
-          <ChevronLeft aria-hidden className="size-4" />
-          Tất cả kênh
-        </Link>
-
-        <PageHeader
-          title={meta.label}
-          description={
-            detail && detail.kind !== 'unsupported' ? (
-              <span className="flex items-center gap-2.5">
-                <ChannelAvatar avatarUrl={detail.avatarUrl} provider={provider} size="sm" />
-                {detail.accountName}
-              </span>
-            ) : (
-              'Chưa liên kết tài khoản'
-            )
-          }
-          action={
-            detail && detail.kind !== 'unsupported' ? (
-              <ExternalChannelLink
-                provider={provider}
-                externalAccountId={detail.externalAccountId}
-                variant="secondary"
-                size="md"
-              />
-            ) : null
-          }
-          meta={
-            <div className="flex flex-wrap items-center gap-2">
-              <ProviderMark provider={provider} size="sm" />
-              <span className="text-[length:var(--text-sm)] text-[var(--color-ink-3)]">
-                {formatDateRange(range.start, range.end)}
-              </span>
-              {summary?.connected ? <Badge tone="positive">Đã kết nối</Badge> : null}
-            </div>
-          }
+      {provider === 'tiktok' && detail && detail.kind === 'tiktok' ? (
+        <TiktokChannelHeader
+          siteId={site.id}
+          detail={detail}
+          dailySeries={dailySeries}
+          connected={summary?.connected ?? false}
+          dateRangeLabel={formatDateRange(range.start, range.end)}
         />
-      </div>
+      ) : (
+        <div>
+          <Link
+            href={`/${site.id}/channels`}
+            className="mb-3 inline-flex items-center gap-1 rounded-[var(--radius-sm)] text-[length:var(--text-sm)] text-[var(--color-ink-2)] hover:text-[var(--color-ink)]"
+          >
+            <ChevronLeft aria-hidden className="size-4" />
+            Tất cả kênh
+          </Link>
+
+          <PageHeader
+            title={meta.label}
+            description={
+              detail && detail.kind !== 'unsupported' ? (
+                <span className="flex items-center gap-2.5">
+                  <ChannelAvatar avatarUrl={detail.avatarUrl} provider={provider} size="sm" />
+                  {detail.accountName}
+                </span>
+              ) : (
+                'Chưa liên kết tài khoản'
+              )
+            }
+            action={
+              detail && detail.kind !== 'unsupported' ? (
+                <ExternalChannelLink
+                  provider={provider}
+                  externalAccountId={detail.externalAccountId}
+                  variant="secondary"
+                  size="md"
+                />
+              ) : null
+            }
+            meta={
+              <div className="flex flex-wrap items-center gap-2">
+                <ProviderMark provider={provider} size="sm" />
+                <span className="text-[length:var(--text-sm)] text-[var(--color-ink-3)]">
+                  {formatDateRange(range.start, range.end)}
+                </span>
+                {summary?.connected ? <Badge tone="positive">Đã kết nối</Badge> : null}
+              </div>
+            }
+          />
+        </div>
+      )}
 
       {!summary?.connected ? (
         <EmptyState
