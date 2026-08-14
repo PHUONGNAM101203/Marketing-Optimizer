@@ -374,38 +374,75 @@ interface YoutubeReportRow {
   readonly rows?: readonly (readonly (string | number)[])[]
 }
 
+type YoutubeVideoMeta = { readonly title: string; readonly thumbnailUrl: string | null }
+
+/** `videos.list` chỉ nhận tối đa 50 ID mỗi request — giới hạn cứng của
+ * YouTube Data API v3, trong khi `MAX_TRENDING_VIDEOS` (200) vượt xa mức đó.
+ * Nhét thẳng >50 ID vào một URL thì tốt nhất chỉ 50 ID đầu được xử lý, xấu
+ * nhất API trả lỗi cho cả request. */
+const YOUTUBE_VIDEOS_LIST_BATCH_SIZE = 50
+
+const chunkIds = (ids: readonly string[], size: number): string[][] => {
+  const chunks: string[][] = []
+  for (let i = 0; i < ids.length; i += size) chunks.push(ids.slice(i, i + size))
+  return chunks
+}
+
+const fetchYoutubeMetaBatch = async (
+  accessToken: string,
+  batchIds: readonly string[],
+): Promise<Map<string, YoutubeVideoMeta>> => {
+  const metaById = new Map<string, YoutubeVideoMeta>()
+  try {
+    const videosResponse = await fetch(
+      `https://www.googleapis.com/youtube/v3/videos?part=snippet&id=${batchIds.join(',')}`,
+      { headers: authHeader(accessToken) },
+    )
+    if (!videosResponse.ok) return metaById
+
+    const videosData = (await videosResponse.json()) as {
+      readonly items?: readonly {
+        readonly id?: string
+        readonly snippet?: {
+          readonly title?: string
+          readonly thumbnails?: {
+            readonly medium?: { readonly url?: string }
+            readonly default?: { readonly url?: string }
+          }
+        }
+      }[]
+    }
+    for (const item of videosData.items ?? []) {
+      if (!item.id) continue
+      metaById.set(item.id, {
+        title: item.snippet?.title ?? item.id,
+        thumbnailUrl:
+          item.snippet?.thumbnails?.medium?.url ?? item.snippet?.thumbnails?.default?.url ?? null,
+      })
+    }
+  } catch {
+    // Lỗi mạng (fetch throw) hoặc JSON hỏng — coi lô này như không lấy
+    // được, không để crash lan ra toàn bộ `getYoutubeVideoTrending`. Video
+    // trong lô sẽ fallback về hiển thị ID thô ở nơi gọi.
+    return metaById
+  }
+  return metaById
+}
+
 const fetchYoutubeMetaById = async (
   accessToken: string,
   videoIds: readonly string[],
-): Promise<Map<string, { readonly title: string; readonly thumbnailUrl: string | null }>> => {
-  const metaById = new Map<string, { readonly title: string; readonly thumbnailUrl: string | null }>()
+): Promise<Map<string, YoutubeVideoMeta>> => {
+  const metaById = new Map<string, YoutubeVideoMeta>()
   if (videoIds.length === 0) return metaById
 
-  const videosResponse = await fetch(
-    `https://www.googleapis.com/youtube/v3/videos?part=snippet&id=${videoIds.join(',')}`,
-    { headers: authHeader(accessToken) },
+  const batches = await Promise.all(
+    chunkIds(videoIds, YOUTUBE_VIDEOS_LIST_BATCH_SIZE).map((batchIds) =>
+      fetchYoutubeMetaBatch(accessToken, batchIds),
+    ),
   )
-  if (!videosResponse.ok) return metaById
-
-  const videosData = (await videosResponse.json()) as {
-    readonly items?: readonly {
-      readonly id?: string
-      readonly snippet?: {
-        readonly title?: string
-        readonly thumbnails?: {
-          readonly medium?: { readonly url?: string }
-          readonly default?: { readonly url?: string }
-        }
-      }
-    }[]
-  }
-  for (const item of videosData.items ?? []) {
-    if (!item.id) continue
-    metaById.set(item.id, {
-      title: item.snippet?.title ?? item.id,
-      thumbnailUrl:
-        item.snippet?.thumbnails?.medium?.url ?? item.snippet?.thumbnails?.default?.url ?? null,
-    })
+  for (const batch of batches) {
+    for (const [id, meta] of batch) metaById.set(id, meta)
   }
   return metaById
 }
@@ -432,10 +469,18 @@ const fetchYoutubeAllTimeMetrics = async (
   reportUrl.searchParams.set('sort', '-views')
   reportUrl.searchParams.set('maxResults', String(MAX_TRENDING_VIDEOS))
 
-  const reportResponse = await fetch(reportUrl.toString(), { headers: authHeader(accessToken) })
-  if (!reportResponse.ok) return new Map()
+  let reportData: YoutubeReportRow
+  try {
+    const reportResponse = await fetch(reportUrl.toString(), { headers: authHeader(accessToken) })
+    if (!reportResponse.ok) return new Map()
+    reportData = (await reportResponse.json()) as YoutubeReportRow
+  } catch {
+    // Lỗi mạng (fetch throw, vd. timeout/DNS) hoặc JSON hỏng — coi như
+    // không lấy được số liệu, để `getYoutubeVideoTrending` render phần
+    // trending rỗng thay vì crash cả trang chi tiết kênh.
+    return new Map()
+  }
 
-  const reportData = (await reportResponse.json()) as YoutubeReportRow
   const rows = reportData.rows ?? []
   if (rows.length === 0) return new Map()
 
@@ -471,6 +516,12 @@ const fetchYoutubeAllTimeMetrics = async (
  * gọi duy nhất (`dimensions=video,day`), dùng để tính cả 3 cửa sổ tuần/
  * tháng/năm bằng cách cộng dồn theo mốc ngày, thay vì gọi report riêng cho
  * mỗi cửa sổ (sẽ tốn 6 lượt gọi thay vì 1).
+ *
+ * CHƯA ai chạy thử được với tài khoản YouTube thật — tổ hợp
+ * `dimensions=video,day` cho nhiều video cùng lúc, và mức `maxResults` hợp
+ * lý cho tổ hợp đó, bám theo tài liệu YouTube Analytics API công khai
+ * (8/2026) chứ chưa verify bằng token thật. Nếu API từ chối tổ hợp dimension
+ * này hoặc trả lỗi vì `maxResults`, cần verify và chỉnh lại khi có token thật.
  */
 const fetchYoutubeDailyViews = async (
   accessToken: string,
@@ -482,12 +533,23 @@ const fetchYoutubeDailyViews = async (
   reportUrl.searchParams.set('endDate', toIsoDate(new Date()))
   reportUrl.searchParams.set('dimensions', 'video,day')
   reportUrl.searchParams.set('metrics', 'views')
-  reportUrl.searchParams.set('maxResults', String(MAX_TRENDING_VIDEOS * 366))
+  // Số cố định thay cho `MAX_TRENDING_VIDEOS * 366` (73,200 — phép nhân
+  // trần-video-lấy-về với số ngày, không phải trần thật của API) — 10000
+  // vẫn chỉ là một mức phỏng đoán ít phi thực tế hơn, chưa verify (xem ghi
+  // chú "CHƯA ai chạy thử" ở trên).
+  reportUrl.searchParams.set('maxResults', '10000')
 
-  const reportResponse = await fetch(reportUrl.toString(), { headers: authHeader(accessToken) })
-  if (!reportResponse.ok) return new Map()
+  let reportData: YoutubeReportRow
+  try {
+    const reportResponse = await fetch(reportUrl.toString(), { headers: authHeader(accessToken) })
+    if (!reportResponse.ok) return new Map()
+    reportData = (await reportResponse.json()) as YoutubeReportRow
+  } catch {
+    // Lỗi mạng (fetch throw) hoặc JSON hỏng — coi như không lấy được chuỗi
+    // views-theo-ngày, để phần trending render rỗng thay vì crash cả trang.
+    return new Map()
+  }
 
-  const reportData = (await reportResponse.json()) as YoutubeReportRow
   const rows = reportData.rows ?? []
   const columnIndex = new Map(
     (reportData.columnHeaders ?? []).map((column, index) => [column.name, index]),
