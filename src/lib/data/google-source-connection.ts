@@ -19,11 +19,17 @@ export const findGoogleSourceConnection = async (
   admin: SupabaseClient<Database>,
   siteId: string,
 ): Promise<GoogleSourceConnection | null> => {
+  // `!inner` bắt buộc phải CÓ secret thật mới được chọn làm nguồn — loại trừ
+  // chính connection vừa tạo (status 'syncing', chưa kịp ghi connection_secrets)
+  // khỏi việc tự chọn chính nó làm nguồn khi người dùng tự chọn container/tài
+  // khoản (GTM, Google Ads…). `order` để kết quả ổn định, không phụ thuộc thứ
+  // tự vật lý không đảm bảo của Postgres khi thiếu ORDER BY.
   const { data } = await admin
     .from('connections')
-    .select('id, provider')
+    .select('id, provider, connection_secrets!inner(connection_id)')
     .eq('site_id', siteId)
     .in('provider', ['ga4', 'gsc', 'gtm', 'youtube'])
+    .order('connected_at', { ascending: true })
     .limit(1)
     .maybeSingle()
 

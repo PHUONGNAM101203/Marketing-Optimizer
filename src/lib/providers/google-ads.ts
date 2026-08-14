@@ -192,7 +192,7 @@ const runGoogleAdsQuery = async (
       body: JSON.stringify(body),
     },
   )
-  if (!response.ok) return []
+  if (!response.ok) throw new GoogleAdsApiError(response.status, await response.text())
 
   // searchStream trả về một MẢNG các batch: [{ results: [...] }, { results: [...] }, ...]
   const batches = (await response.json()) as readonly { readonly results?: readonly GaqlRow[] }[]
