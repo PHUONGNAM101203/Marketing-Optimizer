@@ -246,24 +246,18 @@ export const getChannelDetail = async (
         avatarUrl,
         data: await fetchGtmExplore(tokenResult.accessToken, connection.external_account_id),
       }
-    case 'youtube':
-      return {
-        kind: 'youtube',
-        accountName,
-        externalAccountId,
-        avatarUrl,
-        data: await fetchYoutubeExplore(
-          tokenResult.accessToken,
-          connection.external_account_id,
-          range,
-        ),
+    case 'youtube': {
+      // `Promise.all` chứ không await nối tiếp: hai lượt đọc độc lập nhau,
+      // chạy song song thì TTFB của trang chi tiết kênh bằng lượt chậm hơn
+      // thay vì bằng tổng hai lượt.
+      const [data, trending] = await Promise.all([
+        fetchYoutubeExplore(tokenResult.accessToken, connection.external_account_id, range),
         // Không truyền `range` — trending có 3 cửa sổ cố định riêng, độc lập
         // với khoảng ngày trang đang chọn (xem Task 4/6 trong plan này).
-        trending: await getYoutubeVideoTrending(
-          tokenResult.accessToken,
-          connection.external_account_id,
-        ),
-      }
+        getYoutubeVideoTrending(tokenResult.accessToken, connection.external_account_id),
+      ])
+      return { kind: 'youtube', accountName, externalAccountId, avatarUrl, data, trending }
+    }
     case 'merchant-center': {
       const { products, truncated } = await fetchMerchantCenterProducts(
         tokenResult.accessToken,
@@ -311,19 +305,20 @@ export const getChannelDetail = async (
         data: { campaigns: groupCampaignRows(rows) },
       }
     }
-    case 'tiktok':
-      return {
-        kind: 'tiktok',
-        accountName,
-        externalAccountId,
-        avatarUrl,
+    case 'tiktok': {
+      // `Promise.all` chứ không await nối tiếp: hai lượt đọc độc lập nhau,
+      // chạy song song thì TTFB của trang chi tiết kênh bằng lượt chậm hơn
+      // thay vì bằng tổng hai lượt.
+      const [data, trending] = await Promise.all([
         // Không truyền `externalAccountId` — Display API không có khái niệm
         // "chọn tài khoản", token đã gắn chết với đúng một tài khoản rồi.
-        data: await fetchTiktokContentExplore(tokenResult.accessToken, range),
+        fetchTiktokContentExplore(tokenResult.accessToken, range),
         // Không truyền `range` — trending có 3 cửa sổ cố định riêng, độc lập
         // với khoảng ngày trang đang chọn (xem Task 4/5 trong plan này).
-        trending: await getTiktokVideoTrending(connection.id),
-      }
+        getTiktokVideoTrending(connection.id),
+      ])
+      return { kind: 'tiktok', accountName, externalAccountId, avatarUrl, data, trending }
+    }
     case 'instagram':
       return {
         kind: 'instagram',

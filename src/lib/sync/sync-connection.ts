@@ -1,5 +1,7 @@
 import 'server-only'
 
+import { after } from 'next/server'
+
 import { getGoogleAdsDeveloperToken } from '@/lib/data/site-oauth-apps'
 import { isProviderId } from '@/lib/domain/providers'
 import { METRICS_ADAPTERS } from '@/lib/providers'
@@ -96,18 +98,26 @@ export async function syncConnection(connectionId: string): Promise<SyncResult> 
       if (upsertError) return { ok: false, error: `metrics-write-failed: ${upsertError.message}` }
     }
 
-    if (connection.provider === 'tiktok') {
-      await syncTiktokVideoSnapshots(connectionId, accessToken).catch((error) => {
-        console.error(
-          `Không đồng bộ được video snapshot: ${error instanceof Error ? error.message : String(error)}`,
-        )
-      })
-    }
-
     await admin
       .from('connections')
       .update({ status: 'connected', last_synced_at: new Date().toISOString() })
       .eq('id', connectionId)
+
+    // SAU khi đã đánh dấu `connected`, và chạy qua `after()` — bước này có thể
+    // tốn tới 50 lượt gọi TikTok tuần tự, trong khi chỉ cron `sync-all` mới có
+    // `maxDuration = 300`; 5 lối gọi còn lại (OAuth callback, resync thủ công,
+    // resync-site, action Google/Meta Ads) dùng timeout mặc định. Đặt ở đây thì
+    // snapshot chậm hay lỗi cũng không làm connection kẹt ở trạng thái cũ, và
+    // không cộng thêm mili-giây nào vào response.
+    if (connection.provider === 'tiktok') {
+      after(() =>
+        syncTiktokVideoSnapshots(connectionId, accessToken).catch((error) => {
+          console.error(
+            `Không đồng bộ được video snapshot: ${error instanceof Error ? error.message : String(error)}`,
+          )
+        }),
+      )
+    }
 
     return { ok: true, rows: rows.length }
   } catch (error) {

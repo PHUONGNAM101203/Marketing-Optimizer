@@ -313,8 +313,12 @@ export const fetchAllTiktokVideos = async (
       })
     }
 
-    hasMore = body.data?.has_more ?? false
-    cursor = body.data?.cursor
+    // Cursor KHÔNG tiến (thiếu hoặc lặp lại giá trị cũ) thì DỪNG, không quay
+    // vòng: giữ nguyên `has_more` sẽ khiến vòng lặp gọi lại đúng TRANG 1 tới
+    // hết `MAX_VIDEO_LIST_PAGES`, trả về cùng ~20 video nhân 50 lần trùng ID.
+    const nextCursor = body.data?.cursor
+    hasMore = (body.data?.has_more ?? false) && nextCursor !== undefined && nextCursor !== cursor
+    cursor = nextCursor
   }
 
   return videos

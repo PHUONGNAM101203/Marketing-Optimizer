@@ -398,7 +398,10 @@ const fetchYoutubeMetaBatch = async (
       `https://www.googleapis.com/youtube/v3/videos?part=snippet&id=${batchIds.join(',')}`,
       { headers: authHeader(accessToken) },
     )
-    if (!videosResponse.ok) return metaById
+    if (!videosResponse.ok) {
+      console.error(`Không đọc được videos.list của YouTube: HTTP ${videosResponse.status}`)
+      return metaById
+    }
 
     const videosData = (await videosResponse.json()) as {
       readonly items?: readonly {
@@ -420,10 +423,13 @@ const fetchYoutubeMetaBatch = async (
           item.snippet?.thumbnails?.medium?.url ?? item.snippet?.thumbnails?.default?.url ?? null,
       })
     }
-  } catch {
+  } catch (error) {
     // Lỗi mạng (fetch throw) hoặc JSON hỏng — coi lô này như không lấy
     // được, không để crash lan ra toàn bộ `getYoutubeVideoTrending`. Video
     // trong lô sẽ fallback về hiển thị ID thô ở nơi gọi.
+    console.error(
+      `Không đọc được videos.list của YouTube: ${error instanceof Error ? error.message : String(error)}`,
+    )
     return metaById
   }
   return metaById
@@ -472,12 +478,18 @@ const fetchYoutubeAllTimeMetrics = async (
   let reportData: YoutubeReportRow
   try {
     const reportResponse = await fetch(reportUrl.toString(), { headers: authHeader(accessToken) })
-    if (!reportResponse.ok) return new Map()
+    if (!reportResponse.ok) {
+      console.error(`Không đọc được báo cáo all-time của YouTube: HTTP ${reportResponse.status}`)
+      return new Map()
+    }
     reportData = (await reportResponse.json()) as YoutubeReportRow
-  } catch {
+  } catch (error) {
     // Lỗi mạng (fetch throw, vd. timeout/DNS) hoặc JSON hỏng — coi như
     // không lấy được số liệu, để `getYoutubeVideoTrending` render phần
     // trending rỗng thay vì crash cả trang chi tiết kênh.
+    console.error(
+      `Không đọc được báo cáo all-time của YouTube: ${error instanceof Error ? error.message : String(error)}`,
+    )
     return new Map()
   }
 
@@ -538,15 +550,31 @@ const fetchYoutubeDailyViews = async (
   // vẫn chỉ là một mức phỏng đoán ít phi thực tế hơn, chưa verify (xem ghi
   // chú "CHƯA ai chạy thử" ở trên).
   reportUrl.searchParams.set('maxResults', '10000')
+  // Bắt buộc có `sort`: hàng ở đây là cặp (video, ngày), 10000 hàng chỉ đủ cho
+  // ~27 video trong một năm, nên báo cáo GẦN NHƯ CHẮC CHẮN bị cắt. Không có
+  // `sort` thì phần nào sống sót là không xác định → `trendingFast` thành kết
+  // quả một phần, thay đổi ngẫu nhiên giữa các lần tải. Chọn `-day` (mới nhất
+  // trước) chứ không phải `-views`: phần bị cắt khi đó là những ngày CŨ NHẤT,
+  // đều nhau cho mọi video — cửa sổ tuần/tháng vẫn đủ hàng cho cả kênh lớn, và
+  // không video nào bị loại sạch khỏi kết quả. `-views` thì ngược lại: giữ vài
+  // ngày đỉnh của video lớn và xoá trắng chuỗi của video nhỏ — đúng nhóm video
+  // mà "tăng nhanh" cần nhất.
+  reportUrl.searchParams.set('sort', '-day')
 
   let reportData: YoutubeReportRow
   try {
     const reportResponse = await fetch(reportUrl.toString(), { headers: authHeader(accessToken) })
-    if (!reportResponse.ok) return new Map()
+    if (!reportResponse.ok) {
+      console.error(`Không đọc được báo cáo views-theo-ngày của YouTube: HTTP ${reportResponse.status}`)
+      return new Map()
+    }
     reportData = (await reportResponse.json()) as YoutubeReportRow
-  } catch {
+  } catch (error) {
     // Lỗi mạng (fetch throw) hoặc JSON hỏng — coi như không lấy được chuỗi
     // views-theo-ngày, để phần trending render rỗng thay vì crash cả trang.
+    console.error(
+      `Không đọc được báo cáo views-theo-ngày của YouTube: ${error instanceof Error ? error.message : String(error)}`,
+    )
     return new Map()
   }
 

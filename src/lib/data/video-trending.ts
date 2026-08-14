@@ -70,6 +70,11 @@ export const getTiktokVideoTrending = async (connectionId: string): Promise<Vide
     .from('video_metrics_daily')
     .select('external_video_id, date, views, likes, comments, shares, title, cover_image_url')
     .eq('connection_id', connectionId)
+    // Chặn dưới 366 ngày — cửa sổ rộng nhất là "năm" (365 ngày) cộng một ngày
+    // dư. Không có chính sách xoá lịch sử, nên thiếu mốc này mỗi lần tải trang
+    // sẽ đọc TOÀN BỘ snapshot của connection và ngày càng nặng. `topAllTime`
+    // không bị ảnh hưởng: nó chỉ cần snapshot mới nhất của mỗi video.
+    .gte('date', toIsoDate(new Date(Date.now() - 366 * 86_400_000)))
     .order('date', { ascending: true })
 
   const rows = (data ?? []) as readonly VideoMetricsRow[]

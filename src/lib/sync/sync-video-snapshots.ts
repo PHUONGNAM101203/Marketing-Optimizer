@@ -11,6 +11,9 @@ const toIsoDate = (date: Date): string => date.toISOString().slice(0, 10)
  * docs/superpowers/specs/2026-08-14-video-snapshot-pipeline-design.md).
  * Không throw ra ngoài: lỗi ở đây không được làm hỏng phần đồng bộ
  * metrics_daily đã chạy xong trước đó trong cùng lượt `syncConnection`.
+ * `syncConnection` gọi hàm này qua `after()`, SAU khi đã cập nhật trạng thái
+ * connection — bước này có thể kéo dài nhiều lượt gọi TikTok tuần tự và không
+ * được cộng thêm độ trễ vào response của bất kỳ lối gọi nào.
  */
 export const syncTiktokVideoSnapshots = async (
   connectionId: string,
@@ -20,9 +23,17 @@ export const syncTiktokVideoSnapshots = async (
   const videos = await fetchAllTiktokVideos(accessToken)
   if (videos.length === 0) return
 
+  // Khử trùng theo `externalVideoId` TRƯỚC khi upsert: nếu cùng bộ khóa
+  // (connection_id, external_video_id, date) xuất hiện hai lần trong MỘT lệnh
+  // upsert, Postgres báo lỗi 21000 và huỷ TOÀN BỘ lô — không ghi được dòng
+  // nào cho connection đó trong ngày. TikTok có thể liệt kê lại một video khi
+  // phân trang (vd. có bài mới đăng giữa chừng làm lệch vị trí). Lấy bản cuối
+  // là đủ: tất cả đều là snapshot của hôm nay, giá trị gần như giống nhau.
+  const uniqueVideos = [...new Map(videos.map((video) => [video.externalVideoId, video])).values()]
+
   const today = toIsoDate(new Date())
   const { error } = await admin.from('video_metrics_daily').upsert(
-    videos.map((video) => ({
+    uniqueVideos.map((video) => ({
       connection_id: connectionId,
       external_video_id: video.externalVideoId,
       date: today,
