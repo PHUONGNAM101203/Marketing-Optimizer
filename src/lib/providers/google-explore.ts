@@ -9,6 +9,7 @@ import 'server-only'
  */
 
 import {
+  MAX_TOP_ALL_TIME,
   MIN_TRENDING_VIEWS,
   TRENDING_WINDOW_DAYS,
   type VideoGrowthSummary,
@@ -621,7 +622,17 @@ export const getYoutubeVideoTrending = async (
     fetchYoutubeDailyViews(accessToken, channelId),
   ])
 
-  const topAllTime = [...allTime.values()].sort((a, b) => b.views - a.views)
+  const topAllTime = [...allTime.values()].sort((a, b) => b.views - a.views).slice(0, MAX_TOP_ALL_TIME)
+
+  // Ngày sớm nhất THỰC SỰ có dữ liệu trong chuỗi views-theo-ngày — không
+  // suy từ độ dài cửa sổ đã yêu cầu (366 ngày) vì kênh có thể trẻ hơn, hoặc
+  // fetch có thể đã lỗi (Map rỗng). `null` khi không có video/ngày nào cả.
+  let earliestSnapshotAt: string | null = null
+  for (const days of dailyViews.values()) {
+    for (const date of days.keys()) {
+      if (earliestSnapshotAt === null || date < earliestSnapshotAt) earliestSnapshotAt = date
+    }
+  }
 
   // Tính MỘT LẦN MỖI REQUEST (không phải hằng số module) — tiến trình server
   // sống lâu, hằng số module sẽ đóng băng ngày "hôm nay" ở lần import đầu
@@ -650,5 +661,5 @@ export const getYoutubeVideoTrending = async (
     trendingFast[windowKey].sort((a, b) => (b.growthPct ?? 0) - (a.growthPct ?? 0))
   }
 
-  return { topAllTime, trendingFast }
+  return { topAllTime, trendingFast, earliestSnapshotAt }
 }

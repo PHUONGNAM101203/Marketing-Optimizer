@@ -1,6 +1,7 @@
 import 'server-only'
 
 import {
+  MAX_TOP_ALL_TIME,
   MIN_TRENDING_VIEWS,
   TRENDING_WINDOW_DAYS,
   type VideoGrowthSummary,
@@ -79,8 +80,17 @@ export const getTiktokVideoTrending = async (connectionId: string): Promise<Vide
 
   const rows = (data ?? []) as readonly VideoMetricsRow[]
   if (rows.length === 0) {
-    return { topAllTime: [], trendingFast: { week: [], month: [], year: [] } }
+    return {
+      topAllTime: [],
+      trendingFast: { week: [], month: [], year: [] },
+      earliestSnapshotAt: null,
+    }
   }
+
+  // `rows` đã sắp theo ngày tăng dần (order phía trên) nên phần tử đầu tiên
+  // luôn là ngày sớm nhất trong tập đã lọc — UI dùng mốc này để biết cửa sổ
+  // nào (7/30/365 ngày) đã đủ dữ liệu, xem doc comment ở `VideoTrendingResult`.
+  const earliestSnapshotAt = rows[0]!.date
 
   const byVideo = new Map<string, VideoMetricsRow[]>()
   for (const row of rows) {
@@ -92,6 +102,7 @@ export const getTiktokVideoTrending = async (connectionId: string): Promise<Vide
   const topAllTime = [...byVideo.values()]
     .map((snapshots) => toSummary(snapshots[snapshots.length - 1]!))
     .sort((a, b) => b.views - a.views)
+    .slice(0, MAX_TOP_ALL_TIME)
 
   const trendingFast = { week: [] as VideoGrowthSummary[], month: [] as VideoGrowthSummary[], year: [] as VideoGrowthSummary[] }
   for (const snapshots of byVideo.values()) {
@@ -104,5 +115,5 @@ export const getTiktokVideoTrending = async (connectionId: string): Promise<Vide
     trendingFast[windowKey].sort((a, b) => (b.growthPct ?? 0) - (a.growthPct ?? 0))
   }
 
-  return { topAllTime, trendingFast }
+  return { topAllTime, trendingFast, earliestSnapshotAt }
 }

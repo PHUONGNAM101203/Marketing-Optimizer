@@ -37,9 +37,23 @@ export interface VideoTrendingWindows {
 export interface VideoTrendingResult {
   readonly topAllTime: readonly VideoSummary[]
   readonly trendingFast: VideoTrendingWindows
+  /** Ngày (YYYY-MM-DD) sớm nhất có dữ liệu thật cho connection này — `null`
+   * nếu chưa có dữ liệu nào. Dùng để phân biệt "chưa đủ lịch sử cho cửa sổ
+   * X" (vd mới kết nối 3 ngày, cửa sổ tuần chưa đủ) với "thực sự không có
+   * video nào tăng trưởng" — không nên suy đoán bằng cách so 3 mảng
+   * week/month/year có giống hệt nhau không, vì trùng hợp thật vẫn có thể
+   * xảy ra. So `earliestSnapshotAt` với từng `TRENDING_WINDOW_DAYS[key]`
+   * để biết cửa sổ đó đã đủ dữ liệu chưa. */
+  readonly earliestSnapshotAt: string | null
 }
 
 export const TRENDING_WINDOW_DAYS = { week: 7, month: 30, year: 365 } as const
+
+/** Trần trên số video trả về trong `topAllTime` — UI chỉ cần top 10, giữ dư
+ * một chút thay vì trả nguyên danh sách (TikTok có thể lên tới ~1000 video,
+ * YouTube tới 200) để đỡ nặng payload mà không phải đổi hợp đồng lần nữa
+ * nếu UI sau này cần top 20/30. */
+export const MAX_TOP_ALL_TIME = 50
 
 /** Video có dưới ngần này view ở đầu cửa sổ bị loại khỏi "tăng nhanh" — %
  * tăng của một video 2 view lên 20 view (900%) không có ý nghĩa, chỉ là
