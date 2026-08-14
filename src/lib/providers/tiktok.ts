@@ -239,3 +239,83 @@ export const fetchTiktokContentExplore = async (
 
   return { topVideos, fetchError: null }
 }
+
+export interface TiktokVideoSnapshot {
+  readonly externalVideoId: string
+  readonly title: string
+  readonly coverImageUrl: string | null
+  readonly views: number
+  readonly likes: number
+  readonly comments: number
+  readonly shares: number
+}
+
+// Chặn vòng lặp phân trang chạy vô hạn nếu TikTok trả `has_more: true` kèm
+// `cursor` không hợp lệ — 50 trang x 20 video = 1000 video là quá đủ cho một
+// tài khoản thật, chặn ở đây rẻ hơn để cron treo.
+const MAX_VIDEO_LIST_PAGES = 50
+
+/**
+ * TOÀN BỘ video của tài khoản, tự phân trang bằng `cursor`/`has_more` —
+ * khác `fetchTiktokContentExplore` bên trên (chỉ 1 trang 20 video mới nhất,
+ * dùng để hiển thị trực tiếp ở tab Khám phá). Hàm này dùng để ghi snapshot
+ * hằng ngày vào `video_metrics_daily`, không hiển thị trực tiếp.
+ */
+export const fetchAllTiktokVideos = async (
+  accessToken: string,
+): Promise<readonly TiktokVideoSnapshot[]> => {
+  const videos: TiktokVideoSnapshot[] = []
+  let cursor: number | undefined
+  let hasMore = true
+  let pages = 0
+
+  while (hasMore && pages < MAX_VIDEO_LIST_PAGES) {
+    pages += 1
+    const url = new URL(VIDEO_LIST_ENDPOINT)
+    url.searchParams.set(
+      'fields',
+      'id,title,video_description,cover_image_url,view_count,like_count,comment_count,share_count',
+    )
+
+    const response = await fetch(url.toString(), {
+      method: 'POST',
+      headers: {
+        authorization: `Bearer ${accessToken}`,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify(cursor === undefined ? { max_count: 20 } : { max_count: 20, cursor }),
+    })
+    if (!response.ok) break
+
+    const body = (await response.json()) as {
+      readonly data?: {
+        readonly videos?: readonly TiktokVideoItem[]
+        readonly cursor?: number
+        readonly has_more?: boolean
+      }
+      readonly error?: { readonly code?: string }
+    }
+
+    // HTTP 200 không đảm bảo thành công — xem docblock của TiktokExplore
+    // phía trên, TikTok nhét mã lỗi vào thân JSON.
+    if (body.error && body.error.code && body.error.code !== 'ok') break
+
+    for (const video of body.data?.videos ?? []) {
+      if (!video.id) continue
+      videos.push({
+        externalVideoId: video.id,
+        title: (video.video_description || video.title || '(không có chú thích)').slice(0, 80),
+        coverImageUrl: video.cover_image_url ?? null,
+        views: video.view_count ?? 0,
+        likes: video.like_count ?? 0,
+        comments: video.comment_count ?? 0,
+        shares: video.share_count ?? 0,
+      })
+    }
+
+    hasMore = body.data?.has_more ?? false
+    cursor = body.data?.cursor
+  }
+
+  return videos
+}
