@@ -1,8 +1,9 @@
 import { notFound, redirect } from 'next/navigation'
+import { after } from 'next/server'
 import type { ReactNode } from 'react'
 import { SideRail } from '@/components/layout/side-rail'
 import { Topbar } from '@/components/layout/topbar'
-import { getCurrentProfile, getSite, listSites } from '@/lib/data/sites'
+import { getCurrentProfile, getSite, listSites, setLastSiteId } from '@/lib/data/sites'
 import { getConnectionSummary } from '@/lib/data/connections'
 
 /**
@@ -32,6 +33,13 @@ export default async function SiteLayout({
   // RLS đã lọc: không đọc được nghĩa là hoặc không tồn tại, hoặc không có
   // quyền. Cả hai đều trả 404 — trả 403 sẽ tiết lộ Site đó có tồn tại.
   if (!site) notFound()
+
+  // Chỉ ghi khi site thực sự đổi so với lần trước — tránh ghi lại mỗi lần
+  // chuyển trang/tab trong cùng một site. after() chạy sau khi response đã
+  // trả về nên không thêm độ trễ cho việc render.
+  if (profile.lastSiteId !== site.id) {
+    after(() => setLastSiteId(profile.userId, site.id))
+  }
 
   return (
     <div className="flex min-h-dvh">
