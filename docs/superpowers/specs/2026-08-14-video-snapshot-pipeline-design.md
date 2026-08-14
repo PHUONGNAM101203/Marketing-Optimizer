@@ -99,15 +99,23 @@ interface VideoTrendingResult {
 }
 ```
 
-- `getTiktokVideoTrending(connectionId, window)` — reads
-  `video_metrics_daily`. `topAllTime` = latest snapshot per video, sorted by
-  views desc. `trendingFast` = diff between latest snapshot and the snapshot
-  `window` days earlier per video; videos with fewer than 2 snapshots are
-  excluded (nothing to diff yet).
-- `getYoutubeVideoTrending(accessToken, channelId, window)` — calls YouTube
-  Analytics API twice (current window vs. prior window of equal length) and
-  computes the same delta/pct shape; `topAllTime` uses one wide-range call
-  (channel creation to today).
+Growth window = the page's already-selected date range (`{ startDate, endDate }`,
+same `range` object every other Explore fetcher already takes), not a
+separate hardcoded window — one less parameter, and it matches how every
+other metric on the page already respects the topbar date picker.
+
+- `getTiktokVideoTrending(connectionId, range)` — reads
+  `video_metrics_daily`. `topAllTime` = latest snapshot per video (regardless
+  of range), sorted by views desc. `trendingFast` = for each video, views at
+  the snapshot closest to `range.endDate` minus views at the snapshot
+  closest to (but not after) `range.startDate`; videos with fewer than 2
+  snapshots in range are excluded (nothing to diff yet).
+- `getYoutubeVideoTrending(accessToken, channelId, range)` — calls YouTube
+  Analytics API twice (once for `range`, once for the equal-length window
+  immediately preceding it) and computes the same delta/pct shape;
+  `topAllTime` uses one wide-range call (a fixed 10-year lookback — YouTube
+  Analytics returns zero rows for a channel younger than that, which is
+  harmless).
 
 Both return the same `VideoTrendingResult` shape so the UI (owned by the
 TikTok channel-detail design session) renders one component regardless of
