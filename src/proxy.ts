@@ -66,7 +66,14 @@ export const config = {
      * dùng .txt, Google Search Console có thể dùng .html) đặt thẳng trong
      * `public/`; trình xác minh của các nền tảng đó gọi KHÔNG kèm cookie
      * đăng nhập, nên nếu proxy chặn thì xác minh domain sẽ luôn thất bại.
+     *
+     * `icon`/`apple-icon`/`manifest.webmanifest` là Route Handler do
+     * icon.tsx/apple-icon.tsx/manifest.ts SINH RA, không phải file tĩnh nên
+     * không khớp nhóm phần mở rộng ở trên — thiếu chúng ở đây thì trình
+     * duyệt của người CHƯA đăng nhập (vd. đang ở /sign-in) xin favicon sẽ bị
+     * proxy chuyển hướng sang /sign-in?next=/icon thay vì nhận về ảnh, tab
+     * trình duyệt không hiện logo cho tới khi đăng nhập xong.
      */
-    '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|woff2?|txt|html)$).*)',
+    '/((?!_next/static|_next/image|favicon.ico|icon|apple-icon|manifest.webmanifest|.*\\.(?:svg|png|jpg|jpeg|gif|webp|woff2?|txt|html)$).*)',
   ],
 }

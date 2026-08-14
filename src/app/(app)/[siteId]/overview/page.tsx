@@ -23,7 +23,7 @@ import { getSite } from '@/lib/data/sites'
 import { getRealMetricsSummary } from '@/lib/data/site-metrics'
 import { getLatestAuditRun } from '@/lib/data/audit'
 import {
-  getChannelDailySeries,
+  getChannelDailySeriesByProvider,
   getChannelSummaries,
   type ChannelDailyPoint,
   type ChannelSummary,
@@ -103,13 +103,11 @@ export default async function OverviewPage({
       getRealMetricsSummary(site.id, previousRange),
       getChannelSummaries(site.id, range),
       getLatestAuditRun(site.id),
-      // Một truy vấn nhỏ mỗi kênh, chạy song song — nuôi CẢ hai chỗ cần xu
-      // hướng theo ngày của TỪNG kênh riêng: lưới nhỏ ở tab Tổng hợp và các
-      // thẻ đầy đủ ở tab Google/Meta/TikTok, không truy vấn hai lần cho cùng
-      // một kênh.
-      Promise.all(PROVIDERS.map((provider) => getChannelDailySeries(site.id, provider, range))).then(
-        (results) => new Map(PROVIDERS.map((provider, index) => [provider, results[index]])),
-      ),
+      // Nuôi CẢ hai chỗ cần xu hướng theo ngày của TỪNG kênh riêng: lưới nhỏ
+      // ở tab Tổng hợp và các thẻ đầy đủ ở tab Google/Meta/TikTok, không
+      // truy vấn hai lần cho cùng một kênh. Một lượt gộp cho cả 10 provider
+      // thay vì 10 lượt riêng — xem lý do ở `getChannelDailySeriesByProvider`.
+      getChannelDailySeriesByProvider(site.id, range),
     ])
 
   const sessionPoints = real.dailySessions.map((point) => ({

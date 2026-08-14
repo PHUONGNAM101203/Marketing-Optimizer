@@ -61,6 +61,30 @@ const EMPTY_TOTALS: ChannelTotals = {
   conversionValueMicros: 0,
 }
 
+/** Tách connections của một Site thành 3 chỉ mục dùng chung bởi mọi hàm bên
+ * dưới cần truy vấn `metrics_daily` theo connection — một lượt truy vấn
+ * `connections`, không lặp lại cho từng nền tảng. */
+const splitConnectionsBySnapshot = (
+  connections: readonly { readonly id: string; readonly provider: string }[],
+) => {
+  const connectionsByProvider = new Map<ProviderId, string[]>()
+  const connectionIdToProvider = new Map<string, ProviderId>()
+  const snapshotConnectionIds: string[] = []
+  const regularConnectionIds: string[] = []
+
+  for (const row of connections) {
+    if (!isProviderId(row.provider)) continue
+    const ids = connectionsByProvider.get(row.provider) ?? []
+    ids.push(row.id)
+    connectionsByProvider.set(row.provider, ids)
+    connectionIdToProvider.set(row.id, row.provider)
+    if (SNAPSHOT_PROVIDERS.has(row.provider)) snapshotConnectionIds.push(row.id)
+    else regularConnectionIds.push(row.id)
+  }
+
+  return { connectionsByProvider, connectionIdToProvider, snapshotConnectionIds, regularConnectionIds }
+}
+
 /** Tóm tắt số liệu thật của TỪNG nền tảng — dùng cho lưới thẻ ở trang Kênh. */
 export const getChannelSummaries = async (
   siteId: string,
@@ -73,21 +97,8 @@ export const getChannelSummaries = async (
     .select('id, provider')
     .eq('site_id', siteId)
 
-  const connectionsByProvider = new Map<ProviderId, string[]>()
-  for (const row of connections ?? []) {
-    if (!isProviderId(row.provider)) continue
-    const ids = connectionsByProvider.get(row.provider) ?? []
-    ids.push(row.id)
-    connectionsByProvider.set(row.provider, ids)
-  }
-
-  const snapshotConnectionIds: string[] = []
-  const regularConnectionIds: string[] = []
-  for (const row of connections ?? []) {
-    if (!isProviderId(row.provider)) continue
-    if (SNAPSHOT_PROVIDERS.has(row.provider)) snapshotConnectionIds.push(row.id)
-    else regularConnectionIds.push(row.id)
-  }
+  const { connectionsByProvider, connectionIdToProvider, snapshotConnectionIds, regularConnectionIds } =
+    splitConnectionsBySnapshot(connections ?? [])
 
   const METRICS_COLUMNS =
     'connection_id, date, sessions, users, conversions, clicks, impressions, cost_micros, conversion_value_micros, extra'
@@ -111,11 +122,6 @@ export const getChannelSummaries = async (
           .lte('date', snapshotUpperBound(range.end)),
   ])
   const metricsRows = [...(regularRows ?? []), ...(snapshotRows ?? [])]
-
-  const connectionIdToProvider = new Map<string, ProviderId>()
-  for (const [provider, ids] of connectionsByProvider) {
-    for (const id of ids) connectionIdToProvider.set(id, provider)
-  }
 
   const summaries = new Map<ProviderId, ChannelSummary>()
   const latestSnapshotDate = new Map<ProviderId, string>()
@@ -186,40 +192,25 @@ export interface ChannelDailyPoint {
   readonly extra: Readonly<Record<string, number>>
 }
 
-/** Chuỗi ngày thật của MỘT nền tảng — dùng vẽ biểu đồ xu hướng ở trang chi
- * tiết kênh. Gộp nhiều connection cùng provider (vd. hai property GA4) vào
- * chung một điểm mỗi ngày thay vì vẽ N đường trùng ý nghĩa. */
-export const getChannelDailySeries = async (
-  siteId: string,
-  provider: ProviderId,
-  range: { readonly start: string; readonly end: string },
-): Promise<readonly ChannelDailyPoint[]> => {
-  const supabase = await createClient()
+interface DailyMetricsRow {
+  readonly date: string
+  readonly sessions: number
+  readonly users: number
+  readonly conversions: number
+  readonly clicks: number
+  readonly impressions: number
+  readonly cost_micros: number
+  readonly extra: unknown
+}
 
-  const { data: connections } = await supabase
-    .from('connections')
-    .select('id')
-    .eq('site_id', siteId)
-    .eq('provider', provider)
-
-  const connectionIds = (connections ?? []).map((row) => row.id)
-  if (connectionIds.length === 0) return []
-
-  const upperBound = SNAPSHOT_PROVIDERS.has(provider)
-    ? snapshotUpperBound(range.end)
-    : range.end
-
-  const { data: rows } = await supabase
-    .from('metrics_daily')
-    .select('date, sessions, users, conversions, clicks, impressions, cost_micros, extra')
-    .in('connection_id', connectionIds)
-    .gte('date', range.start)
-    .lte('date', upperBound)
-    .order('date', { ascending: true })
-
+/** Gộp các hàng `metrics_daily` (nhiều connection cùng provider, vd. hai
+ * property GA4) thành một điểm mỗi ngày — dùng chung bởi bản một-nền-tảng và
+ * bản nhiều-nền-tảng cùng lúc bên dưới, tránh lặp lại đúng một logic gộp hai
+ * lần. */
+const mergeDailyRows = (rows: readonly DailyMetricsRow[]): readonly ChannelDailyPoint[] => {
   const byDate = new Map<string, ChannelDailyPoint>()
 
-  for (const row of rows ?? []) {
+  for (const row of rows) {
     const extra = (row.extra ?? {}) as Record<string, number>
     const existing = byDate.get(row.date)
 
@@ -255,4 +246,96 @@ export const getChannelDailySeries = async (
   }
 
   return [...byDate.values()].sort((a, b) => a.date.localeCompare(b.date))
+}
+
+const DAILY_METRICS_COLUMNS =
+  'connection_id, date, sessions, users, conversions, clicks, impressions, cost_micros, extra'
+
+/** Chuỗi ngày thật của MỘT nền tảng — dùng vẽ biểu đồ xu hướng ở trang chi
+ * tiết kênh. Gộp nhiều connection cùng provider (vd. hai property GA4) vào
+ * chung một điểm mỗi ngày thay vì vẽ N đường trùng ý nghĩa. */
+export const getChannelDailySeries = async (
+  siteId: string,
+  provider: ProviderId,
+  range: { readonly start: string; readonly end: string },
+): Promise<readonly ChannelDailyPoint[]> => {
+  const supabase = await createClient()
+
+  const { data: connections } = await supabase
+    .from('connections')
+    .select('id')
+    .eq('site_id', siteId)
+    .eq('provider', provider)
+
+  const connectionIds = (connections ?? []).map((row) => row.id)
+  if (connectionIds.length === 0) return []
+
+  const upperBound = SNAPSHOT_PROVIDERS.has(provider)
+    ? snapshotUpperBound(range.end)
+    : range.end
+
+  const { data: rows } = await supabase
+    .from('metrics_daily')
+    .select('date, sessions, users, conversions, clicks, impressions, cost_micros, extra')
+    .in('connection_id', connectionIds)
+    .gte('date', range.start)
+    .lte('date', upperBound)
+    .order('date', { ascending: true })
+
+  return mergeDailyRows(rows ?? [])
+}
+
+/**
+ * Chuỗi ngày thật của MỌI nền tảng cùng lúc — dùng ở trang Tổng quan, nơi cả
+ * 10 provider cần vẽ biểu đồ xu hướng riêng trên cùng một lượt render.
+ *
+ * Thay vì gọi `getChannelDailySeries` cho từng provider (10 lượt `connections`
+ * + 10 lượt `metrics_daily` = 20 round-trip Supabase), hàm này gộp lại thành
+ * TỐI ĐA 3 round-trip: một lượt `connections` cho cả Site, rồi tối đa hai lượt
+ * `metrics_daily` (regular/snapshot) như `getChannelSummaries` — group theo
+ * provider ở tầng JS sau khi đã có toàn bộ hàng.
+ */
+export const getChannelDailySeriesByProvider = async (
+  siteId: string,
+  range: { readonly start: string; readonly end: string },
+): Promise<ReadonlyMap<ProviderId, readonly ChannelDailyPoint[]>> => {
+  const supabase = await createClient()
+
+  const { data: connections } = await supabase
+    .from('connections')
+    .select('id, provider')
+    .eq('site_id', siteId)
+
+  const { connectionIdToProvider, snapshotConnectionIds, regularConnectionIds } =
+    splitConnectionsBySnapshot(connections ?? [])
+
+  const [{ data: regularRows }, { data: snapshotRows }] = await Promise.all([
+    regularConnectionIds.length === 0
+      ? Promise.resolve({ data: [] })
+      : supabase
+          .from('metrics_daily')
+          .select(DAILY_METRICS_COLUMNS)
+          .in('connection_id', regularConnectionIds)
+          .gte('date', range.start)
+          .lte('date', range.end),
+    snapshotConnectionIds.length === 0
+      ? Promise.resolve({ data: [] })
+      : supabase
+          .from('metrics_daily')
+          .select(DAILY_METRICS_COLUMNS)
+          .in('connection_id', snapshotConnectionIds)
+          .gte('date', range.start)
+          .lte('date', snapshotUpperBound(range.end)),
+  ])
+
+  const rowsByProvider = new Map<ProviderId, DailyMetricsRow[]>()
+  for (const row of [...(regularRows ?? []), ...(snapshotRows ?? [])]) {
+    const provider = connectionIdToProvider.get(row.connection_id)
+    if (!provider) continue
+    const bucket = rowsByProvider.get(provider) ?? []
+    bucket.push(row)
+    rowsByProvider.set(provider, bucket)
+  }
+
+  return new Map(PROVIDERS.map((provider) => [provider, mergeDailyRows(rowsByProvider.get(provider) ?? [])]))
 }

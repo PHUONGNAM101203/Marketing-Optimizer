@@ -1,5 +1,6 @@
 import 'server-only'
 
+import { cache } from 'react'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { createClient } from '@/lib/supabase/server'
 import type { Database } from '@/lib/supabase/database.types'
@@ -52,7 +53,14 @@ export const listSites = async (): Promise<readonly Site[]> => {
   return (data ?? []).map(toSite)
 }
 
-export const getSite = async (siteId: string): Promise<Site | null> => {
+/**
+ * Bọc `cache()` — layout.tsx và page.tsx của cùng một request đều tự gọi lại
+ * hàm này (page không nhận Site qua prop vì layout không truyền context được
+ * xuống cho page song song trong App Router). `cache()` gộp các lệnh gọi
+ * trùng `siteId` trong CÙNG một lượt render server thành một round-trip
+ * Supabase duy nhất thay vì hai.
+ */
+export const getSite = cache(async (siteId: string): Promise<Site | null> => {
   const supabase = await createClient()
   const { data, error } = await supabase
     .from('sites')
@@ -65,7 +73,7 @@ export const getSite = async (siteId: string): Promise<Site | null> => {
   // trường hợp sẽ để lộ việc một Site có tồn tại hay không.
   if (error) throw new Error(`Không đọc được website: ${error.message}`)
   return data ? toSite(data as SiteRow) : null
-}
+})
 
 /**
  * Thành viên của một Site, kèm tên hiển thị.

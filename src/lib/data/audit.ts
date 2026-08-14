@@ -66,11 +66,18 @@ const toAuditRun = (row: AuditRunRow): AuditRun => {
   }
 }
 
+/** Mọi cột `toAuditRun` cần, KHÔNG gồm `page_signals` — blob JSONB lưu tín
+ * hiệu crawl thô của toàn bộ sitemap, chỉ `getLatestAuditPageSignals` bên
+ * dưới cần tới. Trang Tổng quan gọi hàm này trên MỌI lượt render (kể cả mỗi
+ * lần đổi khoảng ngày) nên kéo cả blob đó qua dây mỗi lần là phí. */
+const AUDIT_RUN_COLUMNS =
+  'id, site_id, status, pages_scanned, sitemap_url_count, truncated, blocked_by_bot_protection, seo_score, geo_score, aio_score, findings, page_citability, site_profile, pagespeed, error, started_at, completed_at'
+
 export const getLatestAuditRun = async (siteId: string): Promise<AuditRun | null> => {
   const supabase = await createClient()
   const { data, error } = await supabase
     .from('audit_runs')
-    .select('*')
+    .select(AUDIT_RUN_COLUMNS)
     .eq('site_id', siteId)
     .order('started_at', { ascending: false })
     .limit(1)

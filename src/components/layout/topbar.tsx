@@ -1,14 +1,14 @@
 'use client'
 
 import Link from 'next/link'
+import dynamic from 'next/dynamic'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
-import { useActionState, useState } from 'react'
+import { useActionState, useState, useTransition } from 'react'
 import { Calendar, Check, ChevronDown, Plus, RefreshCw, Search } from 'lucide-react'
 import { DropdownMenu } from 'radix-ui'
 import { cn } from '@/lib/cn'
 import { Button } from '@/components/ui/button'
 import { StatusDot } from '@/components/ui/badge'
-import { DatePickerField } from '@/components/ui/date-picker-field'
 import { DialogContent, DialogRoot } from '@/components/ui/dialog'
 import { ThemeToggle } from '@/components/layout/theme-toggle'
 import { SiteFavicon } from '@/components/brand/site-favicon'
@@ -28,6 +28,15 @@ import { formatDateRange, formatRelativeTime } from '@/lib/format'
  * của page con trong App Router. Đổi preset = điều hướng, để mỗi trang con tự
  * đọc lại `?range=` khi render lại phía server.
  */
+
+// react-day-picker + date-fns chỉ cần khi mở dialog "Tuỳ chỉnh…" — tách
+// khỏi bundle JS của Topbar (render trên MỌI trang) thay vì buộc mọi lượt tải
+// trang đầu tiên phải tải cả thư viện lịch dù phần lớn người dùng chỉ bấm
+// preset có sẵn.
+const DatePickerField = dynamic(
+  () => import('@/components/ui/date-picker-field').then((mod) => mod.DatePickerField),
+  { ssr: false },
+)
 
 const DATE_PRESETS: readonly DateRangePreset[] = [
   'today',
@@ -212,13 +221,20 @@ function DateRangeMenu({
   const [customDialogOpen, setCustomDialogOpen] = useState(false)
   const [from, setFrom] = useState(customRange?.start ?? '')
   const [to, setTo] = useState(customRange?.end ?? '')
+  // Đổi khoảng ngày = điều hướng, đợi cả trang render lại phía server. Không
+  // bọc trong transition thì nút bấm không đổi trạng thái gì cho tới khi
+  // trang mới xong hẳn — CẢM GIÁC như bấm không ăn. `isPending` cho nút biết
+  // để tự hiện spinner ngay lập tức.
+  const [isPending, startTransition] = useTransition()
 
   const choose = (next: DateRangePreset) => {
     const params = new URLSearchParams(searchParams.toString())
     params.set('range', next)
     params.delete('from')
     params.delete('to')
-    router.push(`${pathname}?${params.toString()}`)
+    startTransition(() => {
+      router.push(`${pathname}?${params.toString()}`, { scroll: false })
+    })
   }
 
   const applyCustom = () => {
@@ -227,8 +243,10 @@ function DateRangeMenu({
     params.set('range', 'custom')
     params.set('from', from)
     params.set('to', to)
-    router.push(`${pathname}?${params.toString()}`)
     setCustomDialogOpen(false)
+    startTransition(() => {
+      router.push(`${pathname}?${params.toString()}`, { scroll: false })
+    })
   }
 
   const triggerLabel =
@@ -240,7 +258,12 @@ function DateRangeMenu({
     <>
       <DropdownMenu.Root>
         <DropdownMenu.Trigger asChild>
-          <Button variant="secondary" size="sm" className="gap-1.5">
+          <Button
+            variant="secondary"
+            size="sm"
+            className="gap-1.5"
+            state={isPending ? 'loading' : 'idle'}
+          >
             {triggerLabel}
             <ChevronDown aria-hidden className="size-3.5" />
           </Button>

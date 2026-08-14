@@ -1,5 +1,6 @@
 import 'server-only'
 
+import { cache } from 'react'
 import { createClient } from '@/lib/supabase/server'
 import type { Connection, ConnectionStatus } from '@/lib/domain/connection'
 import { hasUsableData } from '@/lib/domain/connection'
@@ -54,7 +55,11 @@ const toConnection = (row: ConnectionRow): Connection | null => {
   }
 }
 
-export const listConnections = async (
+/**
+ * Bọc `cache()` cùng lý do với `getSite` — layout.tsx (qua `getConnectionSummary`)
+ * và trang `/connections` đều tự gọi lại trong cùng một request.
+ */
+export const listConnections = cache(async (
   siteId: string,
 ): Promise<readonly Connection[]> => {
   const supabase = await createClient()
@@ -69,7 +74,7 @@ export const listConnections = async (
   return ((data ?? []) as ConnectionRow[])
     .map(toConnection)
     .filter((connection): connection is Connection => connection !== null)
-}
+})
 
 export interface ConnectionSummary {
   readonly all: readonly Connection[]
