@@ -157,6 +157,14 @@ export interface TiktokExplore {
     readonly likes: number
     readonly comments: number
     readonly shares: number
+    /** ISO 8601, dựng từ `create_time` (Unix giây) — `null` nếu TikTok bỏ
+     * trống field này (đã xảy ra trong thực tế, xem điều kiện lọc bên dưới
+     * chấp nhận `create_time === undefined`). */
+    readonly createdAt: string | null
+    /** Link xem video gốc trên tiktok.com — `null` nếu TikTok không trả field
+     * này cho video đó (chưa xác nhận field luôn có mặt, CHƯA chạy thử với
+     * app thật, xem docblock đầu file). */
+    readonly shareUrl: string | null
   }[]
   /** `null` = tải thành công (danh sách CÓ THỂ rỗng — chọn khoảng ngày cũ
    * hơn video gần nhất, hoặc video không công khai — đó là trạng thái bình
@@ -180,6 +188,7 @@ interface TiktokVideoItem {
   readonly comment_count?: number
   readonly share_count?: number
   readonly create_time?: number
+  readonly share_url?: string
 }
 
 export const fetchTiktokContentExplore = async (
@@ -189,7 +198,7 @@ export const fetchTiktokContentExplore = async (
   const url = new URL(VIDEO_LIST_ENDPOINT)
   url.searchParams.set(
     'fields',
-    'id,title,video_description,cover_image_url,view_count,like_count,comment_count,share_count,create_time',
+    'id,title,video_description,cover_image_url,view_count,like_count,comment_count,share_count,create_time,share_url',
   )
 
   const response = await fetch(url.toString(), {
@@ -233,6 +242,8 @@ export const fetchTiktokContentExplore = async (
       likes: video.like_count ?? 0,
       comments: video.comment_count ?? 0,
       shares: video.share_count ?? 0,
+      createdAt: video.create_time ? new Date(video.create_time * 1000).toISOString() : null,
+      shareUrl: video.share_url ?? null,
     }))
     .sort((a, b) => b.views - a.views)
     .slice(0, 10)
