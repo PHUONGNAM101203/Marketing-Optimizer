@@ -615,6 +615,53 @@ export type Database = {
           },
         ]
       }
+      video_metrics_daily: {
+        Row: {
+          comments: number
+          connection_id: string
+          cover_image_url: string | null
+          date: string
+          external_video_id: string
+          likes: number
+          shares: number
+          synced_at: string
+          title: string | null
+          views: number
+        }
+        Insert: {
+          comments?: number
+          connection_id: string
+          cover_image_url?: string | null
+          date: string
+          external_video_id: string
+          likes?: number
+          shares?: number
+          synced_at?: string
+          title?: string | null
+          views?: number
+        }
+        Update: {
+          comments?: number
+          connection_id?: string
+          cover_image_url?: string | null
+          date?: string
+          external_video_id?: string
+          likes?: number
+          shares?: number
+          synced_at?: string
+          title?: string | null
+          views?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "video_metrics_daily_connection_id_fkey"
+            columns: ["connection_id"]
+            isOneToOne: false
+            referencedRelation: "connections"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
