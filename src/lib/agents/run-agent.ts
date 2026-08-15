@@ -1,13 +1,14 @@
 import 'server-only'
 
-import { getAgent, createRun, appendRunStep, finishRun, setAgentLastRunAt } from '@/lib/data/agents'
-import { getPrompt } from '@/lib/data/prompts'
-import { getSite } from '@/lib/data/sites'
+import { createRun, appendRunStep, finishRun, setAgentLastRunAt } from '@/lib/data/agents'
 import { resolveVariables, VariableResolutionError } from '@/lib/prompts/resolve-variables'
 import { callClaude, extractText, DEFAULT_CLAUDE_MODEL } from '@/lib/providers/anthropic'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { TOOL_REGISTRY } from './tools'
 import { isWriteTool } from '@/lib/domain/agent'
-import type { AgentToolName } from '@/lib/domain/agent'
+import type { AgentTool, AgentToolName } from '@/lib/domain/agent'
+import type { PromptVariable } from '@/lib/domain/prompt'
+import type { Site } from '@/lib/domain/site'
 import type Anthropic from '@anthropic-ai/sdk'
 
 const MAX_ROUNDS = 8
@@ -23,137 +24,267 @@ const defaultRange = (): { readonly start: string; readonly end: string } => {
   return { start: toIso(start), end: toIso(end) }
 }
 
+type AdminClient = ReturnType<typeof createAdminClient>
+
+interface RunAgentRow {
+  readonly siteId: string
+  readonly promptId: string
+  readonly tools: readonly AgentTool[]
+}
+
+interface RunPromptRow {
+  readonly variables: readonly PromptVariable[]
+  readonly currentVersionId: string | null
+}
+
+interface RunPromptVersionRow {
+  readonly systemPrompt: string
+  readonly userTemplate: string
+}
+
+/**
+ * `runAgent` chỉ chạy trong `after()`/cron (Task 14/16) — KHÔNG có phiên
+ * người dùng, KHÔNG có request-scoped cookie. `getAgent`/`getPrompt`/
+ * `getSite` (`src/lib/data/*.ts`) đều gọi `createClient()` đọc cookie qua
+ * `next/headers`, đúng cho nơi có phiên (render trang, Server Action), NHƯNG
+ * gọi `cookies()` bên trong `after()` sau khi response đã trả thì Next ném
+ * lỗi runtime (xem comment ở `setLastSiteId`, `src/lib/data/sites.ts`) — trên
+ * đường cron thì cookie rỗng nên RLS lọc về 0 hàng, cũng hỏng, chỉ là hỏng
+ * kiểu khác. Vì vậy bốn hàm dưới đây tự đọc thẳng bằng admin client (bỏ qua
+ * RLS có chủ đích, giống `createRun`/`appendRunStep`/`finishRun` ở Task 11) —
+ * không đụng vào `getAgent`/`getPrompt`/`getSite`, những hàm đó vẫn đúng và
+ * cần giữ nguyên cho các nơi gọi khác (render trang, Server Action).
+ */
+const fetchAgentRow = async (admin: AdminClient, agentId: string): Promise<RunAgentRow | null> => {
+  const { data, error } = await admin.from('agents').select('site_id, prompt_id, tools').eq('id', agentId).maybeSingle()
+  if (error) throw new Error(`Không đọc được agent: ${error.message}`)
+  if (!data) return null
+  return { siteId: data.site_id, promptId: data.prompt_id, tools: data.tools as unknown as readonly AgentTool[] }
+}
+
+const fetchPromptRow = async (admin: AdminClient, promptId: string): Promise<RunPromptRow | null> => {
+  const { data, error } = await admin.from('prompts').select('variables, current_version_id').eq('id', promptId).maybeSingle()
+  if (error) throw new Error(`Không đọc được prompt: ${error.message}`)
+  if (!data) return null
+  return { variables: data.variables as unknown as readonly PromptVariable[], currentVersionId: data.current_version_id }
+}
+
+const fetchPromptVersionRow = async (admin: AdminClient, versionId: string): Promise<RunPromptVersionRow | null> => {
+  const { data, error } = await admin.from('prompt_versions').select('system_prompt, user_template').eq('id', versionId).maybeSingle()
+  if (error) throw new Error(`Không đọc được bản prompt: ${error.message}`)
+  if (!data) return null
+  return { systemPrompt: data.system_prompt, userTemplate: data.user_template }
+}
+
+const fetchSiteRow = async (admin: AdminClient, siteId: string): Promise<Site | null> => {
+  const { data, error } = await admin.from('sites').select('*').eq('id', siteId).maybeSingle()
+  if (error) throw new Error(`Không đọc được website: ${error.message}`)
+  if (!data) return null
+  return {
+    id: data.id,
+    ownerId: data.owner_id,
+    name: data.name,
+    url: data.url,
+    domain: data.domain,
+    timezone: data.timezone,
+    currency: data.currency,
+    country: data.country,
+    createdAt: data.created_at,
+    llmsTxtContent: data.llms_txt_content,
+    llmsTxtGeneratedAt: data.llms_txt_generated_at,
+  }
+}
+
 /**
  * Vòng lặp tool-calling của agent.
  *
  * BẤT BIẾN AN TOÀN (nửa còn lại của Task 12 — registry tool không bao giờ ghi
- * ra ngoài): ngay khi MỘT round có bất kỳ tool_use nào mà `isWriteTool` trả
- * true, hàm gọi `finishRun` với status 'pending-approval' rồi `return` NGAY —
- * không có đường nào trong hàm này quay lại gọi `callClaude` sau đó, kể cả
- * khi model cũng xin gọi tool đọc trong cùng round đó. Mọi tool trong round
- * (đọc lẫn ghi) vẫn được thực thi và ghi step trước khi return — chỉ là
- * không có round tiếp theo được mở ra.
+ * ra ngoài): ngay khi MỘT round có bất kỳ tool_use nào MÀ THỰC SỰ ĐƯỢC THỰC
+ * THI (tức là tool đó được agent bật VÀ `isWriteTool` trả true), hàm gọi
+ * `finishRun` với status 'pending-approval' rồi `return` NGAY — không có
+ * đường nào trong hàm này quay lại gọi `callClaude` sau đó, kể cả khi model
+ * cũng xin gọi tool đọc trong cùng round đó. Mọi tool trong round (đọc lẫn
+ * ghi, kể cả tool không được bật) vẫn được ghi step trước khi return — chỉ
+ * là không có round tiếp theo được mở ra.
  */
 export const runAgent = async (agentId: string, trigger: 'schedule' | 'manual'): Promise<void> => {
-  const agent = await getAgent(agentId)
-  if (!agent) return
+  const admin = createAdminClient()
 
-  const [prompt, site] = await Promise.all([getPrompt(agent.promptId), getSite(agent.siteId)])
-  if (!prompt || !site) return
+  const agentRow = await fetchAgentRow(admin, agentId)
+  if (!agentRow) return
 
-  const run = await createRun({ agentId, siteId: agent.siteId, trigger })
+  const [promptRow, site] = await Promise.all([fetchPromptRow(admin, agentRow.promptId), fetchSiteRow(admin, agentRow.siteId)])
+  if (!promptRow || !site) return
+
+  const run = await createRun({ agentId, siteId: agentRow.siteId, trigger })
   const range = defaultRange()
-
-  let resolvedVars: Readonly<Record<string, string>>
-  try {
-    resolvedVars = await resolveVariables({
-      variables: prompt.variables,
-      site,
-      range,
-      manualInputs: {},
-    })
-  } catch (error) {
-    const message = error instanceof VariableResolutionError ? error.message : 'Lỗi không xác định khi điền biến prompt'
-    await appendRunStep(run.id, { kind: 'output', tool: null, content: message, at: new Date().toISOString() })
-    await finishRun(run.id, { status: 'failed', summary: message, tokensUsed: 0 })
-    return
-  }
-
-  const currentVersion = prompt.versions.find((v) => v.id === prompt.currentVersionId)
-  if (!currentVersion) {
-    await finishRun(run.id, { status: 'failed', summary: 'Prompt không có bản hiện tại', tokensUsed: 0 })
-    return
-  }
-
-  let filledTemplate = currentVersion.userTemplate
-  for (const [name, value] of Object.entries(resolvedVars)) {
-    filledTemplate = filledTemplate.replaceAll(`{{${name}}}`, value)
-  }
-
-  const enabledTools = agent.tools.filter((t) => t.enabled).map((t) => t.name)
-  const toolDefs = enabledTools.map((name) => ({
-    name,
-    description: TOOL_REGISTRY[name].description,
-    inputSchema: TOOL_REGISTRY[name].inputSchema,
-  }))
-
-  const messages: { role: 'user' | 'assistant'; content: Anthropic.MessageParam['content'] }[] = [
-    { role: 'user', content: filledTemplate },
-  ]
-
   let totalTokens = 0
 
-  for (let round = 0; round < MAX_ROUNDS; round += 1) {
-    const { message } = await callClaude({
-      systemPrompt: currentVersion.systemPrompt,
-      messages,
-      model: DEFAULT_CLAUDE_MODEL,
-      tools: toolDefs,
-    })
-
-    totalTokens += message.usage.input_tokens + message.usage.output_tokens
-
-    const textBlocks = message.content.filter((b): b is Anthropic.TextBlock => b.type === 'text')
-    for (const block of textBlocks) {
-      await appendRunStep(run.id, { kind: 'thought', tool: null, content: block.text, at: new Date().toISOString() })
-    }
-
-    if (message.stop_reason !== 'tool_use') {
-      const finalText = extractText(message)
-      await appendRunStep(run.id, { kind: 'output', tool: null, content: finalText, at: new Date().toISOString() })
-      await finishRun(run.id, { status: 'succeeded', summary: finalText, tokensUsed: totalTokens })
+  try {
+    const currentVersion = promptRow.currentVersionId ? await fetchPromptVersionRow(admin, promptRow.currentVersionId) : null
+    if (!currentVersion) {
+      await finishRun(run.id, { status: 'failed', summary: 'Prompt không có bản hiện tại', tokensUsed: 0 })
       await setAgentLastRunAt(agentId, new Date().toISOString())
       return
     }
 
-    const toolUseBlocks = message.content.filter((b): b is Anthropic.ToolUseBlock => b.type === 'tool_use')
-    messages.push({ role: 'assistant', content: message.content })
+    let resolvedVars: Readonly<Record<string, string>>
+    try {
+      resolvedVars = await resolveVariables({
+        variables: promptRow.variables,
+        site,
+        range,
+        manualInputs: {},
+      })
+    } catch (error) {
+      const message = error instanceof VariableResolutionError ? error.message : 'Lỗi không xác định khi điền biến prompt'
+      await appendRunStep(run.id, { kind: 'output', tool: null, content: message, at: new Date().toISOString() })
+      await finishRun(run.id, { status: 'failed', summary: message, tokensUsed: 0 })
+      await setAgentLastRunAt(agentId, new Date().toISOString())
+      return
+    }
 
-    const hasWriteTool = toolUseBlocks.some((block) => isWriteTool(block.name as AgentToolName))
+    let filledTemplate = currentVersion.userTemplate
+    for (const [name, value] of Object.entries(resolvedVars)) {
+      filledTemplate = filledTemplate.replaceAll(`{{${name}}}`, value)
+    }
 
-    const toolResults: Anthropic.ToolResultBlockParam[] = []
-    for (const block of toolUseBlocks) {
-      const toolName = block.name as AgentToolName
-      await appendRunStep(run.id, {
-        kind: 'tool-call',
-        tool: toolName,
-        content: JSON.stringify(block.input),
-        at: new Date().toISOString(),
+    const enabledToolNames = new Set<AgentToolName>(agentRow.tools.filter((t) => t.enabled).map((t) => t.name))
+    const toolDefs = [...enabledToolNames].map((name) => ({
+      name,
+      description: TOOL_REGISTRY[name].description,
+      inputSchema: TOOL_REGISTRY[name].inputSchema,
+    }))
+
+    const messages: { role: 'user' | 'assistant'; content: Anthropic.MessageParam['content'] }[] = [
+      { role: 'user', content: filledTemplate },
+    ]
+
+    for (let round = 0; round < MAX_ROUNDS; round += 1) {
+      const { message } = await callClaude({
+        systemPrompt: currentVersion.systemPrompt,
+        messages,
+        model: DEFAULT_CLAUDE_MODEL,
+        tools: toolDefs,
       })
 
-      const definition = TOOL_REGISTRY[toolName]
-      const resultText = definition
-        ? await definition.run(block.input as Record<string, unknown>, {
-            siteId: agent.siteId,
+      totalTokens += message.usage.input_tokens + message.usage.output_tokens
+
+      if (message.stop_reason !== 'tool_use') {
+        // Chỉ ghi MỘT step 'output' cho lượt kết thúc — `extractText` đã gộp
+        // đúng những text block này rồi, ghi thêm 'thought' nữa là lặp y hệt
+        // nội dung trong transcript.
+        const finalText = extractText(message)
+        await appendRunStep(run.id, { kind: 'output', tool: null, content: finalText, at: new Date().toISOString() })
+
+        if (message.stop_reason === 'end_turn') {
+          await finishRun(run.id, { status: 'succeeded', summary: finalText, tokensUsed: totalTokens })
+        } else {
+          // max_tokens/refusal/stop_sequence/pause_turn/... KHÔNG phải một
+          // phân tích đã hoàn tất — coi là thất bại và nêu rõ lý do dừng để
+          // phân biệt với kết thúc bình thường.
+          const reasonLabel = message.stop_reason ?? 'không rõ'
+          await finishRun(run.id, {
+            status: 'failed',
+            summary: `Dừng bất thường (${reasonLabel}): ${finalText}`,
+            tokensUsed: totalTokens,
+          })
+        }
+        await setAgentLastRunAt(agentId, new Date().toISOString())
+        return
+      }
+
+      const textBlocks = message.content.filter((b): b is Anthropic.TextBlock => b.type === 'text')
+      for (const block of textBlocks) {
+        await appendRunStep(run.id, { kind: 'thought', tool: null, content: block.text, at: new Date().toISOString() })
+      }
+
+      const toolUseBlocks = message.content.filter((b): b is Anthropic.ToolUseBlock => b.type === 'tool_use')
+      messages.push({ role: 'assistant', content: message.content })
+
+      let hasWriteTool = false
+      const toolResults: Anthropic.ToolResultBlockParam[] = []
+
+      for (const block of toolUseBlocks) {
+        const toolName = block.name as AgentToolName
+        await appendRunStep(run.id, {
+          kind: 'tool-call',
+          tool: toolName,
+          content: JSON.stringify(block.input),
+          at: new Date().toISOString(),
+        })
+
+        // Phòng vệ theo chiều sâu: `toolDefs` gửi cho Claude đã lọc theo tool
+        // được bật, nhưng model vẫn có thể trả về tên tool KHÔNG nằm trong đó
+        // (bịa tên, hoặc gọi một tool đã tắt) — không chạy tool đó, kể cả khi
+        // nó tồn tại trong TOOL_REGISTRY.
+        const isOffered = enabledToolNames.has(toolName)
+        const definition = isOffered ? TOOL_REGISTRY[toolName] : undefined
+
+        let resultText: string
+        if (!isOffered) {
+          resultText = `Tool "${toolName}" không được agent này bật, bỏ qua.`
+        } else if (!definition) {
+          resultText = `Tool "${toolName}" không tồn tại.`
+        } else {
+          if (isWriteTool(toolName)) hasWriteTool = true
+          resultText = await definition.run(block.input as Record<string, unknown>, {
+            siteId: agentRow.siteId,
             runId: run.id,
             range,
             currency: site.currency,
           })
-        : `Tool "${toolName}" không tồn tại.`
+        }
 
-      await appendRunStep(run.id, { kind: 'tool-result', tool: toolName, content: resultText, at: new Date().toISOString() })
-      toolResults.push({ type: 'tool_result', tool_use_id: block.id, content: resultText })
+        await appendRunStep(run.id, { kind: 'tool-result', tool: toolName, content: resultText, at: new Date().toISOString() })
+        toolResults.push({ type: 'tool_result', tool_use_id: block.id, content: resultText })
+      }
+
+      if (hasWriteTool) {
+        // Bất biến an toàn: dừng HẲN ngay khi có write-tool ĐÃ THỰC THI,
+        // không cho vòng lặp tiếp tục dù model muốn làm gì thêm — xem
+        // domain/agent.ts.
+        await finishRun(run.id, {
+          status: 'pending-approval',
+          summary: 'Agent đã đề xuất một hành động, đang chờ duyệt.',
+          tokensUsed: totalTokens,
+        })
+        await setAgentLastRunAt(agentId, new Date().toISOString())
+        return
+      }
+
+      messages.push({ role: 'user', content: toolResults })
     }
 
-    if (hasWriteTool) {
-      // Bất biến an toàn: dừng HẲN ngay khi có write-tool, không cho vòng
-      // lặp tiếp tục dù model muốn làm gì thêm — xem domain/agent.ts.
-      await finishRun(run.id, {
-        status: 'pending-approval',
-        summary: 'Agent đã đề xuất một hành động, đang chờ duyệt.',
-        tokensUsed: totalTokens,
-      })
+    await finishRun(run.id, {
+      status: 'failed',
+      summary: `Vượt số vòng lặp tối đa (${MAX_ROUNDS}) mà chưa có kết luận.`,
+      tokensUsed: totalTokens,
+    })
+    await setAgentLastRunAt(agentId, new Date().toISOString())
+  } catch (error) {
+    // Bất kỳ throw nào chưa được bắt ở trên (callClaude lỗi mạng/429/500,
+    // appendRunStep/finishRun lỗi Supabase, tool.run() ném lỗi, ...) đều rơi
+    // vào đây — không được để run kẹt mãi ở status='running'/finished_at=null:
+    // một pending action thật (nếu round đó vừa tạo trước khi lỗi) sẽ treo
+    // dưới một run trông như đang chạy mãi mãi, và cron dựa vào last_run_at
+    // sẽ cứ chọn lại + tính phí lại agent này.
+    const message = error instanceof Error ? error.message : String(error)
+    try {
+      await appendRunStep(run.id, { kind: 'output', tool: null, content: `Lỗi không xử lý được: ${message}`, at: new Date().toISOString() })
+    } catch {
+      // Best-effort — không để lỗi ghi step che mất lỗi gốc phía trên.
+    }
+    try {
+      await finishRun(run.id, { status: 'failed', summary: message, tokensUsed: totalTokens })
+    } catch {
+      // Best-effort — nếu chính finishRun cũng lỗi thì không còn gì an toàn
+      // để thử lại ở đây nữa.
+    }
+    try {
       await setAgentLastRunAt(agentId, new Date().toISOString())
-      return
+    } catch {
+      // Best-effort.
     }
-
-    messages.push({ role: 'user', content: toolResults })
   }
-
-  await finishRun(run.id, {
-    status: 'failed',
-    summary: `Vượt số vòng lặp tối đa (${MAX_ROUNDS}) mà chưa có kết luận.`,
-    tokensUsed: totalTokens,
-  })
-  await setAgentLastRunAt(agentId, new Date().toISOString())
 }
