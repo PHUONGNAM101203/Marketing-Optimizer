@@ -24,7 +24,7 @@
 ### Task 1: Prompt Studio tables (migration)
 
 **Files:**
-- Create: `supabase/migrations/20260814000008_prompts.sql`
+- Create: `supabase/migrations/20260814000010_prompts.sql`
 
 **Interfaces:**
 - Produces: tables `prompts`, `prompt_versions`, `prompt_runs` — columns as below, consumed by Task 7's `data/prompts.ts`.
@@ -134,7 +134,7 @@ migration file itself is still committed and will apply on next deploy.
 - [ ] **Step 3: Commit**
 
 ```bash
-git add supabase/migrations/20260814000008_prompts.sql
+git add supabase/migrations/20260814000010_prompts.sql
 git commit -m "feat: add prompts/prompt_versions/prompt_runs tables"
 ```
 
@@ -143,7 +143,7 @@ git commit -m "feat: add prompts/prompt_versions/prompt_runs tables"
 ### Task 2: Agents tables (migration)
 
 **Files:**
-- Create: `supabase/migrations/20260814000009_agents.sql`
+- Create: `supabase/migrations/20260814000011_agents.sql`
 
 **Interfaces:**
 - Consumes: `public.prompts` (Task 1) via `prompt_id` FK.
@@ -255,7 +255,7 @@ Run: `supabase db push`
 - [ ] **Step 3: Commit**
 
 ```bash
-git add supabase/migrations/20260814000009_agents.sql
+git add supabase/migrations/20260814000011_agents.sql
 git commit -m "feat: add agents/agent_runs/pending_actions tables"
 ```
 
