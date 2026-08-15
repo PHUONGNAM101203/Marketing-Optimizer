@@ -1,5 +1,4 @@
-import { AlertTriangle } from 'lucide-react'
-import { Card } from '@/components/ui/card'
+import { AlertTriangle, ImageOff } from 'lucide-react'
 import { Callout, EmptyState } from '@/components/ui/feedback'
 import { DialogRoot, DialogTrigger } from '@/components/ui/dialog'
 import { MetaPostDetailDialog } from './meta-post-detail-dialog'
@@ -22,12 +21,13 @@ export interface MetaPostItem {
 
 /* Hallmark · component: meta-post-list · theme: studied-DNA (Ink & Signal)
  *
- * Dùng chung cho Facebook và Instagram, cả tab Tổng quan lẫn widget xếp
- * hạng ở Dashboard — component không biết gì về nền tảng, chỉ nhận sẵn
- * `metrics` (2 mục cho Instagram, 3 cho Facebook) đã được chuẩn bị ở nơi
- * gọi (channel-detail-body.tsx), giống cách `TiktokVideoRankingList` tách
- * dữ liệu khỏi hình dạng hiển thị — không phải component TikTok, cố tình
- * không tái dùng để không đụng file đã lên production (xem spec).
+ * Lưới thẻ (không phải danh sách hàng ngang) — theo quyết định của người
+ * dùng, cùng ngôn ngữ hình ảnh với `VideoCardGrid` cũ (ảnh lớn trên, caption
+ * + số liệu dưới). Dùng chung cho Facebook và Instagram, cả tab Tổng quan
+ * lẫn 2 widget xếp hạng ở Dashboard — component không biết gì về nền tảng,
+ * chỉ nhận sẵn `metrics` (2 mục cho Instagram, 3 cho Facebook) đã chuẩn bị ở
+ * nơi gọi. Không có số thứ hạng trên thẻ — thứ tự đọc trái-qua-phải,
+ * trên-xuống đã ngầm thể hiện xếp hạng, giống quy ước của `VideoCardGrid`.
  */
 export function MetaPostList({
   posts,
@@ -55,54 +55,47 @@ export function MetaPostList({
   }
 
   return (
-    <Card className="flex flex-col divide-y divide-[var(--color-rule)] overflow-hidden p-0">
+    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
       {posts.map((post, index) => (
         <DialogRoot key={index}>
           <DialogTrigger asChild>
             <button
               type="button"
-              className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors duration-[var(--dur-fast)] ease-[var(--ease-out)] hover:bg-[var(--color-paper-3)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-focus)]"
+              className="flex flex-col overflow-hidden rounded-[var(--radius-lg)] border border-[var(--color-rule)] bg-[var(--color-paper)] text-left transition-colors duration-[var(--dur-fast)] ease-[var(--ease-out)] hover:bg-[var(--color-paper-3)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-focus)]"
             >
-              <span
-                data-numeric
-                className="w-5 shrink-0 text-[length:var(--text-sm)] font-semibold text-[var(--color-ink-3)]"
-              >
-                {index + 1}
-              </span>
               {post.thumbnailUrl ? (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={post.thumbnailUrl}
-                  alt=""
-                  className="size-10 shrink-0 rounded-[var(--radius-sm)] object-cover"
-                />
+                <img src={post.thumbnailUrl} alt="" className="aspect-video w-full object-cover" />
               ) : (
-                <div className="size-10 shrink-0 rounded-[var(--radius-sm)] bg-[var(--color-paper-3)]" />
+                <div className="flex aspect-video w-full items-center justify-center bg-[var(--color-paper-3)]">
+                  <ImageOff aria-hidden className="size-6 text-[var(--color-ink-3)]" />
+                </div>
               )}
-              <div className="min-w-0 flex-1">
+              <div className="flex flex-1 flex-col gap-2 p-4">
                 <p
-                  className="truncate text-[length:var(--text-sm)] text-[var(--color-ink)]"
+                  className="line-clamp-2 text-[length:var(--text-sm)] font-medium text-[var(--color-ink)]"
                   title={post.title}
                 >
                   {post.title}
                 </p>
                 {post.createdAt ? (
-                  <p className="mt-0.5 text-[length:var(--text-2xs)] text-[var(--color-ink-3)]">
+                  <p className="text-[length:var(--text-2xs)] text-[var(--color-ink-3)]">
                     {formatDate(post.createdAt.slice(0, 10))}
                   </p>
                 ) : null}
-              </div>
-              <div className="flex shrink-0 items-center gap-3">
-                {post.metrics.map((metric, metricIndex) => (
-                  <span
-                    key={metricIndex}
-                    data-numeric
-                    className="flex items-center gap-1 text-[length:var(--text-sm)] font-medium text-[var(--color-ink)]"
-                  >
-                    <metric.icon aria-hidden className="size-3.5 text-[var(--color-ink-3)]" />
-                    {formatCompact(metric.value)}
-                  </span>
-                ))}
+                <div className="mt-auto grid grid-cols-2 gap-2 pt-2">
+                  {post.metrics.map((metric, metricIndex) => (
+                    <span
+                      key={metricIndex}
+                      className="flex items-center gap-1.5 text-[length:var(--text-xs)] text-[var(--color-ink-2)]"
+                    >
+                      <metric.icon aria-hidden className="size-3.5 shrink-0 text-[var(--color-ink-3)]" />
+                      <span data-numeric className="font-medium text-[var(--color-ink)]">
+                        {formatCompact(metric.value)}
+                      </span>
+                    </span>
+                  ))}
+                </div>
               </div>
             </button>
           </DialogTrigger>
@@ -110,6 +103,6 @@ export function MetaPostList({
           <MetaPostDetailDialog post={post} />
         </DialogRoot>
       ))}
-    </Card>
+    </div>
   )
 }
