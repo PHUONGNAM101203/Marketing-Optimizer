@@ -31,7 +31,7 @@ import {
 } from '@/lib/providers/meta-explore'
 import { fetchTiktokContentExplore, type TiktokExplore } from '@/lib/providers/tiktok'
 import { getGoogleAdsDeveloperToken } from './site-oauth-apps'
-import { resolveAccessToken } from '@/lib/sync/access-token'
+import { resolveAccessToken, resolvePageAccessToken } from '@/lib/sync/access-token'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
 
@@ -218,7 +218,14 @@ export const getChannelDetail = async (
   if (!isProviderId(provider)) return { kind: 'unsupported' }
 
   const admin = createAdminClient()
-  const tokenResult = await resolveAccessToken(admin, connection.id, siteId, provider)
+  // facebook/instagram: `/published_posts`/`/media` là edge cấp Page, từ
+  // chối User token với HTTP 403 — cần Page access token riêng, xem
+  // `resolvePageAccessToken` (`sync/access-token.ts`). Mọi provider khác giữ
+  // nguyên `resolveAccessToken` (User token), không đổi hành vi.
+  const tokenResult =
+    provider === 'facebook' || provider === 'instagram'
+      ? await resolvePageAccessToken(admin, connection.id, siteId, provider)
+      : await resolveAccessToken(admin, connection.id, siteId, provider)
   if (!tokenResult.ok) return { kind: 'unsupported' }
 
   const accountName = connection.account_name

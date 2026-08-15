@@ -6,7 +6,7 @@ import { getGoogleAdsDeveloperToken } from '@/lib/data/site-oauth-apps'
 import { isProviderId } from '@/lib/domain/providers'
 import { METRICS_ADAPTERS } from '@/lib/providers'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { resolveAccessToken } from './access-token'
+import { resolveAccessToken, resolvePageAccessToken } from './access-token'
 import { syncContentSnapshots } from './sync-content-snapshots'
 import { syncTiktokVideoSnapshots } from './sync-video-snapshots'
 
@@ -47,13 +47,32 @@ export async function syncConnection(connectionId: string): Promise<SyncResult> 
   const metricsAdapter = METRICS_ADAPTERS[connection.provider]
   if (!metricsAdapter) return { ok: false, error: 'metrics-not-ready' }
 
-  const tokenResult = await resolveAccessToken(
-    admin,
-    connectionId,
-    connection.site_id,
-    connection.provider,
-  )
-  if (!tokenResult.ok) return { ok: false, error: tokenResult.error }
+  // facebook/instagram: mọi edge cấp Page (fetchDailyMetrics đọc /insights,
+  // content snapshot đọc /published_posts và /media) cần Page access token,
+  // KHÁC User token mà `resolveAccessToken` trả cho mọi provider khác — xem
+  // `resolvePageAccessToken` trong `access-token.ts`. Đây là nơi DUY NHẤT
+  // `accessToken` biến thành Page token; mọi biến khác trong hàm này (kể cả
+  // `syncTiktokVideoSnapshots` bên dưới) không đụng tới nhánh này.
+  const tokenResult =
+    connection.provider === 'facebook' || connection.provider === 'instagram'
+      ? await resolvePageAccessToken(admin, connectionId, connection.site_id, connection.provider)
+      : await resolveAccessToken(admin, connectionId, connection.site_id, connection.provider)
+  if (!tokenResult.ok) {
+    // Ghi lại lỗi thay vì để `status` cũ đứng yên — không làm vậy thì
+    // connection tiếp tục hiện "Đã kết nối" trong khi mọi lượt sync sau đó
+    // đều no-op âm thầm (đúng cách bug Page-token gốc đã ẩn mình một thời
+    // gian dài trước khi bị phát hiện qua báo lỗi trực tiếp của người dùng).
+    await admin
+      .from('connections')
+      .update({
+        status: 'error',
+        error_code: tokenResult.error,
+        error_message: `Không lấy được access token: ${tokenResult.error}`,
+        error_at: new Date().toISOString(),
+      })
+      .eq('id', connectionId)
+    return { ok: false, error: tokenResult.error }
+  }
   const accessToken = tokenResult.accessToken
 
   // Google Ads cần thêm Developer Token — không phải OAuth credential, một
@@ -99,9 +118,20 @@ export async function syncConnection(connectionId: string): Promise<SyncResult> 
       if (upsertError) return { ok: false, error: `metrics-write-failed: ${upsertError.message}` }
     }
 
+    // Xoá error_* cũ — không làm vậy thì một lần lỗi thoáng qua (vd.
+    // `no-page-token` do Graph API chập chờn) để lại banner lỗi VĨNH VIỄN dù
+    // `status` đã quay lại 'connected' và mọi lượt sync sau đó đều thành
+    // công (`connections.ts`'s UI đọc error_code/error_message độc lập với
+    // status, không tự suy ra "đã hết lỗi" từ status).
     await admin
       .from('connections')
-      .update({ status: 'connected', last_synced_at: new Date().toISOString() })
+      .update({
+        status: 'connected',
+        last_synced_at: new Date().toISOString(),
+        error_code: null,
+        error_message: null,
+        error_at: null,
+      })
       .eq('id', connectionId)
 
     // SAU khi đã đánh dấu `connected`, và chạy qua `after()` — bước này có thể

@@ -5,6 +5,10 @@ import { decrypt, encrypt } from '@/lib/crypto'
 import { getSiteOAuthCredentials } from '@/lib/data/site-oauth-apps'
 import { PROVIDER_META, type ProviderId } from '@/lib/domain/providers'
 import { OAUTH_ADAPTERS } from '@/lib/providers'
+import {
+  resolveFacebookPageAccessToken,
+  resolveInstagramPageAccessToken,
+} from '@/lib/providers/meta-discovery'
 import type { Database } from '@/lib/supabase/database.types'
 
 export type AccessTokenResult =
@@ -13,8 +17,16 @@ export type AccessTokenResult =
 
 /**
  * Một access token còn sống, dùng gọi API ngay bây giờ — tự làm mới và ghi
- * đè (mã hoá) nếu đã hết hạn. Dùng chung cho `syncConnection` và
- * `resyncSite`: cả hai đều cần đúng một việc này trước khi gọi API thật.
+ * đè (mã hoá) nếu đã hết hạn. Dùng chung cho MỌI provider — kể cả
+ * `facebook`/`instagram`, đây LUÔN là User token, KHÔNG phải Page token
+ * (xem `resolvePageAccessToken` bên dưới cho trường hợp cần Page token) —
+ * `resyncSite`/`findMetaSourceConnection` (mượn connection `instagram` để
+ * lấy Facebook Ads account) và mọi request cấp-Business-Manager khác
+ * (`/me/accounts`, `/me/adaccounts`) BẮT BUỘC User token, một Page token đưa
+ * vào các edge đó trả lỗi khác hẳn (thường là rỗng, không phải lỗi rõ ràng)
+ * — từng khiến `resyncSite` xoá nhầm toàn bộ connection Meta của Site khi
+ * thử gộp hai khái niệm "token của connection" và "token cho request Page"
+ * làm một, phát hiện qua review độc lập trước khi kịp lên production.
  */
 export async function resolveAccessToken(
   admin: SupabaseClient<Database>,
@@ -56,4 +68,47 @@ export async function resolveAccessToken(
     .eq('connection_id', connectionId)
 
   return { ok: true, accessToken: refreshed.accessToken }
+}
+
+/**
+ * Access token dùng để gọi các edge CẤP PAGE của Facebook/Instagram
+ * (`/{page-id}/published_posts`, `/{page-id}/insights`, `/{ig-id}/media`) —
+ * những edge này từ chối User token với HTTP 403 (xác nhận qua lỗi thật
+ * trên app của người dùng, 8/2026), khác `/me/accounts`/`/me/adaccounts`
+ * (cấp Business Manager, cần đúng User token, xem `resolveAccessToken` ở
+ * trên). CHỈ dùng ở nơi THẬT SỰ gọi edge cấp Page — `sync-connection.ts`
+ * (fetchDailyMetrics + content snapshot của facebook/instagram) và
+ * `site-channel-detail.ts` (fetchFacebookContentExplore/fetchInstagramExplore).
+ * KHÔNG dùng ở `resync-site.ts`/`meta-ads-accounts.ts`/mọi nơi gọi
+ * `listAccounts`/`/me/adaccounts` — những nơi đó vẫn phải gọi thẳng
+ * `resolveAccessToken`.
+ *
+ * KHÔNG lưu lại Page token — luôn dò LẠI từ User token hiện có (đã được
+ * `resolveAccessToken` tự làm mới nếu hết hạn) mỗi lần cần dùng, xem chú
+ * thích đầy đủ trong `resolveFacebookPageAccessToken`/
+ * `resolveInstagramPageAccessToken` (`meta-discovery.ts`).
+ */
+export async function resolvePageAccessToken(
+  admin: SupabaseClient<Database>,
+  connectionId: string,
+  siteId: string,
+  provider: 'facebook' | 'instagram',
+): Promise<AccessTokenResult> {
+  const userTokenResult = await resolveAccessToken(admin, connectionId, siteId, provider)
+  if (!userTokenResult.ok) return userTokenResult
+
+  const { data: connection } = await admin
+    .from('connections')
+    .select('external_account_id')
+    .eq('id', connectionId)
+    .maybeSingle()
+  if (!connection) return { ok: false, error: 'no-connection' }
+
+  const pageAccessToken =
+    provider === 'facebook'
+      ? await resolveFacebookPageAccessToken(userTokenResult.accessToken, connection.external_account_id)
+      : await resolveInstagramPageAccessToken(userTokenResult.accessToken, connection.external_account_id)
+
+  if (!pageAccessToken) return { ok: false, error: 'no-page-token' }
+  return { ok: true, accessToken: pageAccessToken }
 }

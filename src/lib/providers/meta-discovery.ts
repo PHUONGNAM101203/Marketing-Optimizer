@@ -33,6 +33,7 @@ interface FacebookPage {
   readonly id?: string
   readonly name?: string
   readonly website?: string
+  readonly access_token?: string
   readonly picture?: { readonly data?: { readonly url?: string } }
   readonly instagram_business_account?: {
     readonly id?: string
@@ -90,6 +91,90 @@ export const discoverMetaAccounts = async (
     }))
 
   return [...facebookAccounts, ...instagramAccounts]
+}
+
+interface GraphErrorBody {
+  readonly error?: { readonly message?: string; readonly code?: number }
+}
+
+/** Log lý do THẬT khi Graph từ chối — không bao giờ log token. Không log
+ * được lý do là lý do khiến lỗi 403 gốc phải mất cả một vòng đối chiếu
+ * screenshot + git archaeology mới root-cause được, không lặp lại điều đó. */
+const logGraphFailure = async (context: string, response: Response): Promise<void> => {
+  const body = (await response.json().catch(() => null)) as GraphErrorBody | null
+  console.error(`${context}: HTTP ${response.status}${body?.error?.message ? ` — ${body.error.message}` : ''}`)
+}
+
+/**
+ * Đổi User access token sang PAGE access token của đúng một Page —
+ * `/{page-id}/published_posts`, `/{page-id}/insights` và mọi edge cấp Page
+ * khác của Graph API từ chối thẳng User token với HTTP 403 (đã xác nhận qua
+ * lỗi thật trên app của người dùng, 8/2026) — CHỈ `/me/accounts` (dò tài sản
+ * lúc kết nối, xem `discoverMetaAccounts` ở trên) và vài edge cấp-người-dùng
+ * khác chấp nhận User token. Đây là lỗ hổng gốc khiến toàn bộ pipeline đọc
+ * nội dung Facebook luôn trả 403 kể từ khi được build — `meta-discovery.ts`
+ * trước đó không request field `access_token` nên chưa từng lấy được Page
+ * token nào.
+ *
+ * KHÔNG lưu lại Page token — luôn dò LẠI từ User token hiện có (đã được
+ * `resolveAccessToken` tự làm mới nếu hết hạn) mỗi lần cần dùng. Page token
+ * lấy từ một User token dài hạn thường không tự hết hạn theo thời gian như
+ * User token, nhưng cũng không có endpoint "làm mới" riêng cho nó — dò lại
+ * mỗi lần là cách đơn giản nhất, tránh phải thêm một tầng lưu trữ/làm mới
+ * riêng cho một token phụ.
+ */
+export const resolveFacebookPageAccessToken = async (
+  userAccessToken: string,
+  pageId: string,
+): Promise<string | null> => {
+  try {
+    const url = new URL(`https://graph.facebook.com/${GRAPH_VERSION}/${pageId}`)
+    url.searchParams.set('fields', 'access_token')
+    const response = await fetch(url.toString(), { headers: authHeader(userAccessToken) })
+    if (!response.ok) {
+      await logGraphFailure(`Không dò được Page access token (page ${pageId})`, response)
+      return null
+    }
+
+    const body = (await response.json()) as { readonly access_token?: string }
+    return body.access_token ?? null
+  } catch (error) {
+    console.error(`Không dò được Page access token (page ${pageId}): ${error instanceof Error ? error.message : String(error)}`)
+    return null
+  }
+}
+
+/**
+ * Instagram Business API (qua luồng Facebook Login mà app này triển khai)
+ * xác thực bằng Page token của CHÍNH Page đã liên kết tài khoản Instagram
+ * đó — không có khái niệm "Instagram token" riêng. `externalAccountId` của
+ * connection `instagram` là ID tài khoản Instagram Business, KHÔNG phải ID
+ * Page, nên phải dò lại `/me/accounts` để tìm đúng Page đang liên kết
+ * (không có endpoint đảo ngược "từ IG account ID ra Page ID" trực tiếp).
+ */
+export const resolveInstagramPageAccessToken = async (
+  userAccessToken: string,
+  instagramBusinessAccountId: string,
+): Promise<string | null> => {
+  try {
+    const url = new URL(PAGES_ENDPOINT)
+    url.searchParams.set('fields', 'access_token,instagram_business_account{id}')
+    url.searchParams.set('limit', '100')
+    const response = await fetch(url.toString(), { headers: authHeader(userAccessToken) })
+    if (!response.ok) {
+      await logGraphFailure(`Không dò được Page access token (Instagram ${instagramBusinessAccountId})`, response)
+      return null
+    }
+
+    const body = (await response.json()) as { readonly data?: readonly FacebookPage[] }
+    const page = (body.data ?? []).find(
+      (candidate) => candidate.instagram_business_account?.id === instagramBusinessAccountId,
+    )
+    return page?.access_token ?? null
+  } catch (error) {
+    console.error(`Không dò được Page access token (Instagram ${instagramBusinessAccountId}): ${error instanceof Error ? error.message : String(error)}`)
+    return null
+  }
 }
 
 export interface FacebookAdAccount {
