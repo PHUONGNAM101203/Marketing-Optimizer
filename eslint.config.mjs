@@ -5,6 +5,18 @@ import nextTs from "eslint-config-next/typescript";
 const eslintConfig = defineConfig([
   ...nextVitals,
   ...nextTs,
+  {
+    rules: {
+      // `mock/*.ts` functions intentionally keep the same signature as the
+      // real `data/` layer function they stand in for (e.g. `(siteId:
+      // string) => ...`), even though the mock body ignores the argument —
+      // swapping mock for real later is then a one-line import change, not
+      // a signature change at every call site. `_`-prefixed params mark
+      // that on purpose; only args, not vars, so a genuinely unused
+      // top-level const still warns.
+      "@typescript-eslint/no-unused-vars": ["warn", { argsIgnorePattern: "^_" }],
+    },
+  },
   // Override default ignores of eslint-config-next.
   globalIgnores([
     // Default ignores of eslint-config-next:

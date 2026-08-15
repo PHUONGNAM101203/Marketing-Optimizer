@@ -2,7 +2,6 @@ import type { Entity, EntityKind, EntityStatus } from '@/lib/domain/entity'
 import { PRIMARY_ENTITY_KIND } from '@/lib/domain/entity'
 import type { ProviderId } from '@/lib/domain/providers'
 import type { EntityPerformance, MetricTotals } from '@/lib/metrics/types'
-import { unitsToMicros } from '@/lib/metrics/types'
 import { deriveMetrics } from '@/lib/metrics/derive'
 import { createRandom, randomBetween } from './random'
 

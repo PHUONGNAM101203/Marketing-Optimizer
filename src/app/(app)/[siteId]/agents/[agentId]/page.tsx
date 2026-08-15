@@ -6,7 +6,7 @@ import { Card, CardBody, CardHeader, SectionHead } from '@/components/ui/card'
 import { Badge, StatusDot } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { getSite } from '@/lib/data/sites'
-import { MOCK_AGENTS, findAgent, runsOfAgent } from '@/mock/agents'
+import { findAgent, runsOfAgent } from '@/mock/agents'
 import { MOCK_TODAY } from '@/mock/dates'
 import {
   AGENT_ROLE_LABELS,
