@@ -6,7 +6,7 @@ import { createPrompt, createPromptVersion, recordPromptRun, ratePromptRun } fro
 import { resolveVariables, VariableResolutionError } from '@/lib/prompts/resolve-variables'
 import { getSite } from '@/lib/data/sites'
 import { getCurrentUser } from '@/lib/supabase/server'
-import { extractVariableNames, findUndeclaredVariables } from '@/lib/domain/prompt'
+import { findUndeclaredVariables, VARIABLE_PATTERN } from '@/lib/domain/prompt'
 import type { PromptCategory, PromptRun, PromptVariable } from '@/lib/domain/prompt'
 
 const requireUserId = async (): Promise<string> => {
@@ -91,10 +91,14 @@ export const testRunPromptAction = async (input: {
     throw error
   }
 
-  let filledTemplate = input.userTemplate
-  for (const name of extractVariableNames(input.userTemplate)) {
-    filledTemplate = filledTemplate.replaceAll(`{{${name}}}`, resolvedVars[name] ?? '')
-  }
+  // Dùng lại đúng VARIABLE_PATTERN của bước rút tên biến (chấp nhận
+  // `{{ name }}` có khoảng trắng) — thay vì tự dựng chuỗi `{{name}}` cứng,
+  // vốn sẽ bỏ sót biến có khoảng trắng đã được coi là "đã khai báo" ở bước
+  // kiểm tra undeclared variables phía trên.
+  const filledTemplate = input.userTemplate.replace(
+    VARIABLE_PATTERN,
+    (_match, name: string) => resolvedVars[name] ?? '',
+  )
 
   const { message, latencyMs } = await callClaude({
     systemPrompt: input.systemPrompt,
@@ -118,5 +122,6 @@ export const testRunPromptAction = async (input: {
 }
 
 export const ratePromptRunAction = async (runId: string, rating: 1 | 2 | 3 | 4 | 5) => {
+  await requireUserId()
   await ratePromptRun(runId, rating)
 }

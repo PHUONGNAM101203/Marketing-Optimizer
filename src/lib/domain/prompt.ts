@@ -99,7 +99,9 @@ export interface PromptRun {
   readonly ranAt: string
 }
 
-const VARIABLE_PATTERN = /\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g
+/** Xuất ra để nơi khác (vd. thay thế biến lúc chạy thử) khớp đúng cùng độ
+ * dung sai khoảng trắng với bước rút tên biến — không tự dựng lại pattern. */
+export const VARIABLE_PATTERN = /\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g
 
 /** Rút tên biến từ template — dùng để cảnh báo biến thiếu khai báo. */
 export const extractVariableNames = (template: string): readonly string[] => {
