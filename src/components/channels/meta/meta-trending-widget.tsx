@@ -39,7 +39,7 @@ export function MetaTrendingWidget({
   // đáng tích cực", nên lọc ở đây, cùng TiktokTrendingWidget.
   const positiveEntries = trendingFast[activeWindow]
     .filter((entry) => (entry.growthPct ?? 0) > 0)
-    .slice(0, 10)
+    .slice(0, 5)
 
   const enoughHistory = hasEnoughHistory(earliestSnapshotAt, activeWindow)
 
