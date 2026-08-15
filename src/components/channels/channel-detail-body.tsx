@@ -327,14 +327,17 @@ export function ChannelDetailBody({
               label: 'Tổng quan',
               panel: (
                 <div className="flex flex-col gap-6">
+                  {/* `page_impressions` bị Meta khai tử (15/11/2025, xem
+                      `facebook-metrics.ts`) — đổi sang `engagedUsers`, metric
+                      duy nhất còn request được ở cấp Page. */}
                   <TrendCard
-                    title="Lượt hiển thị Page theo ngày"
+                    title="Người dùng tương tác Page theo ngày"
                     data={dailySeries.map((point) => ({
                       date: point.date,
-                      impressions: point.extra.impressions ?? 0,
+                      engagedUsers: point.extra.engagedUsers ?? 0,
                     }))}
-                    metricKey="impressions"
-                    label="Lượt hiển thị"
+                    metricKey="engagedUsers"
+                    label="Người dùng tương tác"
                   />
                   <MetaPostList
                     posts={overviewPosts}
