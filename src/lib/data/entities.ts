@@ -50,7 +50,11 @@ const aggregateByCampaign = (
       clicks: null,
       impressions: null,
       costMicros: totals.costMicros,
-      conversionValueMicros: totals.conversionValueMicros || null,
+      // Không dùng `|| null`: 0 là tín hiệu thật (chiến dịch có chi phí nhưng
+      // giá trị chuyển đổi bằng 0), khác với "nền tảng không có chỉ số này".
+      // `totals.conversionValueMicros` luôn được cộng dồn (seed 0), không bao
+      // giờ thực sự null ở đây.
+      conversionValueMicros: totals.conversionValueMicros,
       // MetricTotals đòi đủ mọi AdditiveMetricKey (kể cả revenueMicros) —
       // không có nền tảng ads nào trong file này trả về doanh thu, luôn null.
       revenueMicros: null,
@@ -85,15 +89,15 @@ export const getCampaignPerformance = async (
   for (const connection of connections ?? []) {
     if (connection.status === 'revoked' || connection.status === 'error') continue
 
-    const tokenResult = await resolveAccessToken(
-      admin,
-      connection.id,
-      siteId,
-      connection.provider as 'google-ads' | 'meta-ads',
-    )
-    if (!tokenResult.ok) continue
-
     try {
+      const tokenResult = await resolveAccessToken(
+        admin,
+        connection.id,
+        siteId,
+        connection.provider as 'google-ads' | 'meta-ads',
+      )
+      if (!tokenResult.ok) continue
+
       if (connection.provider === 'google-ads') {
         const developerToken = await getGoogleAdsDeveloperToken(siteId)
         if (!developerToken) continue
