@@ -45,38 +45,60 @@ const toVersion = (row: VersionRow, names: ReadonlyMap<string, string>): PromptV
   createdAt: row.created_at,
 })
 
-/** Gộp một prompt + toàn bộ version của nó thành `PromptTemplate` — dùng ở
- * cả `listPrompts` (nhiều prompt) lẫn `getPrompt` (một prompt) để không lặp
- * logic gộp hai lần. */
+/** Gộp một prompt row + các version row (đã lọc sẵn theo prompt đó) thành
+ * `PromptTemplate`. Hàm thuần, không tự query — `listPrompts` và
+ * `assemblePromptTemplate` cùng gọi hàm này sau khi TỰ quyết định cách lấy
+ * version rows (một lần cho nhiều prompt, hay một lần cho một prompt), để
+ * logic gộp không lặp lại mà cũng không kéo theo cách query cụ thể nào. */
+const buildPromptTemplate = (
+  promptRow: PromptRow,
+  versionRows: readonly VersionRow[],
+  names: ReadonlyMap<string, string>,
+): PromptTemplate => ({
+  id: promptRow.id,
+  siteId: promptRow.site_id,
+  name: promptRow.name,
+  description: promptRow.description,
+  category: promptRow.category as PromptCategory,
+  currentVersionId: promptRow.current_version_id as string,
+  versions: versionRows
+    .slice()
+    .sort((a, b) => b.version - a.version)
+    .map((row) => toVersion(row, names)),
+  variables: promptRow.variables as readonly PromptVariable[],
+  tags: promptRow.tags,
+  updatedAt: promptRow.updated_at,
+})
+
+/** Đường dùng cho MỘT prompt (`getPrompt`, và sau khi `createPrompt`/
+ * `createPromptVersion` ghi xong cần đọc lại) — hai round-trip (version rows
+ * + resolveDisplayNames) là không tránh được ở quy mô một prompt, khác với
+ * `listPrompts` vốn phải gộp N prompt vào cùng hai round-trip đó. */
 const assemblePromptTemplate = async (
   supabase: Awaited<ReturnType<typeof createClient>>,
   promptRow: PromptRow,
 ): Promise<PromptTemplate> => {
-  const { data: versionRows } = await supabase
+  const { data: versionRows, error } = await supabase
     .from('prompt_versions')
     .select('*')
     .eq('prompt_id', promptRow.id)
     .order('version', { ascending: false })
+
+  if (error) throw new Error(`Không đọc được bản prompt: ${error.message}`)
 
   const names = await resolveDisplayNames(
     supabase,
     (versionRows ?? []).map((row) => row.created_by).filter((id): id is string => id !== null),
   )
 
-  return {
-    id: promptRow.id,
-    siteId: promptRow.site_id,
-    name: promptRow.name,
-    description: promptRow.description,
-    category: promptRow.category as PromptCategory,
-    currentVersionId: promptRow.current_version_id as string,
-    versions: (versionRows ?? []).map((row) => toVersion(row, names)),
-    variables: promptRow.variables as readonly PromptVariable[],
-    tags: promptRow.tags,
-    updatedAt: promptRow.updated_at,
-  }
+  return buildPromptTemplate(promptRow, (versionRows ?? []) as readonly VersionRow[], names)
 }
 
+/** Một lượt cho `prompts`, một lượt cho TOÀN BỘ `prompt_versions` của các
+ * prompt đó (`.in('prompt_id', …)`), một lượt `resolveDisplayNames` cho toàn
+ * bộ `created_by` gộp lại — không fan-out theo từng prompt như trước (từng
+ * là 1 + 2N round-trip cho N prompt). Cùng khuôn với cách `site-channels.ts`
+ * gộp theo `connectionIds` rồi group bằng Map trong bộ nhớ. */
 export const listPrompts = async (siteId: string): Promise<readonly PromptTemplate[]> => {
   const supabase = await createClient()
   const { data: promptRows, error } = await supabase
@@ -86,17 +108,45 @@ export const listPrompts = async (siteId: string): Promise<readonly PromptTempla
     .order('updated_at', { ascending: false })
 
   if (error) throw new Error(`Không đọc được prompt: ${error.message}`)
-  return Promise.all((promptRows ?? []).map((row) => assemblePromptTemplate(supabase, row as PromptRow)))
+
+  const prompts = (promptRows ?? []) as readonly PromptRow[]
+  if (prompts.length === 0) return []
+
+  const promptIds = prompts.map((row) => row.id)
+
+  const { data: versionRows, error: versionsError } = await supabase
+    .from('prompt_versions')
+    .select('*')
+    .in('prompt_id', promptIds)
+
+  if (versionsError) throw new Error(`Không đọc được bản prompt: ${versionsError.message}`)
+
+  const allVersions = (versionRows ?? []) as readonly VersionRow[]
+
+  const names = await resolveDisplayNames(
+    supabase,
+    allVersions.map((row) => row.created_by).filter((id): id is string => id !== null),
+  )
+
+  const versionsByPrompt = new Map<string, VersionRow[]>()
+  for (const row of allVersions) {
+    const existing = versionsByPrompt.get(row.prompt_id)
+    if (existing) existing.push(row)
+    else versionsByPrompt.set(row.prompt_id, [row])
+  }
+
+  return prompts.map((row) => buildPromptTemplate(row, versionsByPrompt.get(row.id) ?? [], names))
 }
 
 export const getPrompt = async (promptId: string): Promise<PromptTemplate | null> => {
   const supabase = await createClient()
-  const { data: promptRow } = await supabase
+  const { data: promptRow, error } = await supabase
     .from('prompts')
     .select('*')
     .eq('id', promptId)
     .maybeSingle()
 
+  if (error) throw new Error(`Không đọc được prompt: ${error.message}`)
   if (!promptRow) return null
   return assemblePromptTemplate(supabase, promptRow as PromptRow)
 }
@@ -136,27 +186,39 @@ export const createPrompt = async (input: {
 
   if (promptError) throw new Error(`Không tạo được prompt: ${promptError.message}`)
 
-  const { data: versionRow, error: versionError } = await supabase
-    .from('prompt_versions')
-    .insert({
-      prompt_id: promptRow.id,
-      version: 1,
-      system_prompt: input.systemPrompt,
-      user_template: input.userTemplate,
-      notes: null,
-      created_by: input.createdBy,
-    })
-    .select('*')
-    .single()
+  // Bước 2-3 có thể fail giữa chừng, để lại hàng `prompts` với
+  // current_version_id = null — domain type khai `currentVersionId: string`
+  // (không nullable), nên một hàng orphan như vậy khiến bất kỳ
+  // `listPrompts`/`getPrompt` nào chạy đồng thời đọc phải một PromptTemplate
+  // nói dối (ép kiểu `as string` trên giá trị null). Không dựng transaction/
+  // RPC cho việc này — luồng tạo nội bộ, tần suất thấp, over-engineering
+  // không cần thiết — chỉ cần dọn lại hàng orphan trước khi ném lỗi tiếp.
+  try {
+    const { data: versionRow, error: versionError } = await supabase
+      .from('prompt_versions')
+      .insert({
+        prompt_id: promptRow.id,
+        version: 1,
+        system_prompt: input.systemPrompt,
+        user_template: input.userTemplate,
+        notes: null,
+        created_by: input.createdBy,
+      })
+      .select('*')
+      .single()
 
-  if (versionError) throw new Error(`Không tạo được bản prompt: ${versionError.message}`)
+    if (versionError) throw new Error(`Không tạo được bản prompt: ${versionError.message}`)
 
-  const { error: updateError } = await supabase
-    .from('prompts')
-    .update({ current_version_id: versionRow.id })
-    .eq('id', promptRow.id)
+    const { error: updateError } = await supabase
+      .from('prompts')
+      .update({ current_version_id: versionRow.id })
+      .eq('id', promptRow.id)
 
-  if (updateError) throw new Error(`Không gán được bản hiện tại: ${updateError.message}`)
+    if (updateError) throw new Error(`Không gán được bản hiện tại: ${updateError.message}`)
+  } catch (error) {
+    await supabase.from('prompts').delete().eq('id', promptRow.id)
+    throw error
+  }
 
   const created = await getPrompt(promptRow.id)
   if (!created) throw new Error('Prompt vừa tạo không đọc lại được')
@@ -172,13 +234,15 @@ export const createPromptVersion = async (input: {
 }): Promise<PromptTemplate> => {
   const supabase = await createClient()
 
-  const { data: latest } = await supabase
+  const { data: latest, error: latestError } = await supabase
     .from('prompt_versions')
     .select('version')
     .eq('prompt_id', input.promptId)
     .order('version', { ascending: false })
     .limit(1)
     .maybeSingle()
+
+  if (latestError) throw new Error(`Không đọc được bản mới nhất: ${latestError.message}`)
 
   const nextVersion = (latest?.version ?? 0) + 1
 
