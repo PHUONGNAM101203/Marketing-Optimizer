@@ -1,21 +1,18 @@
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowRight, Bot, Clock, Lock, ShieldAlert } from 'lucide-react'
+import { ArrowRight, Bot, Clock, Lock } from 'lucide-react'
 import { PageHeader, PageShell } from '@/components/layout/page-header'
 import { DataGate } from '@/components/connections/data-gate'
 import { Card, SectionHead } from '@/components/ui/card'
 import { Badge, StatusDot } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
 import { Callout, EmptyState } from '@/components/ui/feedback'
-import { ProviderMark } from '@/components/connections/provider-mark'
 import { NewAgentDialog } from '@/components/agents/new-agent-dialog'
-import { ApprovalActions } from '@/components/agents/approval-actions'
+import { ApprovalQueue } from '@/components/agents/approval-queue'
 import { getSite } from '@/lib/data/sites'
 import { getLatestAuditRun } from '@/lib/data/audit'
 import { listAgents, listPendingActionsForSite, listRunsForSite } from '@/lib/data/agents'
 import { listPrompts } from '@/lib/data/prompts'
 import { suggestAgentRoles } from '@/lib/audit/agent-suggestions'
-import { ACTION_KIND_LABELS } from '@/lib/domain/insight'
 import {
   AGENT_ROLE_LABELS,
   CADENCE_LABELS,
@@ -24,7 +21,6 @@ import {
   type Agent,
   type AgentRun,
   type AgentRunStatus,
-  type PendingAction,
 } from '@/lib/domain/agent'
 import { formatNumber, formatRelativeTime } from '@/lib/format'
 
@@ -67,9 +63,13 @@ export default async function AgentsPage({
 
   // Chỉ những hành động CHƯA có quyết định mới thuộc hàng đợi "Cần bạn quyết"
   // — `listPendingActionsForSite` trả về mọi hành động của Site kể cả đã
-  // duyệt/từ chối trước đó (lịch sử), nên phải lọc lại ở đây.
+  // duyệt/từ chối trước đó (lịch sử), nên phải lọc lại ở đây. Việc lọc này chỉ
+  // chạy MỘT LẦN ở lượt render server đầu tiên: `ApprovalQueue` (client) chụp
+  // lại danh sách này khi mount và không đồng bộ theo props mới sau đó — xem
+  // comment trong file đó để biết lý do (né race giữa `revalidatePath` và
+  // badge xác nhận "Đã duyệt").
   const awaitingApproval = pending.filter((action) => action.decision === null)
-  const runsById = new Map(runs.map((run) => [run.id, run] as const))
+  const agentIdByRunId = Object.fromEntries(runs.map((run) => [run.id, run.agentId]))
 
   return (
     <PageShell>
@@ -124,25 +124,7 @@ export default async function AgentsPage({
         </Callout>
       ) : null}
 
-      {awaitingApproval.length > 0 ? (
-        <section className="flex flex-col gap-4">
-          <SectionHead
-            label="Cần bạn quyết"
-            title={`${awaitingApproval.length} hành động đang chờ duyệt`}
-            description="Agent đã phân tích xong và dừng lại ở đây. Chưa có gì được gửi đi."
-          />
-          <div className="flex flex-col gap-3">
-            {awaitingApproval.map((action) => (
-              <ApprovalCard
-                key={action.id}
-                action={action}
-                siteId={site.id}
-                agentId={runsById.get(action.runId)?.agentId ?? null}
-              />
-            ))}
-          </div>
-        </section>
-      ) : null}
+      <ApprovalQueue siteId={site.id} initialActions={awaitingApproval} agentIdByRunId={agentIdByRunId} />
 
       <section className="flex flex-col gap-4">
         <SectionHead label="Đội hình" title="Agent đã cấu hình" />
@@ -174,73 +156,6 @@ export default async function AgentsPage({
       </section>
       </DataGate>
     </PageShell>
-  )
-}
-
-function ApprovalCard({
-  action,
-  siteId,
-  agentId,
-}: {
-  readonly action: PendingAction
-  readonly siteId: string
-  readonly agentId: string | null
-}) {
-  return (
-    <Card tone="bordered" className="p-5">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0 flex-1">
-          <div className="mb-2 flex flex-wrap items-center gap-2">
-            <Badge tone="caution" icon={<ShieldAlert aria-hidden className="size-3" />}>
-              Chờ duyệt
-            </Badge>
-            <Badge tone="outline">{ACTION_KIND_LABELS[action.actionKind]}</Badge>
-            <span className="inline-flex items-center gap-1.5 text-[length:var(--text-xs)] text-[var(--color-ink-3)]">
-              <ProviderMark provider={action.provider} size="sm" />
-              {action.targetEntityName}
-            </span>
-          </div>
-
-          <p className="text-[length:var(--text-base)] font-medium text-[var(--color-ink)]">
-            {action.summary}
-          </p>
-        </div>
-      </div>
-
-      {/* Diff trước → sau: người duyệt phải thấy CHÍNH XÁC cái gì sẽ đổi, chứ
-          không phải một câu tóm tắt do mô hình viết. */}
-      <dl className="mt-4 overflow-hidden rounded-[var(--radius-md)] border border-[var(--color-rule)]">
-        {action.diff.map((row, index) => (
-          <div
-            key={row.field}
-            className={`grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)] items-center gap-3 px-3 py-2 text-[length:var(--text-sm)] ${
-              index > 0 ? 'border-t border-[var(--color-rule)]' : ''
-            }`}
-          >
-            <dt className="truncate text-[var(--color-ink-2)]">{row.field}</dt>
-            <dd data-numeric className="truncate text-[var(--color-ink-3)] line-through">
-              {row.before}
-            </dd>
-            <dd data-numeric className="truncate font-medium text-[var(--color-ink)]">
-              {row.after}
-            </dd>
-          </div>
-        ))}
-      </dl>
-
-      <p className="mt-3 max-w-prose text-[length:var(--text-sm)] text-[var(--color-ink-2)]">
-        {action.rationale}
-      </p>
-
-      <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-[var(--color-rule)] pt-4">
-        <ApprovalActions siteId={siteId} actionId={action.id} />
-        {agentId ? (
-          <Button asChild variant="ghost" size="md">
-            <Link href={`/${siteId}/agents/${agentId}`}>Xem toàn bộ lượt chạy</Link>
-          </Button>
-        ) : null}
-      </div>
-    </Card>
   )
 }
 
