@@ -12,6 +12,14 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // `.next/**` above only matches the root build output. Every isolated
+    // git worktree under `.claude/worktrees/<name>/` has its own `.next/`
+    // from its own `npm run build`, several levels deep — unmatched by that
+    // pattern, so a running worktree's compiled Turbopack chunks (raw
+    // require() calls, legacy ts-ignore-style suppressions, none of which
+    // follow this repo's lint rules) get linted as if they were our source,
+    // drowning real findings in noise.
+    ".claude/worktrees/**",
   ]),
 ]);
 
