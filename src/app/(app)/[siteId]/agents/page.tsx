@@ -3,16 +3,18 @@ import Link from 'next/link'
 import { ArrowRight, Bot, Clock, Lock, ShieldAlert } from 'lucide-react'
 import { PageHeader, PageShell } from '@/components/layout/page-header'
 import { DataGate } from '@/components/connections/data-gate'
-import { Card, CardBody, CardHeader, SectionHead } from '@/components/ui/card'
+import { Card, SectionHead } from '@/components/ui/card'
 import { Badge, StatusDot } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Callout, EmptyState } from '@/components/ui/feedback'
 import { ProviderMark } from '@/components/connections/provider-mark'
+import { NewAgentDialog } from '@/components/agents/new-agent-dialog'
+import { ApprovalActions } from '@/components/agents/approval-actions'
 import { getSite } from '@/lib/data/sites'
 import { getLatestAuditRun } from '@/lib/data/audit'
+import { listAgents, listPendingActionsForSite, listRunsForSite } from '@/lib/data/agents'
+import { listPrompts } from '@/lib/data/prompts'
 import { suggestAgentRoles } from '@/lib/audit/agent-suggestions'
-import { agentsOfSite, pendingActionsOfSite, runsOfSite } from '@/mock/agents'
-import { MOCK_TODAY } from '@/mock/dates'
 import { ACTION_KIND_LABELS } from '@/lib/domain/insight'
 import {
   AGENT_ROLE_LABELS,
@@ -49,15 +51,25 @@ export default async function AgentsPage({
   const site = await getSite(siteId)
   if (!site) notFound()
 
-  const agents = agentsOfSite(site.id)
-  const runs = runsOfSite(site.id)
-  const pending = pendingActionsOfSite(site.id)
+  const [agents, runs, pending, prompts, auditRun] = await Promise.all([
+    listAgents(site.id),
+    listRunsForSite(site.id),
+    listPendingActionsForSite(site.id),
+    listPrompts(site.id),
+    getLatestAuditRun(site.id),
+  ])
 
-  const auditRun = await getLatestAuditRun(site.id)
+  const now = new Date()
   const configuredRoles = new Set(agents.map((agent) => agent.role))
   const agentSuggestions = auditRun?.siteProfile
     ? suggestAgentRoles(auditRun.siteProfile).filter((suggestion) => !configuredRoles.has(suggestion.role))
     : []
+
+  // Chỉ những hành động CHƯA có quyết định mới thuộc hàng đợi "Cần bạn quyết"
+  // — `listPendingActionsForSite` trả về mọi hành động của Site kể cả đã
+  // duyệt/từ chối trước đó (lịch sử), nên phải lọc lại ở đây.
+  const awaitingApproval = pending.filter((action) => action.decision === null)
+  const runsById = new Map(runs.map((run) => [run.id, run] as const))
 
   return (
     <PageShell>
@@ -65,10 +77,10 @@ export default async function AgentsPage({
         title="Agents"
         description="Agent chạy tác vụ nhiều bước trên dữ liệu của Site theo lịch. Chúng tự chạy được mọi thao tác ĐỌC — nhưng không thao tác GHI nào."
         action={
-          <Button variant="primary" size="md">
-            <Bot aria-hidden className="size-4" />
-            Tạo agent
-          </Button>
+          <NewAgentDialog
+            siteId={site.id}
+            prompts={prompts.map((prompt) => ({ id: prompt.id, name: prompt.name }))}
+          />
         }
       />
 
@@ -112,16 +124,21 @@ export default async function AgentsPage({
         </Callout>
       ) : null}
 
-      {pending.length > 0 ? (
+      {awaitingApproval.length > 0 ? (
         <section className="flex flex-col gap-4">
           <SectionHead
             label="Cần bạn quyết"
-            title={`${pending.length} hành động đang chờ duyệt`}
+            title={`${awaitingApproval.length} hành động đang chờ duyệt`}
             description="Agent đã phân tích xong và dừng lại ở đây. Chưa có gì được gửi đi."
           />
           <div className="flex flex-col gap-3">
-            {pending.map((action) => (
-              <ApprovalCard key={action.id} action={action} />
+            {awaitingApproval.map((action) => (
+              <ApprovalCard
+                key={action.id}
+                action={action}
+                siteId={site.id}
+                agentId={runsById.get(action.runId)?.agentId ?? null}
+              />
             ))}
           </div>
         </section>
@@ -132,7 +149,7 @@ export default async function AgentsPage({
 
         <div className="grid gap-3 lg:grid-cols-2">
           {agents.map((agent) => (
-            <AgentCard key={agent.id} agent={agent} siteId={site.id} now={MOCK_TODAY} />
+            <AgentCard key={agent.id} agent={agent} siteId={site.id} now={now} />
           ))}
         </div>
       </section>
@@ -149,7 +166,7 @@ export default async function AgentsPage({
           ) : (
             <ul className="divide-y divide-[var(--color-rule)]">
               {runs.map((run) => (
-                <RunRow key={run.id} run={run} agents={agents} now={MOCK_TODAY} />
+                <RunRow key={run.id} run={run} agents={agents} now={now} />
               ))}
             </ul>
           )}
@@ -160,7 +177,15 @@ export default async function AgentsPage({
   )
 }
 
-function ApprovalCard({ action }: { readonly action: PendingAction }) {
+function ApprovalCard({
+  action,
+  siteId,
+  agentId,
+}: {
+  readonly action: PendingAction
+  readonly siteId: string
+  readonly agentId: string | null
+}) {
   return (
     <Card tone="bordered" className="p-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -207,16 +232,13 @@ function ApprovalCard({ action }: { readonly action: PendingAction }) {
         {action.rationale}
       </p>
 
-      <div className="mt-4 flex flex-wrap gap-2 border-t border-[var(--color-rule)] pt-4">
-        <Button variant="primary" size="md">
-          Duyệt và thực thi
-        </Button>
-        <Button variant="secondary" size="md">
-          Từ chối
-        </Button>
-        <Button variant="ghost" size="md">
-          Xem toàn bộ lượt chạy
-        </Button>
+      <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-[var(--color-rule)] pt-4">
+        <ApprovalActions siteId={siteId} actionId={action.id} />
+        {agentId ? (
+          <Button asChild variant="ghost" size="md">
+            <Link href={`/${siteId}/agents/${agentId}`}>Xem toàn bộ lượt chạy</Link>
+          </Button>
+        ) : null}
       </div>
     </Card>
   )

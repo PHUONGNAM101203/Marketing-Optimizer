@@ -4,10 +4,10 @@ import { ChevronLeft, Clock, Lock, Play, Unlock } from 'lucide-react'
 import { PageHeader, PageShell } from '@/components/layout/page-header'
 import { Card, CardBody, CardHeader, SectionHead } from '@/components/ui/card'
 import { Badge, StatusDot } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
+import { SubmitButton } from '@/components/ui/submit-button'
 import { getSite } from '@/lib/data/sites'
-import { MOCK_AGENTS, findAgent, runsOfAgent } from '@/mock/agents'
-import { MOCK_TODAY } from '@/mock/dates'
+import { getAgent, listRunsForAgent } from '@/lib/data/agents'
+import { runAgentNowAction, toggleAgentEnabledAction } from '@/lib/actions/agents'
 import {
   AGENT_ROLE_LABELS,
   CADENCE_LABELS,
@@ -26,7 +26,8 @@ export async function generateMetadata({
   readonly params: Promise<{ readonly agentId: string }>
 }) {
   const { agentId } = await params
-  return { title: findAgent(agentId)?.name ?? 'Agent' }
+  const agent = await getAgent(agentId)
+  return { title: agent?.name ?? 'Agent' }
 }
 
 const RUN_TONE: Readonly<
@@ -54,11 +55,14 @@ export default async function AgentDetailPage({
   readonly params: Promise<{ readonly siteId: string; readonly agentId: string }>
 }) {
   const { siteId, agentId } = await params
-  const site = await getSite(siteId)
-  const agent = findAgent(agentId)
+  const [site, agent, runs] = await Promise.all([
+    getSite(siteId),
+    getAgent(agentId),
+    listRunsForAgent(agentId),
+  ])
   if (!site || !agent) notFound()
 
-  const runs = runsOfAgent(agent.id)
+  const now = new Date()
   const readTools = agent.tools.filter((tool) => !isWriteTool(tool.name))
   const writeTools = agent.tools.filter((tool) => isWriteTool(tool.name))
 
@@ -93,10 +97,19 @@ export default async function AgentDetailPage({
             </div>
           }
           action={
-            <Button variant="primary" size="md">
-              <Play aria-hidden className="size-4" />
-              Chạy ngay
-            </Button>
+            <div className="flex items-center gap-2">
+              <form action={toggleAgentEnabledAction.bind(null, site.id, agent.id, !agent.enabled)}>
+                <SubmitButton variant="secondary" size="md">
+                  {agent.enabled ? 'Tắt agent' : 'Bật agent'}
+                </SubmitButton>
+              </form>
+              <form action={runAgentNowAction.bind(null, site.id, agent.id)}>
+                <SubmitButton variant="primary" size="md">
+                  <Play aria-hidden className="size-4" />
+                  Chạy ngay
+                </SubmitButton>
+              </form>
+            </div>
           }
         />
       </div>
@@ -111,7 +124,7 @@ export default async function AgentDetailPage({
 
           <div className="flex flex-col gap-3">
             {runs.map((run) => (
-              <RunDetail key={run.id} run={run} now={MOCK_TODAY} />
+              <RunDetail key={run.id} run={run} now={now} />
             ))}
           </div>
         </section>
