@@ -91,7 +91,6 @@ export default async function ChannelDetailPage({
         <MetaChannelHeader
           siteId={site.id}
           detail={detail}
-          dailySeries={dailySeries}
           connected={summary?.connected ?? false}
           dateRangeLabel={formatDateRange(range.start, range.end)}
         />

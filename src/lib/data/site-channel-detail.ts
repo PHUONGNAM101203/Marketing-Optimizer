@@ -29,6 +29,7 @@ import {
   type InstagramExplore,
   type FacebookExplore,
 } from '@/lib/providers/meta-explore'
+import { fetchMetaFollowerCount } from '@/lib/providers/meta-discovery'
 import { fetchTiktokContentExplore, type TiktokExplore } from '@/lib/providers/tiktok'
 import { getGoogleAdsDeveloperToken } from './site-oauth-apps'
 import { resolveAccessToken, resolvePageAccessToken } from '@/lib/sync/access-token'
@@ -146,6 +147,10 @@ export type ChannelDetail =
       readonly avatarUrl: string | null
       readonly data: InstagramExplore
       readonly trending: ContentTrendingResult
+      /** Số người theo dõi CỐ ĐỊNH, không phụ thuộc khoảng ngày đang lọc —
+       * xem `fetchMetaFollowerCount`. `null` = không lấy được (lỗi Graph API
+       * hoặc field vắng mặt), KHÁC 0 người theo dõi thật. */
+      readonly followerCount: number | null
     }
   | {
       readonly kind: 'tiktok'
@@ -168,6 +173,10 @@ export type ChannelDetail =
       readonly avatarUrl: string | null
       readonly data: FacebookExplore
       readonly trending: ContentTrendingResult
+      /** Số người theo dõi CỐ ĐỊNH, không phụ thuộc khoảng ngày đang lọc —
+       * xem `fetchMetaFollowerCount`. `null` = không lấy được (lỗi Graph API
+       * hoặc field vắng mặt), KHÁC 0 người theo dõi thật. */
+      readonly followerCount: number | null
     }
   | { readonly kind: 'unsupported' }
 
@@ -335,20 +344,22 @@ export const getChannelDetail = async (
       // chạy song song thì TTFB của trang chi tiết kênh bằng lượt chậm hơn
       // thay vì bằng tổng hai lượt (bài học từ lượt đầu của `tiktok`/`youtube`
       // — build song song ngay từ đầu, không sửa lại sau).
-      const [data, trending] = await Promise.all([
+      const [data, trending, followerCount] = await Promise.all([
         fetchInstagramExplore(tokenResult.accessToken, connection.external_account_id, range),
         // Không truyền `range` — trending có 3 cửa sổ cố định riêng, độc lập
         // với khoảng ngày trang đang chọn, cùng quy ước `tiktok`/`youtube`.
         getContentTrending(connection.id, 'instagram'),
+        fetchMetaFollowerCount(tokenResult.accessToken, connection.external_account_id),
       ])
-      return { kind: 'instagram', accountName, externalAccountId, avatarUrl, data, trending }
+      return { kind: 'instagram', accountName, externalAccountId, avatarUrl, data, trending, followerCount }
     }
     case 'facebook': {
-      const [data, trending] = await Promise.all([
+      const [data, trending, followerCount] = await Promise.all([
         fetchFacebookContentExplore(tokenResult.accessToken, connection.external_account_id, range),
         getContentTrending(connection.id, 'facebook'),
+        fetchMetaFollowerCount(tokenResult.accessToken, connection.external_account_id),
       ])
-      return { kind: 'facebook', accountName, externalAccountId, avatarUrl, data, trending }
+      return { kind: 'facebook', accountName, externalAccountId, avatarUrl, data, trending, followerCount }
     }
     default:
       return { kind: 'unsupported' }

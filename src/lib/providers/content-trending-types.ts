@@ -49,6 +49,12 @@ export interface ContentTrendingResult {
   readonly trendingFast: ContentTrendingWindows
   readonly earliestSnapshotAt: string | null
   readonly latestSnapshotAt: string | null
+  /** Tổng likes+comments+shares CỦA MỌI bài đăng đã đồng bộ (không chỉ
+   * `topAllTime`, vốn cắt ở `MAX_TOP_ALL_TIME`) — số liệu "tổng cộng cố
+   * định" cho header kênh, KHÔNG phụ thuộc khoảng ngày trang đang lọc, khác
+   * `page_post_engagements` của Page Insights (đổi theo khoảng ngày, và cần
+   * `read_insights` — quyền có thể chưa đồng bộ kịp/còn trống dữ liệu). */
+  readonly totalEngagement: number
 }
 
 /** Bài đăng có tổng engagement dưới ngần này ở đầu cửa sổ bị loại khỏi "tăng

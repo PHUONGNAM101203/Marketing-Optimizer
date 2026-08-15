@@ -4,62 +4,44 @@ import { ChannelAvatar } from '@/components/channels/channel-avatar'
 import { ExternalChannelLink } from '@/components/connections/external-channel-link'
 import { Badge } from '@/components/ui/badge'
 import type { ChannelDetail } from '@/lib/data/site-channel-detail'
-import type { ChannelDailyPoint } from '@/lib/data/site-channels'
 import { formatNumber } from '@/lib/format'
 
 /* Hallmark · component: meta-channel-header · theme: studied-DNA (Ink & Signal)
  *
  * Dùng chung cho Facebook và Instagram — cùng bố cục với
- * `TiktokChannelHeader` (avatar lớn + tên + 3 số liệu cùng hàng) nhưng KHÔNG
+ * `TiktokChannelHeader` (avatar lớn + tên + số liệu cùng hàng) nhưng KHÔNG
  * tái dùng file đó (xem spec: tránh đụng code TikTok đã lên production).
- * 3 số liệu header lấy từ field ĐÃ được fetch bởi
- * instagramMetricsAdapter/facebookMetricsAdapter nhưng trước giờ chưa hiện
- * ở đâu cả (`reach`/`impressions`/`profileViews` cho Instagram,
- * `impressions`/`engagedUsers`/`postEngagements` cho Facebook) — không cần
- * đổi gì ở adapter.
+ *
+ * 2 số liệu, CẢ HAI ĐỀU LÀ TỔNG CỐ ĐỊNH — không phụ thuộc khoảng ngày trang
+ * đang lọc, KHÁC bản đầu (cộng dồn `reach`/`impressions`/... từ Page/IG
+ * Insights theo `dailySeries`, đổi theo bộ lọc ngày). Đổi vì hai lý do: (1)
+ * header là chỗ để "một cái nhìn tổng quan cố định" của kênh, không phải
+ * chỗ lặp lại đúng số liệu theo ngày đã có trong biểu đồ "Lượt hiển thị Page
+ * theo ngày" ở thân trang; (2) Page/IG Insights cần `read_insights` (mới
+ * khôi phục — xem lịch sử commit) VÀ dữ liệu cần thời gian tích luỹ mới có,
+ * trong khi followerCount/totalEngagement dưới đây có ngay từ lần đồng bộ
+ * đầu tiên, không phụ thuộc quyền vừa thêm.
+ *   - `followerCount` — field `followers_count` trên node Page/IG, xem
+ *     `fetchMetaFollowerCount` (`meta-discovery.ts`).
+ *   - `totalEngagement` — tổng likes+comments+shares của MỌI bài đăng đã
+ *     đồng bộ, tính sẵn trong `getContentTrending` (`content-trending.ts`),
+ *     không tốn thêm request nào ở đây.
  */
 export function MetaChannelHeader({
   siteId,
   detail,
-  dailySeries,
   connected,
   dateRangeLabel,
 }: {
   readonly siteId: string
   readonly detail: Extract<ChannelDetail, { readonly kind: 'facebook' | 'instagram' }>
-  readonly dailySeries: readonly ChannelDailyPoint[]
   readonly connected: boolean
   readonly dateRangeLabel: string
 }) {
-  // Facebook/Instagram KHÔNG nằm trong SNAPSHOT_PROVIDERS (khác TikTok) —
-  // mỗi điểm trong dailySeries là số liệu THẬT của đúng ngày đó (Page/IG
-  // Insights có period=day thật), nên header phải CỘNG DỒN cả khoảng ngày
-  // để khớp với nhãn `dateRangeLabel` bên dưới, không phải chỉ lấy ngày
-  // cuối cùng — chỉ lấy ngày cuối từng khiến header hiện "0" khi ngày gần
-  // nhất chưa được Meta xử lý xong (có độ trễ báo cáo).
-  const totals = dailySeries.reduce(
-    (accumulated, point) => ({
-      reach: accumulated.reach + Number(point.extra.reach ?? 0),
-      impressions: accumulated.impressions + Number(point.extra.impressions ?? 0),
-      profileViews: accumulated.profileViews + Number(point.extra.profileViews ?? 0),
-      engagedUsers: accumulated.engagedUsers + Number(point.extra.engagedUsers ?? 0),
-      postEngagements: accumulated.postEngagements + Number(point.extra.postEngagements ?? 0),
-    }),
-    { reach: 0, impressions: 0, profileViews: 0, engagedUsers: 0, postEngagements: 0 },
-  )
-
-  const stats =
-    detail.kind === 'instagram'
-      ? [
-          { label: 'Reach', value: totals.reach },
-          { label: 'Lượt hiển thị', value: totals.impressions },
-          { label: 'Lượt xem trang cá nhân', value: totals.profileViews },
-        ]
-      : [
-          { label: 'Lượt hiển thị', value: totals.impressions },
-          { label: 'Người dùng tương tác', value: totals.engagedUsers },
-          { label: 'Lượt tương tác bài đăng', value: totals.postEngagements },
-        ]
+  const stats = [
+    { label: 'Người theo dõi', value: detail.followerCount },
+    { label: 'Tổng lượt tương tác bài đăng', value: detail.trending.totalEngagement },
+  ]
 
   return (
     <div className="flex flex-col gap-4">
@@ -107,11 +89,11 @@ export function MetaChannelHeader({
   )
 }
 
-function HeaderStat({ label, value }: { readonly label: string; readonly value: number }) {
+function HeaderStat({ label, value }: { readonly label: string; readonly value: number | null }) {
   return (
     <div className="flex items-baseline gap-1.5">
       <span data-numeric className="text-[length:var(--text-base)] font-semibold text-[var(--color-ink)]">
-        {formatNumber(value)}
+        {value === null ? '—' : formatNumber(value)}
       </span>
       <span className="text-[length:var(--text-sm)] text-[var(--color-ink-3)]">{label}</span>
     </div>

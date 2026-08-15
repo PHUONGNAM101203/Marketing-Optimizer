@@ -206,3 +206,35 @@ export const listAccessibleFacebookAdAccounts = async (
     )
     .map((account) => ({ id: account.id, name: account.name ?? account.id }))
 }
+
+/**
+ * Số người theo dõi CỐ ĐỊNH (không phụ thuộc khoảng ngày trang đang lọc) —
+ * dùng cho header trang chi tiết kênh. `followers_count` có mặt trên CẢ node
+ * Facebook Page lẫn node Instagram Business Account (cùng tên field, cùng
+ * hình dạng response) nên dùng chung một hàm cho cả hai — khác `fan_count`
+ * (Facebook, "lượt thích Page", khái niệm cũ Meta đang dần bỏ, không dùng ở
+ * đây). Nhận thẳng Page access token đã resolve sẵn ở nơi gọi
+ * (`getChannelDetail`) — edge cấp Page cùng lý do
+ * `resolveFacebookPageAccessToken`/`resolveInstagramPageAccessToken`, không
+ * cần dò lại token trong hàm này.
+ */
+export const fetchMetaFollowerCount = async (
+  pageAccessToken: string,
+  externalAccountId: string,
+): Promise<number | null> => {
+  try {
+    const url = new URL(`https://graph.facebook.com/${GRAPH_VERSION}/${externalAccountId}`)
+    url.searchParams.set('fields', 'followers_count')
+    const response = await fetch(url.toString(), { headers: authHeader(pageAccessToken) })
+    if (!response.ok) {
+      await logGraphFailure(`Không lấy được followers_count (${externalAccountId})`, response)
+      return null
+    }
+
+    const body = (await response.json()) as { readonly followers_count?: number }
+    return body.followers_count ?? null
+  } catch (error) {
+    console.error(`Không lấy được followers_count (${externalAccountId}): ${error instanceof Error ? error.message : String(error)}`)
+    return null
+  }
+}

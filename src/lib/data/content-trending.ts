@@ -55,6 +55,7 @@ const EMPTY_RESULT = (): ContentTrendingResult => ({
   trendingFast: { week: [], month: [], year: [] },
   earliestSnapshotAt: null,
   latestSnapshotAt: null,
+  totalEngagement: 0,
 })
 
 /**
@@ -114,6 +115,12 @@ export const getContentTrending = async (
   const rows = data ?? []
   if (rows.length === 0) return EMPTY_RESULT()
 
+  // Cộng trên TOÀN BỘ `rows` — KHÔNG phải `topAllTime` (đã cắt ở
+  // `MAX_TOP_ALL_TIME`) — đây là số liệu "tổng cộng cố định" thật sự, không
+  // phải top-N. `rows` đã là MỘT dòng MỖI BÀI ĐĂNG (xem docblock RPC), nên
+  // không lo cộng trùng theo ngày lịch sử.
+  const totalEngagement = rows.reduce((sum, row) => sum + engagementScore(row), 0)
+
   const topAllTime = rows
     .map((row) => toSummary(row, provider))
     .sort((a, b) => (b.likes + b.comments + (b.shares ?? 0)) - (a.likes + a.comments + (a.shares ?? 0)))
@@ -148,5 +155,5 @@ export const getContentTrending = async (
     trendingFast[windowKey].sort((a, b) => (b.growthPct ?? 0) - (a.growthPct ?? 0))
   }
 
-  return { topAllTime, trendingFast, earliestSnapshotAt, latestSnapshotAt }
+  return { topAllTime, trendingFast, earliestSnapshotAt, latestSnapshotAt, totalEngagement }
 }
