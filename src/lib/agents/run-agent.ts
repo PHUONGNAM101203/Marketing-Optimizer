@@ -119,11 +119,18 @@ export const runAgent = async (agentId: string, trigger: 'schedule' | 'manual'):
   const run = await createRun({ agentId, siteId: agentRow.siteId, trigger })
   const range = defaultRange()
   let totalTokens = 0
+  // Đánh dấu run đã được `finishRun` HỢP LỆ (succeeded/failed/pending-approval)
+  // ở nhánh bình thường — nếu một exception bay tới `catch` SAU khi cờ này đã
+  // `true`, nghĩa là chỉ có `setAgentLastRunAt` (bước dọn dẹp, không phải
+  // trạng thái run) bị lỗi, KHÔNG được ghi đè lại `finishRun('failed')` lên
+  // một run đã kết thúc đúng — xem catch bên dưới.
+  let finished = false
 
   try {
     const currentVersion = promptRow.currentVersionId ? await fetchPromptVersionRow(admin, promptRow.currentVersionId) : null
     if (!currentVersion) {
       await finishRun(run.id, { status: 'failed', summary: 'Prompt không có bản hiện tại', tokensUsed: 0 })
+      finished = true
       await setAgentLastRunAt(agentId, new Date().toISOString())
       return
     }
@@ -140,6 +147,7 @@ export const runAgent = async (agentId: string, trigger: 'schedule' | 'manual'):
       const message = error instanceof VariableResolutionError ? error.message : 'Lỗi không xác định khi điền biến prompt'
       await appendRunStep(run.id, { kind: 'output', tool: null, content: message, at: new Date().toISOString() })
       await finishRun(run.id, { status: 'failed', summary: message, tokensUsed: 0 })
+      finished = true
       await setAgentLastRunAt(agentId, new Date().toISOString())
       return
     }
@@ -190,6 +198,7 @@ export const runAgent = async (agentId: string, trigger: 'schedule' | 'manual'):
             tokensUsed: totalTokens,
           })
         }
+        finished = true
         await setAgentLastRunAt(agentId, new Date().toISOString())
         return
       }
@@ -249,6 +258,7 @@ export const runAgent = async (agentId: string, trigger: 'schedule' | 'manual'):
           summary: 'Agent đã đề xuất một hành động, đang chờ duyệt.',
           tokensUsed: totalTokens,
         })
+        finished = true
         await setAgentLastRunAt(agentId, new Date().toISOString())
         return
       }
@@ -261,6 +271,7 @@ export const runAgent = async (agentId: string, trigger: 'schedule' | 'manual'):
       summary: `Vượt số vòng lặp tối đa (${MAX_ROUNDS}) mà chưa có kết luận.`,
       tokensUsed: totalTokens,
     })
+    finished = true
     await setAgentLastRunAt(agentId, new Date().toISOString())
   } catch (error) {
     // Bất kỳ throw nào chưa được bắt ở trên (callClaude lỗi mạng/429/500,
@@ -269,22 +280,30 @@ export const runAgent = async (agentId: string, trigger: 'schedule' | 'manual'):
     // một pending action thật (nếu round đó vừa tạo trước khi lỗi) sẽ treo
     // dưới một run trông như đang chạy mãi mãi, và cron dựa vào last_run_at
     // sẽ cứ chọn lại + tính phí lại agent này.
+    //
+    // NHƯNG: nếu `finished` đã `true`, nghĩa là run đã `finishRun` đúng cách
+    // (succeeded/failed/pending-approval) rồi mới lỗi — lỗi đó chỉ có thể đến
+    // từ `setAgentLastRunAt` sau đó. KHÔNG được ghi đè lại thành 'failed' lên
+    // một run đã kết thúc hợp lệ chỉ vì bước dọn dẹp cuối cùng hiccup.
     const message = error instanceof Error ? error.message : String(error)
-    try {
-      await appendRunStep(run.id, { kind: 'output', tool: null, content: `Lỗi không xử lý được: ${message}`, at: new Date().toISOString() })
-    } catch {
-      // Best-effort — không để lỗi ghi step che mất lỗi gốc phía trên.
-    }
-    try {
-      await finishRun(run.id, { status: 'failed', summary: message, tokensUsed: totalTokens })
-    } catch {
-      // Best-effort — nếu chính finishRun cũng lỗi thì không còn gì an toàn
-      // để thử lại ở đây nữa.
+    if (!finished) {
+      try {
+        await appendRunStep(run.id, { kind: 'output', tool: null, content: `Lỗi không xử lý được: ${message}`, at: new Date().toISOString() })
+      } catch {
+        // Best-effort — không để lỗi ghi step che mất lỗi gốc phía trên.
+      }
+      try {
+        await finishRun(run.id, { status: 'failed', summary: message, tokensUsed: totalTokens })
+      } catch {
+        // Best-effort — nếu chính finishRun cũng lỗi thì không còn gì an toàn
+        // để thử lại ở đây nữa.
+      }
     }
     try {
       await setAgentLastRunAt(agentId, new Date().toISOString())
     } catch {
-      // Best-effort.
+      // Best-effort — dù `finished` hay chưa, đây luôn chỉ là dọn dẹp
+      // `last_run_at`, không đụng tới status của run.
     }
   }
 }

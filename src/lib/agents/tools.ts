@@ -1,7 +1,6 @@
 import 'server-only'
 
-import { getChannelSummaries } from '@/lib/data/site-channels'
-import { getCampaignPerformance } from '@/lib/data/entities'
+import { getCampaignPerformance, getChannelSummariesForAgent } from '@/lib/data/entities'
 import { createPendingAction } from '@/lib/data/agents'
 import { hasCapability, PROVIDERS, isProviderId } from '@/lib/domain/providers'
 import { formatCurrencyCompact } from '@/lib/format'
@@ -62,7 +61,7 @@ export const TOOL_REGISTRY: Readonly<Record<AgentToolName, ToolDefinition>> = {
     description: 'Đọc tổng số liệu thật (chi phí, chuyển đổi, CPA, ROAS) của mọi kênh quảng cáo đã kết nối trong khoảng ngày đang xét.',
     inputSchema: { type: 'object', properties: {}, additionalProperties: false },
     run: async (_input, ctx) => {
-      const summaries = await getChannelSummaries(ctx.siteId, ctx.range)
+      const summaries = await getChannelSummariesForAgent(ctx.siteId, ctx.range)
       const lines = PROVIDERS.filter((p) => hasCapability(p, 'spend'))
         .map((provider) => {
           const s = summaries.get(provider)
@@ -95,8 +94,8 @@ export const TOOL_REGISTRY: Readonly<Record<AgentToolName, ToolDefinition>> = {
       const toIso = (d: Date) => d.toISOString().slice(0, 10)
 
       const [current, previous] = await Promise.all([
-        getChannelSummaries(ctx.siteId, ctx.range),
-        getChannelSummaries(ctx.siteId, { start: toIso(previousStart), end: toIso(previousEnd) }),
+        getChannelSummariesForAgent(ctx.siteId, ctx.range),
+        getChannelSummariesForAgent(ctx.siteId, { start: toIso(previousStart), end: toIso(previousEnd) }),
       ])
 
       const lines = PROVIDERS.filter((p) => hasCapability(p, 'spend')).map((provider) => {
