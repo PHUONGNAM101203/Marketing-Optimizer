@@ -9,6 +9,21 @@ import 'server-only'
 
 const GRAPH_VERSION = 'v25.0'
 
+interface GraphErrorBody {
+  readonly error?: { readonly message?: string }
+}
+
+/** Kèm lý do THẬT Graph API từ chối vào `fetchError` — chỉ trả HTTP status
+ * không đủ để chẩn đoán (403 permission-denied và 400 request-sai-hình-dạng
+ * nhìn giống hệt nhau nếu chỉ có mã số), và không có quyền truy cập log
+ * server production — banner lỗi hiện tại trên UI chính là kênh chẩn đoán
+ * duy nhất còn lại, không được cắt bớt lý do. */
+const describeGraphFailure = async (platform: string, response: Response): Promise<string> => {
+  const body = (await response.json().catch(() => null)) as GraphErrorBody | null
+  const reason = body?.error?.message
+  return `${platform} trả lỗi HTTP ${response.status}${reason ? ` — ${reason}` : ''}`
+}
+
 export interface InstagramExplore {
   readonly topPosts: readonly {
     readonly caption: string
@@ -59,7 +74,7 @@ export const fetchInstagramExplore = async (
     headers: { authorization: `Bearer ${accessToken}` },
   })
   if (!response.ok) {
-    return { topPosts: [], fetchError: `Instagram trả lỗi HTTP ${response.status}` }
+    return { topPosts: [], fetchError: await describeGraphFailure('Instagram', response) }
   }
 
   const data = (await response.json()) as { data?: readonly InstagramMediaItem[] }
@@ -133,7 +148,7 @@ export const fetchFacebookContentExplore = async (
 
   const response = await fetch(url.toString(), { headers: { authorization: `Bearer ${accessToken}` } })
   if (!response.ok) {
-    return { topPosts: [], fetchError: `Facebook trả lỗi HTTP ${response.status}` }
+    return { topPosts: [], fetchError: await describeGraphFailure('Facebook', response) }
   }
 
   const data = (await response.json()) as { data?: readonly FacebookPostItem[] }

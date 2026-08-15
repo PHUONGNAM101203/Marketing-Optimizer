@@ -74,7 +74,12 @@ const paginateGraph = async (
 
     const response = await fetch(url, { headers: { authorization: `Bearer ${accessToken}` } })
     if (!response.ok) {
-      console.error(`Graph API trả lỗi HTTP ${response.status} khi phân trang ${url}`)
+      const errorBody = (await response.json().catch(() => null)) as
+        | { readonly error?: { readonly message?: string } }
+        | null
+      console.error(
+        `Graph API trả lỗi HTTP ${response.status}${errorBody?.error?.message ? ` — ${errorBody.error.message}` : ''} khi phân trang ${url}`,
+      )
       break
     }
 
