@@ -2,7 +2,7 @@ import { Eye } from 'lucide-react'
 import { cn } from '@/lib/cn'
 import { formatCompact, formatDate } from '@/lib/format'
 import { DialogRoot, DialogTrigger } from '@/components/ui/dialog'
-import { TiktokVideoDetailDialog } from './tiktok-video-detail-dialog'
+import { VideoDetailDialog } from '@/components/channels/video/video-detail-dialog'
 import type { TiktokVideoCardData } from './tiktok-video-grid'
 
 /* Hallmark · component: tiktok-video-card · theme: studied-DNA (Ink & Signal)
@@ -27,7 +27,7 @@ export function TiktokVideoCard({ video }: { readonly video: TiktokVideoCardData
         >
           {video.coverImageUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={video.coverImageUrl} alt="" className="size-full object-cover" />
+            <img src={video.coverImageUrl} alt="" loading="lazy" className="size-full object-cover" />
           ) : (
             <div className="flex size-full items-center justify-center">
               <Eye aria-hidden className="size-6 text-[var(--color-ink-3)]" />
@@ -47,7 +47,19 @@ export function TiktokVideoCard({ video }: { readonly video: TiktokVideoCardData
         </button>
       </DialogTrigger>
 
-      <TiktokVideoDetailDialog video={video} />
+      <VideoDetailDialog
+        video={{
+          title: video.title,
+          thumbnailUrl: video.coverImageUrl,
+          views: video.views,
+          likes: video.likes,
+          comments: video.comments,
+          shares: video.shares,
+          createdAt: video.createdAt,
+          permalinkUrl: video.shareUrl,
+        }}
+        platformLabel="TikTok"
+      />
     </DialogRoot>
   )
 }

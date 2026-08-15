@@ -2,10 +2,26 @@ import { ExternalLink, Eye, Heart, MessageCircle, Share2 } from 'lucide-react'
 import { DialogContent } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { formatCompact, formatDateTime } from '@/lib/format'
-import type { TiktokVideoCardData } from './tiktok-video-grid'
+import type { VideoRankingItem } from './video-ranking-list'
 
-/* Hallmark · component: tiktok-video-detail-dialog · theme: studied-DNA (Ink & Signal) */
-export function TiktokVideoDetailDialog({ video }: { readonly video: TiktokVideoCardData }) {
+/* Hallmark · component: video-detail-dialog · theme: studied-DNA (Ink & Signal)
+ *
+ * Dùng chung cho TikTok VÀ YouTube (xem `video-ranking-list.tsx` cho lý do
+ * gộp) — KHÔNG dùng chung với Facebook/Instagram (`meta-post-detail-dialog.tsx`),
+ * hình dạng dữ liệu khác nhau (có "views", không có "views"). `platformLabel`
+ * đổi chữ nút link ("Xem trên TikTok"/"Xem trên YouTube"); nút TỰ ẨN khi
+ * `permalinkUrl` null — xảy ra với bảng "mọi thời gian" của TikTok (nguồn
+ * snapshot `video_metrics_daily` hiện chưa lưu link gốc, chỉ bảng "trong
+ * khoảng ngày" — nguồn live Display API — có link; YouTube luôn có link vì
+ * dựng thẳng từ `externalVideoId`, không phụ thuộc nguồn).
+ */
+export function VideoDetailDialog({
+  video,
+  platformLabel,
+}: {
+  readonly video: VideoRankingItem
+  readonly platformLabel: string
+}) {
   return (
     <DialogContent
       title={video.title}
@@ -22,12 +38,13 @@ export function TiktokVideoDetailDialog({ video }: { readonly video: TiktokVideo
       }
     >
       <div className="flex flex-col gap-4">
-        {video.coverImageUrl ? (
+        {video.thumbnailUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
-            src={video.coverImageUrl}
+            src={video.thumbnailUrl}
             alt=""
-            className="aspect-[9/16] max-h-80 w-auto self-center rounded-[var(--radius-md)] object-cover"
+            loading="lazy"
+            className="max-h-80 w-full rounded-[var(--radius-md)] object-cover"
           />
         ) : null}
 
@@ -35,14 +52,16 @@ export function TiktokVideoDetailDialog({ video }: { readonly video: TiktokVideo
           <DetailStat icon={Eye} label="Lượt xem" value={formatCompact(video.views)} />
           <DetailStat icon={Heart} label="Lượt thích" value={formatCompact(video.likes)} />
           <DetailStat icon={MessageCircle} label="Bình luận" value={formatCompact(video.comments)} />
-          <DetailStat icon={Share2} label="Chia sẻ" value={formatCompact(video.shares)} />
+          {video.shares !== null ? (
+            <DetailStat icon={Share2} label="Chia sẻ" value={formatCompact(video.shares)} />
+          ) : null}
         </div>
 
-        {video.shareUrl ? (
+        {video.permalinkUrl ? (
           <Button asChild variant="secondary" size="md">
-            <a href={video.shareUrl} target="_blank" rel="noreferrer">
+            <a href={video.permalinkUrl} target="_blank" rel="noreferrer">
               <ExternalLink aria-hidden className="size-4" />
-              Xem trên TikTok
+              Xem trên {platformLabel}
             </a>
           </Button>
         ) : null}

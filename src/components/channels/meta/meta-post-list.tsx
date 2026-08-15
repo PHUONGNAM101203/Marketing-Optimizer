@@ -66,7 +66,7 @@ export function MetaPostList({
             >
               {post.thumbnailUrl ? (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src={post.thumbnailUrl} alt="" className="aspect-square w-full object-cover" />
+                <img src={post.thumbnailUrl} alt="" loading="lazy" className="aspect-square w-full object-cover" />
               ) : (
                 <div className="flex aspect-square w-full items-center justify-center bg-[var(--color-paper-3)]">
                   <ImageOff aria-hidden className="size-6 text-[var(--color-ink-3)]" />

@@ -19,12 +19,15 @@ const WINDOW_LABELS: Readonly<Record<keyof VideoTrendingWindows, string>> = {
 
 const WINDOW_KEYS = Object.keys(WINDOW_LABELS) as readonly (keyof VideoTrendingWindows)[]
 
-/* Hallmark · component: tiktok-trending-widget · theme: studied-DNA (Ink & Signal)
+/* Hallmark · component: video-trending-widget · theme: studied-DNA (Ink & Signal)
  *
- * Ba cửa sổ đã có sẵn trong MỘT payload (xem VideoTrendingResult) — chuyển
- * đổi ở đây là state client thuần, không gọi lại server.
+ * Dùng chung cho TikTok/YouTube (chuyển từ `tiktok-trending-widget.tsx` cũ,
+ * chỉ đổi tên — logic giữ nguyên, đã platform-agnostic từ đầu vì chỉ đọc
+ * `VideoTrendingWindows`). Ba cửa sổ đã có sẵn trong MỘT payload (xem
+ * `VideoTrendingResult`) — chuyển đổi ở đây là state client thuần, không
+ * gọi lại server.
  */
-export function TiktokTrendingWidget({
+export function VideoTrendingWidget({
   trendingFast,
   earliestSnapshotAt,
 }: {
@@ -37,7 +40,7 @@ export function TiktokTrendingWidget({
   // đáng tích cực", nên lọc ở đây.
   const positiveEntries = trendingFast[activeWindow]
     .filter((entry) => (entry.growthPct ?? 0) > 0)
-    .slice(0, 10)
+    .slice(0, 5)
 
   const enoughHistory = hasEnoughHistory(earliestSnapshotAt, activeWindow)
 
@@ -97,6 +100,7 @@ function TrendingRow({ rank, entry }: { readonly rank: number; readonly entry: V
         <img
           src={entry.thumbnailUrl}
           alt=""
+          loading="lazy"
           className="size-10 shrink-0 rounded-[var(--radius-sm)] object-cover"
         />
       ) : (

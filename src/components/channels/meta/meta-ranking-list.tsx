@@ -66,6 +66,7 @@ export function MetaRankingList({
                 <img
                   src={item.thumbnailUrl}
                   alt=""
+                  loading="lazy"
                   className="size-10 shrink-0 rounded-[var(--radius-sm)] object-cover"
                 />
               ) : (

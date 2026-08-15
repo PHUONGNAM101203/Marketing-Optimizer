@@ -247,6 +247,7 @@ export const fetchGtmExplore = async (
 
 export interface YoutubeExplore {
   readonly topVideos: readonly {
+    readonly externalVideoId: string
     readonly title: string
     readonly thumbnailUrl: string | null
     readonly views: number
@@ -256,6 +257,9 @@ export interface YoutubeExplore {
      * ra 0, vì 0 lượt chia sẻ thật và "không đọc được" là hai việc khác nhau
      * (xem UI: cột chỉ hiện khi ít nhất một video có giá trị khác null). */
     readonly shares: number | null
+    /** ISO 8601, từ `snippet.publishedAt` — `null` nếu lượt gọi `videos.list`
+     * lấy metadata thất bại (không chặn phần còn lại, xem `metaById`). */
+    readonly createdAt: string | null
   }[]
   /** `null` = tải thành công (danh sách có thể rỗng — kênh chưa đăng video
    * trong khoảng ngày đã chọn, hoàn toàn bình thường). Khác `null` = request
@@ -316,6 +320,7 @@ export const fetchYoutubeExplore = async (
   interface VideoMeta {
     readonly title: string
     readonly thumbnailUrl: string | null
+    readonly publishedAt: string | null
   }
   const metaById = new Map<string, VideoMeta>()
   if (videosResponse.ok) {
@@ -324,6 +329,7 @@ export const fetchYoutubeExplore = async (
         readonly id?: string
         readonly snippet?: {
           readonly title?: string
+          readonly publishedAt?: string
           readonly thumbnails?: {
             readonly medium?: { readonly url?: string }
             readonly default?: { readonly url?: string }
@@ -337,6 +343,7 @@ export const fetchYoutubeExplore = async (
         title: item.snippet?.title ?? item.id,
         thumbnailUrl:
           item.snippet?.thumbnails?.medium?.url ?? item.snippet?.thumbnails?.default?.url ?? null,
+        publishedAt: item.snippet?.publishedAt ?? null,
       })
     }
   }
@@ -346,12 +353,14 @@ export const fetchYoutubeExplore = async (
       const id = String(row[0])
       const meta = metaById.get(id)
       return {
+        externalVideoId: id,
         title: meta?.title ?? id,
         thumbnailUrl: meta?.thumbnailUrl ?? null,
         views: valueAt(row, 'views') ?? 0,
         likes: valueAt(row, 'likes') ?? 0,
         comments: valueAt(row, 'comments') ?? 0,
         shares: valueAt(row, 'shares'),
+        createdAt: meta?.publishedAt ?? null,
       }
     }),
     fetchError: null,

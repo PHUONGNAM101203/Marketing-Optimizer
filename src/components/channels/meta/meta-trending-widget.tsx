@@ -99,6 +99,7 @@ function TrendingRow({ rank, entry }: { readonly rank: number; readonly entry: C
         <img
           src={entry.thumbnailUrl}
           alt=""
+          loading="lazy"
           className="size-10 shrink-0 rounded-[var(--radius-sm)] object-cover"
         />
       ) : (

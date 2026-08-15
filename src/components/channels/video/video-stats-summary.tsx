@@ -1,9 +1,16 @@
 import { Card } from '@/components/ui/card'
 import { formatNumber } from '@/lib/format'
-import type { TiktokVideoCardData } from './tiktok-video-grid'
 
-/* Hallmark · component: tiktok-stats-summary · theme: studied-DNA (Ink & Signal) */
-export function TiktokStatsSummary({ videos }: { readonly videos: readonly TiktokVideoCardData[] }) {
+/* Hallmark · component: video-stats-summary · theme: studied-DNA (Ink & Signal)
+ *
+ * Dùng chung cho TikTok/YouTube (chuyển từ `tiktok-stats-summary.tsx` cũ,
+ * chỉ đổi tên + tổng quát hoá kiểu tham số — logic giữ nguyên).
+ */
+export function VideoStatsSummary({
+  videos,
+}: {
+  readonly videos: readonly { readonly likes: number; readonly comments: number; readonly shares: number }[]
+}) {
   const totals = videos.reduce(
     (accumulated, video) => ({
       likes: accumulated.likes + video.likes,

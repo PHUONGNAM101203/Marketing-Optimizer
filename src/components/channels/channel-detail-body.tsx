@@ -17,6 +17,7 @@ import { microsToUnits } from '@/lib/metrics/types'
 import { UrlTabs } from '@/components/ui/tabs'
 import { TiktokVideoGrid } from '@/components/channels/tiktok/tiktok-video-grid'
 import { TiktokDashboard } from '@/components/channels/tiktok/tiktok-dashboard'
+import { YoutubeDashboard } from '@/components/channels/youtube/youtube-dashboard'
 import { MetaPostList, type MetaPostItem } from '@/components/channels/meta/meta-post-list'
 import { MetaDashboard, type MetaPostStats } from '@/components/channels/meta/meta-dashboard'
 import { buildMetaPostMetrics } from '@/components/channels/meta/meta-post-metrics'
@@ -163,31 +164,53 @@ export function ChannelDetailBody({
 
     case 'youtube':
       return (
-        <div className="flex flex-col gap-6">
-          <TrendCard
-            title="Lượt xem theo ngày"
-            data={dailySeries.map((point) => ({
-              date: point.date,
-              views: point.extra.views ?? 0,
-            }))}
-            metricKey="views"
-            label="Lượt xem"
-          />
-          <VideoCardGrid
-            label="Video"
-            title="Video xem nhiều nhất"
-            emptyDescription="Chưa có video nào trong khoảng ngày này."
-            fetchError={detail.data.fetchError}
-            videos={detail.data.topVideos.map((row) => ({
-              title: row.title,
-              thumbnailUrl: row.thumbnailUrl,
-              views: row.views,
-              likes: row.likes,
-              comments: row.comments,
-              shares: row.shares,
-            }))}
-          />
-        </div>
+        <UrlTabs
+          ariaLabel="Chế độ xem"
+          tabs={[
+            {
+              id: 'overview',
+              label: 'Tổng quan',
+              panel: (
+                <VideoCardGrid
+                  label="Video"
+                  title="Video xem nhiều nhất"
+                  emptyDescription="Chưa có video nào trong khoảng ngày này."
+                  fetchError={detail.data.fetchError}
+                  videos={detail.data.topVideos.map((row) => ({
+                    title: row.title,
+                    thumbnailUrl: row.thumbnailUrl,
+                    views: row.views,
+                    likes: row.likes,
+                    comments: row.comments,
+                    shares: row.shares,
+                  }))}
+                />
+              ),
+            },
+            {
+              id: 'dashboard',
+              label: 'Dashboard',
+              panel: (
+                <div className="flex flex-col gap-6">
+                  <TrendCard
+                    title="Lượt xem theo ngày"
+                    data={dailySeries.map((point) => ({
+                      date: point.date,
+                      views: point.extra.views ?? 0,
+                    }))}
+                    metricKey="views"
+                    label="Lượt xem"
+                  />
+                  <YoutubeDashboard
+                    topVideosInRange={detail.data.topVideos}
+                    trending={detail.trending}
+                    rangeLabel={DATE_RANGE_LABELS[preset]}
+                  />
+                </div>
+              ),
+            },
+          ]}
+        />
       )
 
     case 'merchant-center':
@@ -264,6 +287,17 @@ export function ChannelDetailBody({
               id: 'overview',
               label: 'Tổng quan',
               panel: (
+                <MetaPostList
+                  posts={overviewPosts}
+                  fetchError={detail.data.fetchError}
+                  emptyDescription="Chưa có bài đăng công khai trong khoảng ngày này."
+                />
+              ),
+            },
+            {
+              id: 'dashboard',
+              label: 'Dashboard',
+              panel: (
                 <div className="flex flex-col gap-6">
                   <TrendCard
                     title="Reach theo ngày"
@@ -274,25 +308,14 @@ export function ChannelDetailBody({
                     metricKey="reach"
                     label="Reach"
                   />
-                  <MetaPostList
-                    posts={overviewPosts}
+                  <MetaDashboard
+                    postsInRange={postsInRange}
+                    trending={detail.trending}
+                    rangeLabel={DATE_RANGE_LABELS[preset]}
+                    showShares={postsInRange.some((post) => post.shares !== null)}
                     fetchError={detail.data.fetchError}
-                    emptyDescription="Chưa có bài đăng công khai trong khoảng ngày này."
                   />
                 </div>
-              ),
-            },
-            {
-              id: 'dashboard',
-              label: 'Dashboard',
-              panel: (
-                <MetaDashboard
-                  postsInRange={postsInRange}
-                  trending={detail.trending}
-                  rangeLabel={DATE_RANGE_LABELS[preset]}
-                  showShares={postsInRange.some((post) => post.shares !== null)}
-                  fetchError={detail.data.fetchError}
-                />
               ),
             },
           ]}
@@ -326,6 +349,17 @@ export function ChannelDetailBody({
               id: 'overview',
               label: 'Tổng quan',
               panel: (
+                <MetaPostList
+                  posts={overviewPosts}
+                  fetchError={detail.data.fetchError}
+                  emptyDescription="Chưa có bài đăng công khai trong khoảng ngày này."
+                />
+              ),
+            },
+            {
+              id: 'dashboard',
+              label: 'Dashboard',
+              panel: (
                 <div className="flex flex-col gap-6">
                   {/* `page_impressions` bị Meta khai tử (15/11/2025, xem
                       `facebook-metrics.ts`) — đổi sang `engagedUsers`, metric
@@ -339,25 +373,14 @@ export function ChannelDetailBody({
                     metricKey="engagedUsers"
                     label="Người dùng tương tác"
                   />
-                  <MetaPostList
-                    posts={overviewPosts}
+                  <MetaDashboard
+                    postsInRange={postsInRange}
+                    trending={detail.trending}
+                    rangeLabel={DATE_RANGE_LABELS[preset]}
+                    showShares={postsInRange.some((post) => post.shares !== null)}
                     fetchError={detail.data.fetchError}
-                    emptyDescription="Chưa có bài đăng công khai trong khoảng ngày này."
                   />
                 </div>
-              ),
-            },
-            {
-              id: 'dashboard',
-              label: 'Dashboard',
-              panel: (
-                <MetaDashboard
-                  postsInRange={postsInRange}
-                  trending={detail.trending}
-                  rangeLabel={DATE_RANGE_LABELS[preset]}
-                  showShares={postsInRange.some((post) => post.shares !== null)}
-                  fetchError={detail.data.fetchError}
-                />
               ),
             },
           ]}
@@ -366,26 +389,9 @@ export function ChannelDetailBody({
     }
 
     case 'tiktok': {
-      const followerTrend =
-        dailySeries.length > 0 ? (
-          <Card>
-            <CardHeader
-              title="Follower theo lần đồng bộ"
-              description="TikTok Display API không có báo cáo lịch sử theo ngày — mỗi điểm là trạng thái tài khoản TẠI lần đồng bộ đó, không phải phát sinh trong ngày."
-            />
-            <CardBody>
-              <TrendChart
-                data={dailySeries.map((point) => ({
-                  date: point.date,
-                  follower: point.extra.followerCount ?? 0,
-                }))}
-                series={[{ key: 'follower', label: 'Follower', colorToken: '--color-signal', kind: 'line' }]}
-                format="number"
-              />
-            </CardBody>
-          </Card>
-        ) : null
-
+      // Follower-theo-lần-đồng-bộ trước đây nằm ở tab Tổng quan — bỏ theo
+      // yêu cầu người dùng (8/2026): follower đã có sẵn ở header, và tab
+      // Tổng quan giờ chỉ tập trung việc duyệt video, không lặp lại số liệu.
       return (
         <UrlTabs
           ariaLabel="Chế độ xem"
@@ -395,7 +401,6 @@ export function ChannelDetailBody({
               label: 'Tổng quan',
               panel: (
                 <div className="flex flex-col gap-6">
-                  {followerTrend}
                   <TiktokVideoGrid videos={detail.data.topVideos} fetchError={detail.data.fetchError} />
                 </div>
               ),
@@ -794,6 +799,7 @@ function VideoCardGrid({
                 <img
                   src={video.thumbnailUrl}
                   alt=""
+                  loading="lazy"
                   className="aspect-video w-full object-cover"
                 />
               ) : (

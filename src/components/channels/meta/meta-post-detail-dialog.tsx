@@ -28,6 +28,7 @@ export function MetaPostDetailDialog({ post }: { readonly post: MetaPostItem }) 
           <img
             src={post.thumbnailUrl}
             alt=""
+            loading="lazy"
             className="max-h-80 w-full rounded-[var(--radius-md)] object-cover"
           />
         ) : null}

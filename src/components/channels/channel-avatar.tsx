@@ -31,6 +31,7 @@ export function ChannelAvatar({
       <img
         src={avatarUrl}
         alt=""
+        loading="lazy"
         className={cn('shrink-0 rounded-full object-cover', SIZE_CLASS[size], className)}
       />
     )
