@@ -615,6 +615,59 @@ export type Database = {
           },
         ]
       }
+      content_metrics_daily: {
+        Row: {
+          comments: number
+          connection_id: string
+          date: string
+          external_post_id: string
+          image_url: string | null
+          likes: number
+          message: string | null
+          permalink: string | null
+          posted_at: string | null
+          provider: string
+          shares: number
+          synced_at: string
+        }
+        Insert: {
+          comments?: number
+          connection_id: string
+          date: string
+          external_post_id: string
+          image_url?: string | null
+          likes?: number
+          message?: string | null
+          permalink?: string | null
+          posted_at?: string | null
+          provider: string
+          shares?: number
+          synced_at?: string
+        }
+        Update: {
+          comments?: number
+          connection_id?: string
+          date?: string
+          external_post_id?: string
+          image_url?: string | null
+          likes?: number
+          message?: string | null
+          permalink?: string | null
+          posted_at?: string | null
+          provider?: string
+          shares?: number
+          synced_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "content_metrics_daily_connection_id_fkey"
+            columns: ["connection_id"]
+            isOneToOne: false
+            referencedRelation: "connections"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       video_metrics_daily: {
         Row: {
           comments: number
@@ -681,6 +734,32 @@ export type Database = {
           p_start_date: string
         }
         Returns: Database["public"]["Tables"]["plan_items"]["Row"]
+      }
+      get_content_trending_snapshots: {
+        Args: {
+          p_connection_id: string
+          p_cutoffs: string[]
+          p_provider: string
+        }
+        Returns: {
+          external_post_id: string
+          message: string | null
+          image_url: string | null
+          permalink: string | null
+          latest_posted_at: string | null
+          latest_date: string
+          latest_likes: number
+          latest_comments: number
+          latest_shares: number
+          earliest_date: string | null
+          earliest_score: number | null
+          cutoff0_date: string | null
+          cutoff0_score: number | null
+          cutoff1_date: string | null
+          cutoff1_score: number | null
+          cutoff2_date: string | null
+          cutoff2_score: number | null
+        }[]
       }
       get_video_trending_snapshots: {
         Args: {

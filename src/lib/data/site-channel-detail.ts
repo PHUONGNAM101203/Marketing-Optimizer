@@ -13,7 +13,9 @@ import {
   type YoutubeExplore,
 } from '@/lib/providers/google-explore'
 import type { VideoTrendingResult } from '@/lib/providers/video-trending-types'
+import type { ContentTrendingResult } from '@/lib/providers/content-trending-types'
 import { getTiktokVideoTrending } from '@/lib/data/video-trending'
+import { getContentTrending } from '@/lib/data/content-trending'
 import { fetchGoogleAdsCampaignMetrics } from '@/lib/providers/google-ads'
 import {
   fetchMerchantCenterProducts,
@@ -143,6 +145,7 @@ export type ChannelDetail =
        * niệm "kênh" (Ads/Analytics/Search Console/Tag Manager/Merchant Center). */
       readonly avatarUrl: string | null
       readonly data: InstagramExplore
+      readonly trending: ContentTrendingResult
     }
   | {
       readonly kind: 'tiktok'
@@ -164,6 +167,7 @@ export type ChannelDetail =
        * niệm "kênh" (Ads/Analytics/Search Console/Tag Manager/Merchant Center). */
       readonly avatarUrl: string | null
       readonly data: FacebookExplore
+      readonly trending: ContentTrendingResult
     }
   | { readonly kind: 'unsupported' }
 
@@ -319,22 +323,26 @@ export const getChannelDetail = async (
       ])
       return { kind: 'tiktok', accountName, externalAccountId, avatarUrl, data, trending }
     }
-    case 'instagram':
-      return {
-        kind: 'instagram',
-        accountName,
-        externalAccountId,
-        avatarUrl,
-        data: await fetchInstagramExplore(tokenResult.accessToken, connection.external_account_id, range),
-      }
-    case 'facebook':
-      return {
-        kind: 'facebook',
-        accountName,
-        externalAccountId,
-        avatarUrl,
-        data: await fetchFacebookContentExplore(tokenResult.accessToken, connection.external_account_id, range),
-      }
+    case 'instagram': {
+      // `Promise.all` chứ không await nối tiếp: hai lượt đọc độc lập nhau,
+      // chạy song song thì TTFB của trang chi tiết kênh bằng lượt chậm hơn
+      // thay vì bằng tổng hai lượt (bài học từ lượt đầu của `tiktok`/`youtube`
+      // — build song song ngay từ đầu, không sửa lại sau).
+      const [data, trending] = await Promise.all([
+        fetchInstagramExplore(tokenResult.accessToken, connection.external_account_id, range),
+        // Không truyền `range` — trending có 3 cửa sổ cố định riêng, độc lập
+        // với khoảng ngày trang đang chọn, cùng quy ước `tiktok`/`youtube`.
+        getContentTrending(connection.id, 'instagram'),
+      ])
+      return { kind: 'instagram', accountName, externalAccountId, avatarUrl, data, trending }
+    }
+    case 'facebook': {
+      const [data, trending] = await Promise.all([
+        fetchFacebookContentExplore(tokenResult.accessToken, connection.external_account_id, range),
+        getContentTrending(connection.id, 'facebook'),
+      ])
+      return { kind: 'facebook', accountName, externalAccountId, avatarUrl, data, trending }
+    }
     default:
       return { kind: 'unsupported' }
   }
