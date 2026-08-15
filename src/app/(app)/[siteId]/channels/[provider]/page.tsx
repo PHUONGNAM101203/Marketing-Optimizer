@@ -10,6 +10,7 @@ import { ChannelAvatar } from '@/components/channels/channel-avatar'
 import { ChannelDetailBody } from '@/components/channels/channel-detail-body'
 import { ExternalChannelLink } from '@/components/connections/external-channel-link'
 import { TiktokChannelHeader } from '@/components/channels/tiktok/tiktok-channel-header'
+import { MetaChannelHeader } from '@/components/channels/meta/meta-channel-header'
 import { getSite } from '@/lib/data/sites'
 import { getChannelDetail } from '@/lib/data/site-channel-detail'
 import { getChannelDailySeries, getChannelSummaries } from '@/lib/data/site-channels'
@@ -78,6 +79,16 @@ export default async function ChannelDetailPage({
     <PageShell>
       {provider === 'tiktok' && detail && detail.kind === 'tiktok' ? (
         <TiktokChannelHeader
+          siteId={site.id}
+          detail={detail}
+          dailySeries={dailySeries}
+          connected={summary?.connected ?? false}
+          dateRangeLabel={formatDateRange(range.start, range.end)}
+        />
+      ) : (provider === 'facebook' || provider === 'instagram') &&
+        detail &&
+        (detail.kind === 'facebook' || detail.kind === 'instagram') ? (
+        <MetaChannelHeader
           siteId={site.id}
           detail={detail}
           dailySeries={dailySeries}
