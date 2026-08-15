@@ -117,7 +117,8 @@ export const listAgents = async (siteId: string): Promise<readonly Agent[]> => {
 
 export const getAgent = async (agentId: string): Promise<Agent | null> => {
   const supabase = await createClient()
-  const { data } = await supabase.from('agents').select('*').eq('id', agentId).maybeSingle()
+  const { data, error } = await supabase.from('agents').select('*').eq('id', agentId).maybeSingle()
+  if (error) throw new Error(`Không đọc được agent: ${error.message}`)
   return data ? toAgent(data as AgentRow) : null
 }
 
@@ -177,13 +178,14 @@ const attachPendingActions = async (
 ): Promise<readonly AgentRun[]> => {
   if (runRows.length === 0) return []
 
-  const { data: pendingRows } = await supabase
+  const { data: pendingRows, error } = await supabase
     .from('pending_actions')
     .select('*')
     .in(
       'run_id',
       runRows.map((r) => r.id),
     )
+  if (error) throw new Error(`Không đọc được hành động chờ duyệt: ${error.message}`)
 
   const names = await resolveDisplayNames(
     supabase,
@@ -215,7 +217,8 @@ export const listRunsForAgent = async (agentId: string): Promise<readonly AgentR
 
 export const getRun = async (runId: string): Promise<AgentRun | null> => {
   const supabase = await createClient()
-  const { data } = await supabase.from('agent_runs').select('*').eq('id', runId).maybeSingle()
+  const { data, error } = await supabase.from('agent_runs').select('*').eq('id', runId).maybeSingle()
+  if (error) throw new Error(`Không đọc được lượt chạy: ${error.message}`)
   if (!data) return null
   const [run] = await attachPendingActions(supabase, [data as RunRow])
   return run ?? null
@@ -223,7 +226,8 @@ export const getRun = async (runId: string): Promise<AgentRun | null> => {
 
 export const listPendingActionsForSite = async (siteId: string): Promise<readonly PendingAction[]> => {
   const supabase = await createClient()
-  const { data: runRows } = await supabase.from('agent_runs').select('id').eq('site_id', siteId)
+  const { data: runRows, error: runsError } = await supabase.from('agent_runs').select('id').eq('site_id', siteId)
+  if (runsError) throw new Error(`Không đọc được danh sách lượt chạy: ${runsError.message}`)
   const runIds = (runRows ?? []).map((r) => r.id)
   if (runIds.length === 0) return []
 
@@ -267,7 +271,16 @@ export const createRun = async (input: {
 
 export const appendRunStep = async (runId: string, step: Omit<AgentStep, 'index'>): Promise<void> => {
   const admin = createAdminClient()
-  const { data: current } = await admin.from('agent_runs').select('steps').eq('id', runId).maybeSingle()
+  // Đọc lỗi ở đây KHÔNG được nuốt: nếu bỏ qua, `existingSteps` âm thầm rơi về
+  // `[]` và lệnh update bên dưới sẽ GHI ĐÈ toàn bộ lịch sử bước của run bằng
+  // đúng một bước mới — mất dữ liệu audit trail thật, không chỉ là thiếu dữ
+  // liệu đọc.
+  const { data: current, error: readError } = await admin
+    .from('agent_runs')
+    .select('steps')
+    .eq('id', runId)
+    .maybeSingle()
+  if (readError) throw new Error(`Không đọc được lịch sử bước chạy: ${readError.message}`)
   const existingSteps = (current?.steps as readonly AgentStep[] | undefined) ?? []
   const nextStep: AgentStep = { ...step, index: existingSteps.length }
 
