@@ -76,9 +76,10 @@ export default function PrivacyPolicyPage() {
             <>
               <strong>Meta</strong> (Facebook/Instagram):{' '}
               <code>pages_show_list</code>, <code>pages_read_engagement</code>,{' '}
-              <code>read_insights</code>, <code>instagram_basic</code>,{' '}
-              <code>instagram_manage_insights</code>, <code>business_management</code>. Tuỳ chọn
-              thêm khi bạn bật: <code>ads_read</code> (Facebook Ads).
+              <code>pages_read_user_content</code>, <code>read_insights</code>,{' '}
+              <code>instagram_basic</code>, <code>instagram_manage_insights</code>,{' '}
+              <code>business_management</code>. Tuỳ chọn thêm khi bạn bật:{' '}
+              <code>ads_read</code> (Facebook Ads).
             </>,
             <>
               <strong>TikTok</strong>: <code>user.info.basic</code>, <code>user.info.stats</code>,{' '}

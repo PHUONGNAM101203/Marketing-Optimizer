@@ -55,9 +55,22 @@ const TOKEN_ENDPOINT = `https://graph.facebook.com/${GRAPH_VERSION}/oauth/access
 // sửa gì thêm ngoài dòng scope này. Token cũ (cấp trước khi thêm quyền)
 // KHÔNG tự có quyền mới — người dùng cần ngắt kết nối rồi kết nối lại
 // Facebook để lấy token mang đủ scope.
+//
+// `pages_read_user_content` THÊM MỚI (8/2026) — lỗi Graph API THẬT (mã #10,
+// đọc trực tiếp từ response body nhờ vừa thêm `describeGraphFailure`, không
+// phải đoán từ tài liệu) trên `/{page-id}/published_posts`: "This endpoint
+// requires the 'pages_read_user_content' permission or the 'Page Public
+// Content Access' feature." — `pages_read_engagement` (đã có sẵn) KHÔNG đủ
+// cho edge này dù tên nghe có vẻ liên quan; đây là quyền RIÊNG Graph API đòi
+// hỏi. "Page Public Content Access" là một Feature cần App Review riêng,
+// `pages_read_user_content` là lựa chọn dùng được ngay ở Development Mode
+// (Standard Access, không cần review) — chọn quyền này. Cùng ảnh hưởng
+// `fetchFacebookContentExplore`/`fetchAllFacebookPosts` (nội dung Page) —
+// KHÔNG đụng gì tới Instagram hay Facebook Ads.
 const SCOPES = [
   'pages_show_list',
   'pages_read_engagement',
+  'pages_read_user_content',
   'read_insights',
   'instagram_basic',
   'instagram_manage_insights',
