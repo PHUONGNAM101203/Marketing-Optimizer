@@ -43,19 +43,22 @@ const TOKEN_ENDPOINT = `https://graph.facebook.com/${GRAPH_VERSION}/oauth/access
 // trong luồng Instagram API qua Facebook Login — hai thứ trùng tên nhưng
 // khác API, dễ nhầm khi chỉ tra tài liệu chung chung không đối chiếu với app
 // thật (bài học: ưu tiên lỗi "Invalid Scopes" thật từ chính app hơn tài liệu).
-// `read_insights` TẠM BỎ (8/2026, theo yêu cầu người dùng) — app cũng bị
-// Facebook từ chối "Invalid Scopes" cho quyền này (tài liệu Meta mâu thuẫn
-// nhau: một trang nói vẫn bắt buộc, một nguồn khác nói đã khai tử — chưa xác
-// minh được app này thực sự có quyền đó ở use case nào, và người dùng ưu
-// tiên kết nối được ngay hơn là có đủ số liệu Facebook Page). Hệ quả: CHỈ
-// `facebookMetricsAdapter` (facebook-metrics.ts, gọi `/insights` cấp Page)
-// bị ảnh hưởng — trả mảng rỗng thay vì lỗi (đã có `if (!response.ok) return
-// []`), không sập trang. Instagram (`instagram_manage_insights`) và mọi thứ
-// khác không đụng tới. Thêm lại `read_insights` vào đây khi xác minh được
-// đúng cách xin quyền (xem thảo luận trong lịch sử commit).
+// `read_insights` KHÔI PHỤC (8/2026) — TẠM BỎ trước đó (xem lịch sử commit
+// `b1dc08d`) vì app bị Facebook từ chối "Invalid Scopes"; người dùng đã tự
+// thêm quyền này vào đúng Use Case trên App Dashboard và XÁC NHẬN nó xuất
+// hiện trong "Quyền và tính năng" (Standard Access, app còn ở Development
+// Mode nên không cần App Review) trước khi báo lại — cùng kỷ luật đã dùng
+// cho `instagram_basic`: tin lỗi/xác nhận thật từ chính app hơn tài liệu
+// chung chung. Quyền này chỉ ảnh hưởng `facebookMetricsAdapter`
+// (facebook-metrics.ts, gọi `/insights` cấp Page — "Lượt hiển thị Page theo
+// ngày" ở tab Tổng quan) — code đọc insight đã viết sẵn từ trước, không cần
+// sửa gì thêm ngoài dòng scope này. Token cũ (cấp trước khi thêm quyền)
+// KHÔNG tự có quyền mới — người dùng cần ngắt kết nối rồi kết nối lại
+// Facebook để lấy token mang đủ scope.
 const SCOPES = [
   'pages_show_list',
   'pages_read_engagement',
+  'read_insights',
   'instagram_basic',
   'instagram_manage_insights',
   'business_management',

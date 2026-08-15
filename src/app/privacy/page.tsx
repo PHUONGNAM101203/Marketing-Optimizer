@@ -6,7 +6,7 @@ export const metadata: Metadata = {
   description: 'Confluence thu thập, sử dụng và bảo vệ dữ liệu của bạn như thế nào.',
 }
 
-const UPDATED_AT = '13/08/2026'
+const UPDATED_AT = '15/08/2026'
 
 export default function PrivacyPolicyPage() {
   return (
@@ -76,7 +76,7 @@ export default function PrivacyPolicyPage() {
             <>
               <strong>Meta</strong> (Facebook/Instagram):{' '}
               <code>pages_show_list</code>, <code>pages_read_engagement</code>,{' '}
-              <code>instagram_basic</code>,{' '}
+              <code>read_insights</code>, <code>instagram_basic</code>,{' '}
               <code>instagram_manage_insights</code>, <code>business_management</code>. Tuỳ chọn
               thêm khi bạn bật: <code>ads_read</code> (Facebook Ads).
             </>,
