@@ -31,6 +31,15 @@ export function VersionHistoryDialog({
 
   const current = prompt.versions.find((version) => version.id === prompt.currentVersionId)
 
+  // Đóng dialog theo cách nào cũng phải xoá `error`/`ok` cũ — không thì lần
+  // mở lại sau vẫn còn hiện banner lỗi/thành công của lượt trước, dù chưa
+  // submit gì ở lượt này.
+  const resetAndClose = () => {
+    setError(null)
+    setOk(false)
+    setOpen(false)
+  }
+
   useEffect(() => {
     if (!ok) return
     const timeout = setTimeout(() => setOk(false), 1500)
@@ -46,23 +55,25 @@ export function VersionHistoryDialog({
 
     setError(null)
     startTransition(async () => {
-      try {
-        await savePromptVersionAction({
-          siteId,
-          promptId: prompt.id,
-          systemPrompt,
-          userTemplate,
-          notes: notesRaw.length > 0 ? notesRaw : null,
-        })
-        setOk(true)
-      } catch (caught) {
-        setError(caught instanceof Error ? caught.message : 'Không lưu được bản mới.')
+      const result = await savePromptVersionAction({
+        siteId,
+        promptId: prompt.id,
+        systemPrompt,
+        userTemplate,
+        notes: notesRaw.length > 0 ? notesRaw : null,
+      })
+
+      if (result.error) {
+        setError(result.error)
+        return
       }
+
+      setOk(true)
     })
   }
 
   return (
-    <DialogRoot open={open} onOpenChange={setOpen}>
+    <DialogRoot open={open} onOpenChange={(next) => (next ? setOpen(true) : resetAndClose())}>
       <DialogTrigger asChild>
         <Button variant="ghost" size="sm">
           <GitBranch aria-hidden className="size-3.5" />

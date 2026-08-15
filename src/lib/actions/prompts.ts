@@ -7,12 +7,27 @@ import { resolveVariables, VariableResolutionError } from '@/lib/prompts/resolve
 import { getSite } from '@/lib/data/sites'
 import { getCurrentUser } from '@/lib/supabase/server'
 import { findUndeclaredVariables, VARIABLE_PATTERN } from '@/lib/domain/prompt'
-import type { PromptCategory, PromptRun, PromptVariable } from '@/lib/domain/prompt'
+import type { PromptCategory, PromptRun, PromptTemplate, PromptVariable } from '@/lib/domain/prompt'
 
 const requireUserId = async (): Promise<string> => {
   const user = await getCurrentUser()
   if (!user) throw new Error('Chưa đăng nhập')
   return user.id
+}
+
+/**
+ * Cùng khuôn với `TestRunState` bên dưới — lỗi VALIDATION (biến chưa khai
+ * báo) và lỗi GHI (Supabase) đều là thứ người dùng cần đọc đúng nguyên văn,
+ * nên trả về qua `error` thay vì throw: Next.js redact message của lỗi throw
+ * từ Server Action thành một chuỗi chung chung trên build production (xem
+ * node_modules/next/dist/docs/.../10-error-handling.md), nên throw ở đây sẽ
+ * giấu mất đúng phần người dùng cần thấy nhất — biến nào chưa khai báo, hay
+ * vì sao ghi thất bại. `requireUserId()` vẫn để throw như `testRunPromptAction`
+ * — phiên hết hạn là lỗi thật sự bất ngờ, không phải điều form cần hiển thị.
+ */
+export interface CreatePromptState {
+  readonly prompt: PromptTemplate | null
+  readonly error: string | null
 }
 
 export const createPromptAction = async (input: {
@@ -24,16 +39,25 @@ export const createPromptAction = async (input: {
   readonly variables: readonly PromptVariable[]
   readonly systemPrompt: string
   readonly userTemplate: string
-}) => {
+}): Promise<CreatePromptState> => {
   const userId = await requireUserId()
   const undeclared = findUndeclaredVariables(input.userTemplate, input.variables)
   if (undeclared.length > 0) {
-    throw new Error(`Template dùng biến chưa khai báo: ${undeclared.join(', ')}`)
+    return { prompt: null, error: `Template dùng biến chưa khai báo: ${undeclared.join(', ')}` }
   }
 
-  const prompt = await createPrompt({ ...input, createdBy: userId })
-  revalidatePath(`/${input.siteId}/prompts`)
-  return prompt
+  try {
+    const prompt = await createPrompt({ ...input, createdBy: userId })
+    revalidatePath(`/${input.siteId}/prompts`)
+    return { prompt, error: null }
+  } catch (error) {
+    return { prompt: null, error: error instanceof Error ? error.message : 'Không tạo được prompt.' }
+  }
+}
+
+export interface SaveVersionState {
+  readonly prompt: PromptTemplate | null
+  readonly error: string | null
 }
 
 export const savePromptVersionAction = async (input: {
@@ -42,17 +66,21 @@ export const savePromptVersionAction = async (input: {
   readonly systemPrompt: string
   readonly userTemplate: string
   readonly notes: string | null
-}) => {
+}): Promise<SaveVersionState> => {
   const userId = await requireUserId()
-  const prompt = await createPromptVersion({
-    promptId: input.promptId,
-    systemPrompt: input.systemPrompt,
-    userTemplate: input.userTemplate,
-    notes: input.notes,
-    createdBy: userId,
-  })
-  revalidatePath(`/${input.siteId}/prompts`)
-  return prompt
+  try {
+    const prompt = await createPromptVersion({
+      promptId: input.promptId,
+      systemPrompt: input.systemPrompt,
+      userTemplate: input.userTemplate,
+      notes: input.notes,
+      createdBy: userId,
+    })
+    revalidatePath(`/${input.siteId}/prompts`)
+    return { prompt, error: null }
+  } catch (error) {
+    return { prompt: null, error: error instanceof Error ? error.message : 'Không lưu được bản mới.' }
+  }
 }
 
 export interface TestRunState {

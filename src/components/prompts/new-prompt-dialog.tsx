@@ -66,22 +66,24 @@ export function NewPromptDialog({ siteId }: { readonly siteId: string }) {
 
     setError(null)
     startTransition(async () => {
-      try {
-        await createPromptAction({
-          siteId,
-          name,
-          description,
-          category,
-          tags,
-          variables: cleanedVariables,
-          systemPrompt,
-          userTemplate,
-        })
-        setOk(true)
-        setTimeout(resetAndClose, 800)
-      } catch (caught) {
-        setError(caught instanceof Error ? caught.message : 'Không tạo được prompt.')
+      const result = await createPromptAction({
+        siteId,
+        name,
+        description,
+        category,
+        tags,
+        variables: cleanedVariables,
+        systemPrompt,
+        userTemplate,
+      })
+
+      if (result.error) {
+        setError(result.error)
+        return
       }
+
+      setOk(true)
+      setTimeout(resetAndClose, 800)
     })
   }
 
