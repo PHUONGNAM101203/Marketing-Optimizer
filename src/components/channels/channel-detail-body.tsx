@@ -17,6 +17,9 @@ import { microsToUnits } from '@/lib/metrics/types'
 import { UrlTabs } from '@/components/ui/tabs'
 import { TiktokVideoGrid } from '@/components/channels/tiktok/tiktok-video-grid'
 import { TiktokDashboard } from '@/components/channels/tiktok/tiktok-dashboard'
+import { MetaPostList, type MetaPostItem } from '@/components/channels/meta/meta-post-list'
+import { MetaDashboard, type MetaPostStats } from '@/components/channels/meta/meta-dashboard'
+import { buildMetaPostMetrics } from '@/components/channels/meta/meta-post-metrics'
 
 /**
  * Thân trang chi tiết kênh — MỖI nền tảng một hình dạng khác hẳn, cố tình
@@ -232,53 +235,130 @@ export function ChannelDetailBody({
         </div>
       )
 
-    case 'instagram':
-      return (
-        <div className="flex flex-col gap-6">
-          <TrendCard
-            title="Reach theo ngày"
-            data={dailySeries.map((point) => ({
-              date: point.date,
-              reach: point.extra.reach ?? 0,
-            }))}
-            metricKey="reach"
-            label="Reach"
-          />
-          <BreakdownSection
-            label="Bài đăng"
-            title="Bài đăng có tương tác cao nhất"
-            rows={detail.data.topPosts.map((row) => ({
-              dimension: row.caption,
-              cells: [formatCompact(row.likes), formatCompact(row.comments)],
-            }))}
-            columns={['Lượt thích', 'Bình luận']}
-          />
-        </div>
-      )
+    case 'instagram': {
+      // Instagram không có field chia sẻ cho media (`shares: null` cố định,
+      // xem `content-trending-types.ts`) — `buildMetaPostMetrics` tự bỏ mục
+      // Chia sẻ khi nhận `null`, không hiện "0" giả.
+      const postsInRange: readonly MetaPostStats[] = detail.data.topPosts.map((post) => ({
+        title: post.caption,
+        thumbnailUrl: post.thumbnailUrl,
+        createdAt: post.createdAt,
+        permalinkUrl: post.permalinkUrl,
+        likes: post.likes,
+        comments: post.comments,
+        shares: null,
+      }))
+      const overviewPosts: readonly MetaPostItem[] = postsInRange.map((post) => ({
+        title: post.title,
+        thumbnailUrl: post.thumbnailUrl,
+        createdAt: post.createdAt,
+        permalinkUrl: post.permalinkUrl,
+        metrics: buildMetaPostMetrics(post.likes, post.comments, post.shares),
+      }))
 
-    case 'facebook':
       return (
-        <div className="flex flex-col gap-6">
-          <TrendCard
-            title="Lượt hiển thị Page theo ngày"
-            data={dailySeries.map((point) => ({
-              date: point.date,
-              impressions: point.extra.impressions ?? 0,
-            }))}
-            metricKey="impressions"
-            label="Lượt hiển thị"
-          />
-          <BreakdownSection
-            label="Bài đăng"
-            title="Bài đăng có tương tác cao nhất"
-            rows={detail.data.topPosts.map((row) => ({
-              dimension: row.message,
-              cells: [formatCompact(row.reactions), formatCompact(row.comments), formatCompact(row.shares)],
-            }))}
-            columns={['Cảm xúc', 'Bình luận', 'Chia sẻ']}
-          />
-        </div>
+        <UrlTabs
+          ariaLabel="Chế độ xem"
+          tabs={[
+            {
+              id: 'overview',
+              label: 'Tổng quan',
+              panel: (
+                <div className="flex flex-col gap-6">
+                  <TrendCard
+                    title="Reach theo ngày"
+                    data={dailySeries.map((point) => ({
+                      date: point.date,
+                      reach: point.extra.reach ?? 0,
+                    }))}
+                    metricKey="reach"
+                    label="Reach"
+                  />
+                  <MetaPostList
+                    posts={overviewPosts}
+                    fetchError={detail.data.fetchError}
+                    emptyDescription="Chưa có bài đăng công khai trong khoảng ngày này."
+                  />
+                </div>
+              ),
+            },
+            {
+              id: 'dashboard',
+              label: 'Dashboard',
+              panel: (
+                <MetaDashboard
+                  postsInRange={postsInRange}
+                  trending={detail.trending}
+                  rangeLabel={DATE_RANGE_LABELS[preset]}
+                  showShares={false}
+                />
+              ),
+            },
+          ]}
+        />
       )
+    }
+
+    case 'facebook': {
+      const postsInRange: readonly MetaPostStats[] = detail.data.topPosts.map((post) => ({
+        title: post.message,
+        thumbnailUrl: post.thumbnailUrl,
+        createdAt: post.createdAt,
+        permalinkUrl: post.permalinkUrl,
+        likes: post.reactions,
+        comments: post.comments,
+        shares: post.shares,
+      }))
+      const overviewPosts: readonly MetaPostItem[] = postsInRange.map((post) => ({
+        title: post.title,
+        thumbnailUrl: post.thumbnailUrl,
+        createdAt: post.createdAt,
+        permalinkUrl: post.permalinkUrl,
+        metrics: buildMetaPostMetrics(post.likes, post.comments, post.shares),
+      }))
+
+      return (
+        <UrlTabs
+          ariaLabel="Chế độ xem"
+          tabs={[
+            {
+              id: 'overview',
+              label: 'Tổng quan',
+              panel: (
+                <div className="flex flex-col gap-6">
+                  <TrendCard
+                    title="Lượt hiển thị Page theo ngày"
+                    data={dailySeries.map((point) => ({
+                      date: point.date,
+                      impressions: point.extra.impressions ?? 0,
+                    }))}
+                    metricKey="impressions"
+                    label="Lượt hiển thị"
+                  />
+                  <MetaPostList
+                    posts={overviewPosts}
+                    fetchError={detail.data.fetchError}
+                    emptyDescription="Chưa có bài đăng công khai trong khoảng ngày này."
+                  />
+                </div>
+              ),
+            },
+            {
+              id: 'dashboard',
+              label: 'Dashboard',
+              panel: (
+                <MetaDashboard
+                  postsInRange={postsInRange}
+                  trending={detail.trending}
+                  rangeLabel={DATE_RANGE_LABELS[preset]}
+                  showShares={true}
+                />
+              ),
+            },
+          ]}
+        />
+      )
+    }
 
     case 'tiktok': {
       const followerTrend =
