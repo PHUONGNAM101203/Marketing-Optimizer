@@ -2,6 +2,7 @@ import { AlertTriangle, ImageOff } from 'lucide-react'
 import { Callout, EmptyState } from '@/components/ui/feedback'
 import { DialogRoot, DialogTrigger } from '@/components/ui/dialog'
 import { MetaPostDetailDialog } from './meta-post-detail-dialog'
+import { cn } from '@/lib/cn'
 import { formatCompact, formatDate } from '@/lib/format'
 import type { Eye } from 'lucide-react'
 
@@ -65,9 +66,9 @@ export function MetaPostList({
             >
               {post.thumbnailUrl ? (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src={post.thumbnailUrl} alt="" className="aspect-video w-full object-cover" />
+                <img src={post.thumbnailUrl} alt="" className="aspect-square w-full object-cover" />
               ) : (
-                <div className="flex aspect-video w-full items-center justify-center bg-[var(--color-paper-3)]">
+                <div className="flex aspect-square w-full items-center justify-center bg-[var(--color-paper-3)]">
                   <ImageOff aria-hidden className="size-6 text-[var(--color-ink-3)]" />
                 </div>
               )}
@@ -83,7 +84,12 @@ export function MetaPostList({
                     {formatDate(post.createdAt.slice(0, 10))}
                   </p>
                 ) : null}
-                <div className="mt-auto grid grid-cols-2 gap-2 pt-2">
+                <div
+                  className={cn(
+                    'mt-auto grid gap-2 pt-2',
+                    post.metrics.length >= 3 ? 'grid-cols-3' : 'grid-cols-2',
+                  )}
+                >
                   {post.metrics.map((metric, metricIndex) => (
                     <span
                       key={metricIndex}

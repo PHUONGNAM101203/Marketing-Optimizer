@@ -42,11 +42,13 @@ export function MetaDashboard({
   trending,
   rangeLabel,
   showShares,
+  fetchError,
 }: {
   readonly postsInRange: readonly MetaPostStats[]
   readonly trending: ContentTrendingResult
   readonly rangeLabel: string
   readonly showShares: boolean
+  readonly fetchError: string | null
 }) {
   const rankedAllTime: MetaPostItem[] = trending.topAllTime.slice(0, 10).map((post) =>
     toPostItem({
@@ -66,7 +68,7 @@ export function MetaDashboard({
         <SectionHead label="Xếp hạng" title={`Bài đăng tương tác nhiều nhất — ${rangeLabel}`} />
         <MetaPostList
           posts={postsInRange.map(toPostItem)}
-          fetchError={null}
+          fetchError={fetchError}
           emptyDescription="Chưa có bài đăng công khai trong khoảng ngày này."
         />
       </section>

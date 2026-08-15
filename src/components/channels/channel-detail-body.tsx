@@ -290,7 +290,8 @@ export function ChannelDetailBody({
                   postsInRange={postsInRange}
                   trending={detail.trending}
                   rangeLabel={DATE_RANGE_LABELS[preset]}
-                  showShares={false}
+                  showShares={postsInRange.some((post) => post.shares !== null)}
+                  fetchError={detail.data.fetchError}
                 />
               ),
             },
@@ -351,7 +352,8 @@ export function ChannelDetailBody({
                   postsInRange={postsInRange}
                   trending={detail.trending}
                   rangeLabel={DATE_RANGE_LABELS[preset]}
-                  showShares={true}
+                  showShares={postsInRange.some((post) => post.shares !== null)}
+                  fetchError={detail.data.fetchError}
                 />
               ),
             },

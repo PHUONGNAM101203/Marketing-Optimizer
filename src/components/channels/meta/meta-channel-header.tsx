@@ -31,20 +31,34 @@ export function MetaChannelHeader({
   readonly connected: boolean
   readonly dateRangeLabel: string
 }) {
-  const latest = dailySeries.length > 0 ? dailySeries[dailySeries.length - 1] : null
-  const latestExtra = latest?.extra ?? {}
+  // Facebook/Instagram KHÔNG nằm trong SNAPSHOT_PROVIDERS (khác TikTok) —
+  // mỗi điểm trong dailySeries là số liệu THẬT của đúng ngày đó (Page/IG
+  // Insights có period=day thật), nên header phải CỘNG DỒN cả khoảng ngày
+  // để khớp với nhãn `dateRangeLabel` bên dưới, không phải chỉ lấy ngày
+  // cuối cùng — chỉ lấy ngày cuối từng khiến header hiện "0" khi ngày gần
+  // nhất chưa được Meta xử lý xong (có độ trễ báo cáo).
+  const totals = dailySeries.reduce(
+    (accumulated, point) => ({
+      reach: accumulated.reach + Number(point.extra.reach ?? 0),
+      impressions: accumulated.impressions + Number(point.extra.impressions ?? 0),
+      profileViews: accumulated.profileViews + Number(point.extra.profileViews ?? 0),
+      engagedUsers: accumulated.engagedUsers + Number(point.extra.engagedUsers ?? 0),
+      postEngagements: accumulated.postEngagements + Number(point.extra.postEngagements ?? 0),
+    }),
+    { reach: 0, impressions: 0, profileViews: 0, engagedUsers: 0, postEngagements: 0 },
+  )
 
   const stats =
     detail.kind === 'instagram'
       ? [
-          { label: 'Reach', value: Number(latestExtra.reach ?? 0) },
-          { label: 'Lượt hiển thị', value: Number(latestExtra.impressions ?? 0) },
-          { label: 'Lượt xem trang cá nhân', value: Number(latestExtra.profileViews ?? 0) },
+          { label: 'Reach', value: totals.reach },
+          { label: 'Lượt hiển thị', value: totals.impressions },
+          { label: 'Lượt xem trang cá nhân', value: totals.profileViews },
         ]
       : [
-          { label: 'Lượt hiển thị', value: Number(latestExtra.impressions ?? 0) },
-          { label: 'Người dùng tương tác', value: Number(latestExtra.engagedUsers ?? 0) },
-          { label: 'Lượt tương tác bài đăng', value: Number(latestExtra.postEngagements ?? 0) },
+          { label: 'Lượt hiển thị', value: totals.impressions },
+          { label: 'Người dùng tương tác', value: totals.engagedUsers },
+          { label: 'Lượt tương tác bài đăng', value: totals.postEngagements },
         ]
 
   return (

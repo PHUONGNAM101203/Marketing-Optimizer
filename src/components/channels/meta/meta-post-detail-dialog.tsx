@@ -1,6 +1,7 @@
 import { ExternalLink } from 'lucide-react'
 import { DialogContent } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
+import { cn } from '@/lib/cn'
 import { formatCompact, formatDateTime } from '@/lib/format'
 import type { MetaPostItem } from './meta-post-list'
 
@@ -8,7 +9,7 @@ import type { MetaPostItem } from './meta-post-list'
 export function MetaPostDetailDialog({ post }: { readonly post: MetaPostItem }) {
   return (
     <DialogContent
-      title={post.title}
+      title="Chi tiết bài đăng"
       description={
         post.createdAt
           ? formatDateTime(post.createdAt, {
@@ -31,7 +32,9 @@ export function MetaPostDetailDialog({ post }: { readonly post: MetaPostItem }) 
           />
         ) : null}
 
-        <div className="grid grid-cols-2 gap-3">
+        <p className="text-[length:var(--text-sm)] text-[var(--color-ink)]">{post.title}</p>
+
+        <div className={cn('grid gap-3', post.metrics.length >= 3 ? 'grid-cols-3' : 'grid-cols-2')}>
           {post.metrics.map((metric, index) => (
             <DetailStat
               key={index}
