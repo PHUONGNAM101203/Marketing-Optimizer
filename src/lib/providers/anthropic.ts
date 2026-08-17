@@ -12,14 +12,24 @@ import Anthropic from '@anthropic-ai/sdk'
 
 export const DEFAULT_CLAUDE_MODEL = 'claude-opus-5'
 
-let cachedClient: Anthropic | null = null
+/**
+ * Mỗi Site có thể dùng một Claude API Key riêng (xem `lib/data/site-ai-keys.ts`)
+ * nên không còn một client singleton dùng chung — cache theo khoá key để các
+ * round tool-calling liên tiếp trong CÙNG một lượt chạy (cùng site, cùng key)
+ * không dựng lại SDK client mỗi lần gọi. Map đơn giản là đủ: số key phân biệt
+ * trong một tiến trình server nhỏ (một Site một key), không có đường xoá key
+ * cũ khỏi Site đang chạy nên không cần TTL/giới hạn kích thước — nếu sau này
+ * số Site tự cấu hình key lớn tới mức đáng lo bộ nhớ thì đổi sang LRU, chưa
+ * cần ở quy mô hiện tại.
+ */
+const clientsByApiKey = new Map<string, Anthropic>()
 
-const getClient = (): Anthropic => {
-  if (cachedClient) return cachedClient
-  const apiKey = process.env.ANTHROPIC_API_KEY
-  if (!apiKey) throw new Error('Thiếu biến môi trường ANTHROPIC_API_KEY')
-  cachedClient = new Anthropic({ apiKey })
-  return cachedClient
+const getClient = (apiKey: string): Anthropic => {
+  const cached = clientsByApiKey.get(apiKey)
+  if (cached) return cached
+  const client = new Anthropic({ apiKey })
+  clientsByApiKey.set(apiKey, client)
+  return client
 }
 
 export interface ClaudeToolDefinition {
@@ -34,13 +44,14 @@ export interface ClaudeMessage {
 }
 
 export const callClaude = async (params: {
+  readonly apiKey: string
   readonly systemPrompt: string
   readonly messages: readonly ClaudeMessage[]
   readonly model?: string
   readonly tools?: readonly ClaudeToolDefinition[]
   readonly maxTokens?: number
 }): Promise<{ readonly message: Anthropic.Message; readonly latencyMs: number }> => {
-  const client = getClient()
+  const client = getClient(params.apiKey)
   const startedAt = Date.now()
 
   const stream = client.messages.stream({

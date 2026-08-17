@@ -3,6 +3,7 @@ import 'server-only'
 import { createRun, appendRunStep, finishRun, setAgentLastRunAt } from '@/lib/data/agents'
 import { resolveVariables, fillTemplate, VariableResolutionError } from '@/lib/prompts/resolve-variables'
 import { callClaude, extractText, DEFAULT_CLAUDE_MODEL } from '@/lib/providers/anthropic'
+import { resolveClaudeApiKey } from '@/lib/data/site-ai-keys'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { TOOL_REGISTRY } from './tools'
 import { isWriteTool } from '@/lib/domain/agent'
@@ -127,6 +128,22 @@ export const runAgent = async (agentId: string, trigger: 'schedule' | 'manual'):
   let finished = false
 
   try {
+    // Cùng thông điệp với `testRunPromptAction` (`actions/prompts.ts`) — chưa
+    // cấu hình Claude API Key là một lỗi CÓ THỂ SỬA từ UI, không phải lỗi hệ
+    // thống, nên `finishRun('failed', ...)` với summary rõ nguyên nhân thay
+    // vì throw một lỗi chung chung.
+    const apiKey = await resolveClaudeApiKey(agentRow.siteId)
+    if (!apiKey) {
+      await finishRun(run.id, {
+        status: 'failed',
+        summary: 'Chưa cấu hình Claude API Key cho website này. Vào Cài đặt để thêm.',
+        tokensUsed: 0,
+      })
+      finished = true
+      await setAgentLastRunAt(agentId, new Date().toISOString())
+      return
+    }
+
     const currentVersion = promptRow.currentVersionId ? await fetchPromptVersionRow(admin, promptRow.currentVersionId) : null
     if (!currentVersion) {
       await finishRun(run.id, { status: 'failed', summary: 'Prompt không có bản hiện tại', tokensUsed: 0 })
@@ -170,6 +187,7 @@ export const runAgent = async (agentId: string, trigger: 'schedule' | 'manual'):
 
     for (let round = 0; round < MAX_ROUNDS; round += 1) {
       const { message } = await callClaude({
+        apiKey,
         systemPrompt: currentVersion.systemPrompt,
         messages,
         model: DEFAULT_CLAUDE_MODEL,

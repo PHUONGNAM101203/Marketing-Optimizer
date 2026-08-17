@@ -7,8 +7,10 @@ import { Button } from '@/components/ui/button'
 import { getSite, listMembers } from '@/lib/data/sites'
 import { getLatestAuditPageSignals } from '@/lib/data/audit'
 import { applyDetectedMarketOnce } from '@/lib/audit/apply-market'
+import { siteAnthropicApiKeyConfigured } from '@/lib/data/site-ai-keys'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { EditSiteForm } from '@/components/settings/edit-site-form'
+import { AiKeySetup } from '@/components/settings/ai-key-setup'
 import { canManageConnections, type SiteRole } from '@/lib/domain/site'
 import { TLD_MARKET } from '@/lib/audit/market-detection'
 import { formatRelativeTime } from '@/lib/format'
@@ -47,6 +49,7 @@ export default async function SettingsPage({
   }
 
   const members = await listMembers(site.id)
+  const aiKeyConfigured = await siteAnthropicApiKeyConfigured(site.id)
 
   return (
     <PageShell>
@@ -136,6 +139,17 @@ export default async function SettingsPage({
               </li>
             ))}
           </ul>
+        </CardBody>
+      </Card>
+
+      <Card>
+        <CardHeader
+          title="Claude API Key"
+          description="Dùng cho nút &quot;Chạy thử&quot; ở Prompt Studio và cho các agent tự động của website này. Để trống thì cả hai dùng chung khoá mặc định của hệ thống."
+          ruled
+        />
+        <CardBody className="pt-4">
+          <AiKeySetup siteId={site.id} isConfigured={aiKeyConfigured} />
         </CardBody>
       </Card>
 

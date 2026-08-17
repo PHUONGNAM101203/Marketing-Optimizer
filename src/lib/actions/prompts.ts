@@ -5,6 +5,7 @@ import { callClaude, extractText, DEFAULT_CLAUDE_MODEL } from '@/lib/providers/a
 import { createPrompt, createPromptVersion, recordPromptRun, ratePromptRun } from '@/lib/data/prompts'
 import { resolveVariables, fillTemplate, VariableResolutionError } from '@/lib/prompts/resolve-variables'
 import { getSite } from '@/lib/data/sites'
+import { resolveClaudeApiKey } from '@/lib/data/site-ai-keys'
 import { getCurrentUser } from '@/lib/supabase/server'
 import { findUndeclaredVariables } from '@/lib/domain/prompt'
 import type { PromptCategory, PromptRun, PromptTemplate, PromptVariable } from '@/lib/domain/prompt'
@@ -106,6 +107,11 @@ export const testRunPromptAction = async (input: {
   const site = await getSite(input.siteId)
   if (!site) return { run: null, error: 'Không tìm thấy website' }
 
+  const apiKey = await resolveClaudeApiKey(site.id)
+  if (!apiKey) {
+    return { run: null, error: 'Chưa cấu hình Claude API Key cho website này. Vào Cài đặt để thêm.' }
+  }
+
   let resolvedVars: Readonly<Record<string, string>>
   try {
     resolvedVars = await resolveVariables({
@@ -128,6 +134,7 @@ export const testRunPromptAction = async (input: {
   const filledTemplate = fillTemplate(input.userTemplate, resolvedVars)
 
   const { message, latencyMs } = await callClaude({
+    apiKey,
     systemPrompt: input.systemPrompt,
     messages: [{ role: 'user', content: filledTemplate }],
     model: DEFAULT_CLAUDE_MODEL,
