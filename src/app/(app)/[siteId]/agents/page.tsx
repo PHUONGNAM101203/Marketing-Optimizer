@@ -206,8 +206,11 @@ function AgentCard({
           </Badge>
 
           {agent.schedule ? (
+            // Không hiện `hourOfDay` — cron dùng chung của app chỉ chạy 1
+            // lần/ngày ở giờ cố định và không đọc trường này cho bất kỳ nhịp
+            // nào, hiện "· 7:00" sẽ ngụ ý sai một giờ chạy không có thật.
             <Badge tone="outline" icon={<Clock aria-hidden className="size-3" />}>
-              {CADENCE_LABELS[agent.schedule.cadence]} · {agent.schedule.hourOfDay}:00
+              {CADENCE_LABELS[agent.schedule.cadence]}
             </Badge>
           ) : null}
 
