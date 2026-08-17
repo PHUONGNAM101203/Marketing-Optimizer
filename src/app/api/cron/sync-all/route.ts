@@ -26,6 +26,30 @@ export const maxDuration = 300
 const MAX_AGENTS_PER_CRON_RUN = 15
 
 /**
+ * "Tuần lịch" của một mốc thời gian, theo UTC — số nguyên tăng đều mỗi 7 ngày
+ * kể từ epoch Unix. Chỉ dùng ngày (bỏ giờ:phút:giây) rồi chia nguyên cho 7
+ * ngày: `floor(a/T) - floor(b/T) = (a-b)/T` mỗi khi `a-b` là bội số nguyên
+ * của `T` (tính chất của phép chia sàn) — mà agent nhịp tuần LUÔN due đúng
+ * một `dayOfWeek` cố định, nên hai lần due liên tiếp cách nhau đúng bội số
+ * của 7 ngày theo lịch. Vì vậy so sánh "cùng tuần lịch" bằng cách này luôn
+ * đúng bất kể epoch Unix rơi vào thứ mấy — không cần công thức tuần ISO
+ * (Thursday-of-the-week) phức tạp hơn cho đúng bài toán này.
+ *
+ * LƯU Ý PHỤ THUỘC LỊCH CRON: bucket này tính từ `last_run_at` — một mốc HOÀN
+ * TẤT run, không phải mốc ĐẾN HẠN. Cách này chỉ đúng chừng nào lượt hoàn tất
+ * không bao giờ vắt qua ranh giới nửa đêm UTC so với ngày-trong-tuần đến hạn
+ * của nó — đúng ở lịch hiện tại vì cron chạy ở một giờ UTC cố định vào buổi
+ * chiều-tối (xem `vercel.json`) và hoàn tất từ lâu trước nửa đêm. Nếu sau này
+ * đổi giờ chạy cron sát nửa đêm UTC, phải xem lại (neo bucket theo NGÀY ĐẾN
+ * HẠN thay vì ngày hoàn tất — cần thêm cột lưu thời điểm dispatch riêng biệt
+ * với thời điểm hoàn tất, ngoài phạm vi sửa lỗi tối thiểu này).
+ */
+const weekBucket = (date: Date): number => {
+  const utcMidnight = Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate())
+  return Math.floor(utcMidnight / (7 * 24 * 60 * 60 * 1000))
+}
+
+/**
  * Dedup: bỏ qua agent đã chạy (thành công/thất bại/chờ duyệt — bất kỳ nhánh
  * kết thúc nào, xem `setAgentLastRunAt` trong `run-agent.ts`) trong đúng cửa
  * sổ của nhịp hiện tại. Chặn được hai trường hợp: Vercel retry nguyên
@@ -35,21 +59,6 @@ const MAX_AGENTS_PER_CRON_RUN = 15
  * chưa từng tới `setAgentLastRunAt`) — đó là vấn đề khác, cố tình để ngoài
  * phạm vi sửa lỗi tối thiểu này.
  */
-/**
- * "Tuần lịch" của một mốc thời gian, theo UTC — số nguyên tăng đều mỗi 7 ngày
- * kể từ epoch Unix. Chỉ dùng ngày (bỏ giờ:phút:giây) rồi chia nguyên cho 7
- * ngày: `floor(a/T) - floor(b/T) = (a-b)/T` mỗi khi `a-b` là bội số nguyên
- * của `T` (tính chất của phép chia sàn) — mà agent nhịp tuần LUÔN due đúng
- * một `dayOfWeek` cố định, nên hai lần due liên tiếp cách nhau đúng bội số
- * của 7 ngày theo lịch. Vì vậy so sánh "cùng tuần lịch" bằng cách này luôn
- * đúng bất kể epoch Unix rơi vào thứ mấy — không cần công thức tuần ISO
- * (Thursday-of-the-week) phức tạp hơn cho đúng bài toán này.
- */
-const weekBucket = (date: Date): number => {
-  const utcMidnight = Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate())
-  return Math.floor(utcMidnight / (7 * 24 * 60 * 60 * 1000))
-}
-
 const alreadyRanThisWindow = (
   cadence: AgentSchedule['cadence'],
   lastRunAt: string | null,
