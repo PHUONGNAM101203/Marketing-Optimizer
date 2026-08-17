@@ -39,7 +39,11 @@ export interface ChannelSummary {
  * count cộng dồn từ trước tới giờ) mỗi lần đồng bộ — xem `tiktok-metrics.ts`.
  * Facebook KHÔNG nằm trong danh sách này — Page Insights (cùng Graph API với
  * Instagram) có `period=day` thật, xem `facebook-metrics.ts`. */
-const SNAPSHOT_PROVIDERS: ReadonlySet<ProviderId> = new Set(['merchant-center', 'tiktok'])
+// Export — `data/entities.ts`'s `getChannelSummariesForAgent` dùng lại ĐÚNG
+// tập này (trước đây tự định nghĩa một bản sao `AGENT_SNAPSHOT_PROVIDERS`
+// giống hệt, rủi ro lệch nhau khi có nền tảng snapshot mới chỉ được thêm ở
+// một trong hai file).
+export const SNAPSHOT_PROVIDERS: ReadonlySet<ProviderId> = new Set(['merchant-center', 'tiktok'])
 
 const toIsoDate = (date: Date): string => date.toISOString().slice(0, 10)
 

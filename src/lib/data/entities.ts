@@ -7,7 +7,7 @@ import { getGoogleAdsDeveloperToken } from '@/lib/data/site-oauth-apps'
 import { resolveAccessToken } from '@/lib/sync/access-token'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { PROVIDERS, isProviderId, type ProviderId } from '@/lib/domain/providers'
-import type { ChannelSummary, ChannelTotals } from './site-channels'
+import { SNAPSHOT_PROVIDERS, type ChannelSummary, type ChannelTotals } from './site-channels'
 
 /**
  * Đọc SỐNG, không lưu — chưa có bảng `entities` (xem ghi chú trong
@@ -143,8 +143,6 @@ export const getCampaignPerformance = async (
  * khớp Y HỆT bản gốc, chỉ đổi client — sửa một bản thì nhớ đối chiếu bản kia.
  */
 
-const AGENT_SNAPSHOT_PROVIDERS: ReadonlySet<ProviderId> = new Set(['merchant-center', 'tiktok'])
-
 const agentSummaryToIsoDate = (date: Date): string => date.toISOString().slice(0, 10)
 
 const agentSummarySnapshotUpperBound = (rangeEnd: string): string => {
@@ -181,7 +179,7 @@ export const getChannelSummariesForAgent = async (
     ids.push(row.id)
     connectionsByProvider.set(row.provider, ids)
     connectionIdToProvider.set(row.id, row.provider)
-    if (AGENT_SNAPSHOT_PROVIDERS.has(row.provider)) snapshotConnectionIds.push(row.id)
+    if (SNAPSHOT_PROVIDERS.has(row.provider)) snapshotConnectionIds.push(row.id)
     else regularConnectionIds.push(row.id)
   }
 
@@ -233,7 +231,7 @@ export const getChannelSummariesForAgent = async (
     // vì chỉ số cộng dồn) không được CỘNG `extra` qua nhiều ngày — mỗi hàng
     // là trạng thái TẠI THỜI ĐIỂM đó, cộng nhiều ngày lại nhân sai con số.
     // Chỉ giữ hàng có `date` MỚI NHẤT trong khoảng đang chọn.
-    const isSnapshot = AGENT_SNAPSHOT_PROVIDERS.has(provider)
+    const isSnapshot = SNAPSHOT_PROVIDERS.has(provider)
     let mergedExtra: Record<string, number>
     if (isSnapshot) {
       const seenDate = latestSnapshotDate.get(provider)
