@@ -8,7 +8,13 @@ import type { SiteProfile } from '@/lib/domain/audit'
 const SUGGESTION_COUNT = 10
 
 const SYSTEM_PROMPT =
-  'Bạn là chuyên gia nghiên cứu từ khoá/SEO. Liệt kê đúng các câu hỏi/từ khoá NGƯỜI DÙNG THẬT hay tìm kiếm nhất, bám sát các SẢN PHẨM/DỊCH VỤ CỤ THỂ được mô tả — không chỉ dừng ở tên ngành hàng chung chung. Dựa trên hiểu biết chung của bạn về hành vi tìm kiếm trên toàn thế giới, KHÔNG gắn với một website cụ thể nào (không nhắc tên thương hiệu trong câu hỏi). Trả lời DUY NHẤT một mảng JSON các chuỗi câu hỏi/từ khoá, không kèm giải thích, không kèm markdown code fence.'
+  'Bạn là chuyên gia nghiên cứu từ khoá/SEO. Liệt kê đúng các câu hỏi/từ khoá NGƯỜI DÙNG THẬT hay tìm kiếm nhất, bám sát các SẢN PHẨM/DỊCH VỤ CỤ THỂ được mô tả — không chỉ dừng ở tên ngành hàng chung chung. Dựa trên hiểu biết chung của bạn về hành vi tìm kiếm trên toàn thế giới, KHÔNG gắn với một website cụ thể nào (không nhắc tên thương hiệu trong câu hỏi). LUÔN viết bằng tiếng Việt, kể cả khi mô tả/từ khoá đầu vào ở ngôn ngữ khác — người đọc kết quả dùng tiếng Việt. Trả lời DUY NHẤT một mảng JSON các chuỗi câu hỏi/từ khoá, không kèm giải thích, không kèm markdown code fence.'
+
+/** Model rất hay bọc JSON trong ```` ```json ... ``` ```` dù đã dặn không làm
+ * vậy trong system prompt — xác nhận qua lượt gọi thật (Claude Sonnet 5,
+ * 8/2026), không phải suy đoán. Strip trước khi `JSON.parse` thay vì chỉ dặn
+ * suông trong prompt, vì việc dặn suông đã KHÔNG đủ hiệu lực trên thực tế. */
+const stripCodeFence = (text: string): string => text.trim().replace(/^```(?:json)?\n?/i, '').replace(/```$/, '').trim()
 
 export interface GlobalKeywordSuggestions {
   /** `'ai'` khi model thật sự sinh được — `'template'` khi rơi về
@@ -63,7 +69,19 @@ export const computeGlobalKeywordSuggestions = async (
       ],
     })
 
-    const parsed = JSON.parse(extractText(result).trim()) as unknown
+    const rawText = stripCodeFence(extractText(result))
+    let parsed: unknown
+    try {
+      parsed = JSON.parse(rawText)
+    } catch (parseError) {
+      // LỖI THẬT (model trả về không đúng định dạng dù đã strip fence) — log
+      // để còn biết mà chỉnh prompt, khác hẳn "chưa cấu hình key" (nhánh trên,
+      // không log vì đó là trạng thái bình thường, không phải lỗi).
+      console.error(
+        `Không parse được gợi ý từ khoá AI (site ${siteId}): ${parseError instanceof Error ? parseError.message : String(parseError)} — raw: ${rawText.slice(0, 200)}`,
+      )
+      return templateResult(profile)
+    }
     if (!Array.isArray(parsed)) return templateResult(profile)
 
     const suggestions = parsed
@@ -72,10 +90,12 @@ export const computeGlobalKeywordSuggestions = async (
       .map((text): PromptSuggestion => ({ text: text.trim(), intent: 'informational' }))
 
     return suggestions.length > 0 ? { source: 'ai', suggestions } : templateResult(profile)
-  } catch {
-    // Lỗi mạng, lỗi API, hoặc JSON.parse thất bại (model trả về không đúng
-    // định dạng yêu cầu) — mọi trường hợp đều rơi về template, không log lỗi
-    // ồn ào cho một tính năng tự bản chất đã có fallback graceful.
+  } catch (error) {
+    // Lỗi mạng/lỗi API — log cùng lý do nhánh JSON.parse ở trên, vẫn rơi về
+    // template graceful, không làm hỏng cả lượt quét audit.
+    console.error(
+      `Không gọi được AI để sinh gợi ý từ khoá (site ${siteId}): ${error instanceof Error ? error.message : String(error)}`,
+    )
     return templateResult(profile)
   }
 }
