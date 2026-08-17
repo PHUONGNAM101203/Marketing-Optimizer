@@ -6,7 +6,7 @@ import type { AiProvider } from '@/lib/providers/ai'
 import { createAdminClient } from '@/lib/supabase/admin'
 
 /**
- * Claude API Key do từng Site tự khai báo — đọc từ két `site_ai_keys`.
+ * Cấu hình AI do từng Site tự khai báo — đọc từ két `site_ai_keys`.
  *
  * Bảng đó cố tình không có RLS policy nào (xem migration
  * 20260817000001_site_ai_keys.sql), giống hệt `site_oauth_apps`/
@@ -14,43 +14,25 @@ import { createAdminClient } from '@/lib/supabase/admin'
  * nơi gọi đã tự xác minh quyền — bảng này không tự bảo vệ được bằng RLS.
  */
 
-export const getSiteAnthropicApiKey = async (siteId: string): Promise<string | null> => {
-  const admin = createAdminClient()
-  const { data } = await admin
-    .from('site_ai_keys')
-    .select('api_key_enc')
-    .eq('site_id', siteId)
-    .eq('provider', 'anthropic')
-    .maybeSingle()
-
-  if (!data) return null
-  return decrypt(data.api_key_enc)
-}
-
-/** Chỉ kiểm tra tồn tại, không giải mã — dùng cho trạng thái hiển thị UI
- * (đã cấu hình hay chưa), giống `siteOAuthAppExists`. */
-export const siteAnthropicApiKeyConfigured = async (siteId: string): Promise<boolean> => {
-  const admin = createAdminClient()
-  const { data } = await admin
-    .from('site_ai_keys')
-    .select('site_id')
-    .eq('site_id', siteId)
-    .eq('provider', 'anthropic')
-    .maybeSingle()
-
-  return data !== null
-}
-
 /**
  * Hàm mà `testRunPromptAction`/`runAgent` thực sự gọi để lấy Claude API Key
- * dùng cho một Site: ưu tiên key Site tự cấu hình, rơi về biến môi trường
- * ANTHROPIC_API_KEY dùng chung nếu Site chưa cấu hình (giữ các deploy/dev
- * hiện tại dựa vào env var không bị hỏng). `null` khi cả hai đều thiếu — nơi
- * gọi tự biến thành lỗi hiển thị "chưa cấu hình", hàm này không throw.
+ * dùng cho một Site: ưu tiên key Site tự cấu hình (chỉ khi provider đang kết
+ * nối là 'anthropic' — key của provider khác không phải Claude API Key), rơi
+ * về biến môi trường ANTHROPIC_API_KEY dùng chung nếu Site chưa cấu hình
+ * (giữ các deploy/dev hiện tại dựa vào env var không bị hỏng). `null` khi cả
+ * hai đều thiếu — nơi gọi tự biến thành lỗi hiển thị "chưa cấu hình", hàm
+ * này không throw. Còn dùng bởi `actions/prompts.ts`/`agents/run-agent.ts`
+ * cho tới Task 11/12 — sẽ được thay bằng `resolveAiConfig` khi đó.
  */
 export const resolveClaudeApiKey = async (siteId: string): Promise<string | null> => {
-  const siteKey = await getSiteAnthropicApiKey(siteId)
-  if (siteKey) return siteKey
+  const admin = createAdminClient()
+  const { data } = await admin
+    .from('site_ai_keys')
+    .select('provider, api_key_enc')
+    .eq('site_id', siteId)
+    .maybeSingle()
+
+  if (data && data.provider === 'anthropic') return decrypt(data.api_key_enc)
   return process.env.ANTHROPIC_API_KEY ?? null
 }
 

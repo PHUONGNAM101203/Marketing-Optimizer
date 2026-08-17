@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button'
 import { getSite, listMembers } from '@/lib/data/sites'
 import { getLatestAuditPageSignals } from '@/lib/data/audit'
 import { applyDetectedMarketOnce } from '@/lib/audit/apply-market'
-import { siteAnthropicApiKeyConfigured } from '@/lib/data/site-ai-keys'
+import { getSiteAiConnection } from '@/lib/data/site-ai-keys'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { EditSiteForm } from '@/components/settings/edit-site-form'
 import { AiKeySetup } from '@/components/settings/ai-key-setup'
@@ -49,7 +49,7 @@ export default async function SettingsPage({
   }
 
   const members = await listMembers(site.id)
-  const aiKeyConfigured = await siteAnthropicApiKeyConfigured(site.id)
+  const aiConnection = await getSiteAiConnection(site.id)
 
   return (
     <PageShell>
@@ -144,12 +144,12 @@ export default async function SettingsPage({
 
       <Card>
         <CardHeader
-          title="Claude API Key"
-          description="Dùng cho nút &quot;Chạy thử&quot; ở Prompt Studio và cho các agent tự động của website này. Để trống thì cả hai dùng chung khoá mặc định của hệ thống."
+          title="AI Provider"
+          description="Dùng cho nút &quot;Chạy thử&quot; ở Prompt Studio và cho các agent tự động của website này. Hỗ trợ Claude, OpenAI, hoặc Gemini — một provider tại một thời điểm."
           ruled
         />
         <CardBody className="pt-4">
-          <AiKeySetup siteId={site.id} isConfigured={aiKeyConfigured} />
+          <AiKeySetup siteId={site.id} connection={aiConnection} />
         </CardBody>
       </Card>
 
