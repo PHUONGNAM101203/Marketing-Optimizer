@@ -200,10 +200,14 @@ export async function refreshSiteAiModelsAction(siteId: string): Promise<ListMod
   try {
     const apiKey = decrypt(data.api_key_enc)
     const models = await listAvailableModels(data.provider as AiProvider, apiKey)
-    await admin
+    const { error: updateError } = await admin
       .from('site_ai_keys')
       .update({ available_models: [...models], models_fetched_at: new Date().toISOString() })
       .eq('site_id', siteId)
+    // Không bỏ qua lỗi ghi cache — nếu không, action trả "thành công" cùng
+    // danh sách model đúng cho dropdown lần này, nhưng cache trong DB vẫn cũ,
+    // im lặng sai lệch với những gì UI vừa báo đã lưu.
+    if (updateError) throw new Error(updateError.message)
     revalidatePath(`/${siteId}/settings`)
     return { models, error: null }
   } catch (error) {
