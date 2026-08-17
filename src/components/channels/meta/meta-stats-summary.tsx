@@ -1,4 +1,5 @@
-import { STATS_DONUT_COLOR_TOKENS, StatsDonut, type StatsDonutSlice } from '@/components/ui/stats-donut'
+import { StatsDonut } from '@/components/ui/stats-donut'
+import { STATS_DONUT_COLOR_TOKENS, type StatsDonutSlice } from '@/components/ui/stats-donut-tokens'
 
 /* Hallmark · component: meta-stats-summary · theme: studied-DNA (Ink & Signal)
  *

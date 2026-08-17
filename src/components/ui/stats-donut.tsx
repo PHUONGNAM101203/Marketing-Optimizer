@@ -5,19 +5,9 @@ import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from 'recharts'
 import { Card } from '@/components/ui/card'
 import { EmptyState } from '@/components/ui/feedback'
 import { formatCompact, formatNumber, formatPercent } from '@/lib/format'
+import { STATS_DONUT_COLOR_TOKENS, type StatsDonutSlice } from '@/components/ui/stats-donut-tokens'
 
-/** Ba token màu SẴN CÓ trong `tokens.css` (không phải slot `--color-series-N`
- * dành riêng cho provider, xem CLAUDE.md "không đổi/gán lại các slot đó") —
- * đủ tương phản để phân biệt tối đa 3 lát bánh, không cần thêm màu mới ngoài
- * hệ token hiện có. */
-export const STATS_DONUT_COLOR_TOKENS = ['--color-signal', '--color-positive', '--color-caution'] as const
-
-export interface StatsDonutSlice {
-  readonly key: string
-  readonly label: string
-  readonly value: number
-  readonly colorToken: (typeof STATS_DONUT_COLOR_TOKENS)[number]
-}
+export type { StatsDonutSlice }
 
 /**
  * `tokens.css` khai màu bằng `oklch(...)` — trình duyệt tự vẽ đúng khi
