@@ -12,7 +12,6 @@ import { getSite } from '@/lib/data/sites'
 import { getLatestAuditRun } from '@/lib/data/audit'
 import { listAgents, listPendingActionsForSite, listRunsForSite } from '@/lib/data/agents'
 import { listPrompts } from '@/lib/data/prompts'
-import { suggestAgentRoles } from '@/lib/audit/agent-suggestions'
 import {
   AGENT_ROLE_LABELS,
   CADENCE_LABELS,
@@ -57,9 +56,10 @@ export default async function AgentsPage({
 
   const now = new Date()
   const configuredRoles = new Set(agents.map((agent) => agent.role))
-  const agentSuggestions = auditRun?.siteProfile
-    ? suggestAgentRoles(auditRun.siteProfile).filter((suggestion) => !configuredRoles.has(suggestion.role))
-    : []
+  const agentSuggestionSource = auditRun?.agentRoleSuggestions.source ?? 'template'
+  const agentSuggestions = (auditRun?.agentRoleSuggestions.suggestions ?? []).filter(
+    (suggestion) => !configuredRoles.has(suggestion.role),
+  )
 
   // Chỉ những hành động CHƯA có quyết định mới thuộc hàng đợi "Cần bạn quyết"
   // — `listPendingActionsForSite` trả về mọi hành động của Site kể cả đã
@@ -107,7 +107,11 @@ export default async function AgentsPage({
         <Callout
           tone="caution"
           icon={<Bot aria-hidden className="size-5 text-[var(--color-caution)]" />}
-          title={`Gợi ý theo lĩnh vực đã nhận diện: ${auditRun?.siteProfile?.category}`}
+          title={
+            agentSuggestionSource === 'ai'
+              ? `AI gợi ý theo đúng sản phẩm/dịch vụ: ${auditRun?.siteProfile?.category}`
+              : `Gợi ý mẫu theo lĩnh vực đã nhận diện: ${auditRun?.siteProfile?.category}`
+          }
         >
           <ul className="flex flex-col gap-2">
             {agentSuggestions.map((suggestion) => (
@@ -121,6 +125,20 @@ export default async function AgentsPage({
               </li>
             ))}
           </ul>
+          {agentSuggestionSource === 'template' ? (
+            <p className="mt-3 border-t border-[var(--color-rule)] pt-3 text-[length:var(--text-xs)] text-[var(--color-ink-3)]">
+              Đây là gợi ý mẫu chung theo lĩnh vực — chưa cấu hình AI provider nên chưa bám sát đúng
+              sản phẩm/dịch vụ cụ thể của site. Vào{' '}
+              <Link href={`/${site.id}/settings`} className="font-medium text-[var(--color-signal)] hover:underline">
+                Cài đặt
+              </Link>{' '}
+              kết nối một provider AI rồi quét lại{' '}
+              <Link href={`/${site.id}/audit`} className="font-medium text-[var(--color-signal)] hover:underline">
+                Kiểm tra SEO/GEO/AIO/AEO
+              </Link>{' '}
+              để có gợi ý sát hơn.
+            </p>
+          ) : null}
         </Callout>
       ) : null}
 

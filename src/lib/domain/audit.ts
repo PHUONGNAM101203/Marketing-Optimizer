@@ -22,6 +22,8 @@
  */
 
 import type { PageCitabilityScore, PromptIntent } from './geo'
+import type { PromptCategory, PromptVariable } from './prompt'
+import type { AgentRole } from './agent'
 
 export type AuditCategory = 'seo' | 'geo' | 'aio' | 'aeo'
 
@@ -161,6 +163,27 @@ export interface AuditRun {
   readonly globalKeywordSuggestions: {
     readonly source: 'ai' | 'template'
     readonly suggestions: readonly { readonly text: string; readonly intent: PromptIntent }[]
+  }
+  /** Prompt DÙNG ĐƯỢC NGAY (system prompt + user template thật) theo đúng
+   * chủ đề site — xem `lib/audit/prompt-template-suggestions.ts`. Cùng quy
+   * ước `source` với `globalKeywordSuggestions` ở trên. */
+  readonly promptTemplateSuggestions: {
+    readonly source: 'ai' | 'template'
+    readonly templates: readonly {
+      readonly name: string
+      readonly description: string
+      readonly category: PromptCategory
+      readonly systemPrompt: string
+      readonly userTemplate: string
+      readonly variables: readonly PromptVariable[]
+    }[]
+  }
+  /** Gợi ý agent nên bật theo đúng sản phẩm/dịch vụ site — xem
+   * `lib/audit/agent-suggestions.ts`. Cùng quy ước `source` với
+   * `globalKeywordSuggestions` ở trên. */
+  readonly agentRoleSuggestions: {
+    readonly source: 'ai' | 'template'
+    readonly suggestions: readonly { readonly role: AgentRole; readonly reason: string }[]
   }
   readonly error: string | null
   readonly startedAt: string

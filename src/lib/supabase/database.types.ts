@@ -17,6 +17,7 @@ export type Database = {
       audit_runs: {
         Row: {
           aeo_score: number | null
+          agent_role_suggestions: Json
           aio_score: number | null
           blocked_by_bot_protection: boolean
           completed_at: string | null
@@ -29,6 +30,7 @@ export type Database = {
           page_signals: Json | null
           pages_scanned: number
           pagespeed: Json | null
+          prompt_template_suggestions: Json
           seo_score: number | null
           site_id: string
           site_profile: Json | null
@@ -40,6 +42,7 @@ export type Database = {
         }
         Insert: {
           aeo_score?: number | null
+          agent_role_suggestions?: Json
           aio_score?: number | null
           blocked_by_bot_protection?: boolean
           completed_at?: string | null
@@ -52,6 +55,7 @@ export type Database = {
           page_signals?: Json | null
           pages_scanned?: number
           pagespeed?: Json | null
+          prompt_template_suggestions?: Json
           seo_score?: number | null
           site_id: string
           site_profile?: Json | null
@@ -63,6 +67,7 @@ export type Database = {
         }
         Update: {
           aeo_score?: number | null
+          agent_role_suggestions?: Json
           aio_score?: number | null
           blocked_by_bot_protection?: boolean
           completed_at?: string | null
@@ -75,6 +80,7 @@ export type Database = {
           page_signals?: Json | null
           pages_scanned?: number
           pagespeed?: Json | null
+          prompt_template_suggestions?: Json
           seo_score?: number | null
           site_id?: string
           site_profile?: Json | null

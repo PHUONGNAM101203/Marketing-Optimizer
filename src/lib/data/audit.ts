@@ -23,6 +23,8 @@ interface AuditRunRow {
   readonly site_profile: unknown
   readonly pagespeed: unknown
   readonly global_keyword_suggestions: unknown
+  readonly prompt_template_suggestions: unknown
+  readonly agent_role_suggestions: unknown
   readonly error: string | null
   readonly started_at: string
   readonly completed_at: string | null
@@ -40,21 +42,18 @@ interface AuditRunRow {
  */
 const STALE_RUNNING_THRESHOLD_MS = 6 * 60 * 1000
 
-/** Đọc `{source, suggestions}` mới, RƠI VỀ RỖNG (không phải throw) cho hình
- * dạng CŨ (mảng phẳng, trước khi field `source` tồn tại) — chỉ vài row từ
- * lúc phát triển tính năng này còn mang hình dạng cũ, không đáng để giữ code
- * đọc-tương-thích-ngược lâu dài; audit chạy lại là ra đúng hình dạng mới. */
-const toGlobalKeywordSuggestions = (value: unknown): AuditRun['globalKeywordSuggestions'] => {
-  if (
-    value &&
-    typeof value === 'object' &&
-    !Array.isArray(value) &&
-    'suggestions' in value &&
-    Array.isArray((value as { suggestions: unknown }).suggestions)
-  ) {
-    return value as AuditRun['globalKeywordSuggestions']
+/** Đọc `{source, [listKey]}` mới, RƠI VỀ RỖNG (không phải throw) cho hình
+ * dạng CŨ/thiếu (trước khi field `source` tồn tại, hoặc audit chạy trước khi
+ * cột này có) — chỉ vài row từ lúc phát triển các tính năng gợi ý AI còn
+ * mang hình dạng cũ, không đáng để giữ code đọc-tương-thích-ngược lâu dài;
+ * audit chạy lại là ra đúng hình dạng mới. Dùng chung cho cả 3 field gợi ý
+ * (`globalKeywordSuggestions`/`promptTemplateSuggestions`/
+ * `agentRoleSuggestions`) — cùng quy ước `{source, <tên mảng riêng>}`. */
+const toSourceTagged = <T extends Record<string, unknown>>(value: unknown, listKey: keyof T, empty: T): T => {
+  if (value && typeof value === 'object' && !Array.isArray(value) && Array.isArray((value as T)[listKey])) {
+    return value as T
   }
-  return { source: 'template', suggestions: [] }
+  return empty
 }
 
 const toAuditRun = (row: AuditRunRow): AuditRun => {
@@ -78,7 +77,18 @@ const toAuditRun = (row: AuditRunRow): AuditRun => {
     pageCitability: (row.page_citability as readonly PageCitabilityScore[] | null) ?? [],
     siteProfile: row.site_profile as SiteProfile | null,
     pagespeed: row.pagespeed as PageSpeedResult | null,
-    globalKeywordSuggestions: toGlobalKeywordSuggestions(row.global_keyword_suggestions),
+    globalKeywordSuggestions: toSourceTagged(row.global_keyword_suggestions, 'suggestions', {
+      source: 'template',
+      suggestions: [],
+    }),
+    promptTemplateSuggestions: toSourceTagged(row.prompt_template_suggestions, 'templates', {
+      source: 'template',
+      templates: [],
+    }),
+    agentRoleSuggestions: toSourceTagged(row.agent_role_suggestions, 'suggestions', {
+      source: 'template',
+      suggestions: [],
+    }),
     error: isStaleRunning
       ? 'Lượt quét trước bị gián đoạn giữa chừng (máy chủ khởi động lại hoặc gặp sự cố) — bấm "Quét tiếp" để chạy lại. Phần đã quét được ở các lượt trước đó (nếu có) không mất, lượt sau vẫn cộng dồn tiếp.'
       : row.error,
@@ -92,7 +102,7 @@ const toAuditRun = (row: AuditRunRow): AuditRun => {
  * dưới cần tới. Trang Tổng quan gọi hàm này trên MỌI lượt render (kể cả mỗi
  * lần đổi khoảng ngày) nên kéo cả blob đó qua dây mỗi lần là phí. */
 const AUDIT_RUN_COLUMNS =
-  'id, site_id, status, pages_scanned, sitemap_url_count, truncated, blocked_by_bot_protection, seo_score, geo_score, aio_score, aeo_score, findings, page_citability, site_profile, pagespeed, global_keyword_suggestions, error, started_at, completed_at'
+  'id, site_id, status, pages_scanned, sitemap_url_count, truncated, blocked_by_bot_protection, seo_score, geo_score, aio_score, aeo_score, findings, page_citability, site_profile, pagespeed, global_keyword_suggestions, prompt_template_suggestions, agent_role_suggestions, error, started_at, completed_at'
 
 export const getLatestAuditRun = async (siteId: string): Promise<AuditRun | null> => {
   const supabase = await createClient()

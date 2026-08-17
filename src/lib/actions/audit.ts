@@ -9,6 +9,8 @@ import { evaluateAllRules } from '@/lib/audit/rules'
 import { computePageCitability } from '@/lib/audit/citability'
 import { computeSiteProfile } from '@/lib/audit/site-profile'
 import { computeGlobalKeywordSuggestions } from '@/lib/audit/global-suggestions'
+import { computePromptTemplateSuggestions } from '@/lib/audit/prompt-template-suggestions'
+import { computeAgentRoleSuggestions } from '@/lib/audit/agent-suggestions'
 import { applyDetectedMarketOnce } from '@/lib/audit/apply-market'
 import { fetchPageSpeedInsights, getConfiguredPageSpeedApiKey } from '@/lib/audit/pagespeed'
 import { createAdminClient } from '@/lib/supabase/admin'
@@ -184,12 +186,14 @@ const performAuditScan = async (
     const pageCitability = realCrawl.pages.map((page) => computePageCitability(page, siteId, scannedAt))
     const siteProfile = computeSiteProfile(realCrawl, siteName)
     // `pagespeedPromise` đã chạy song song với crawl từ đầu (xem trên) — tới
-    // đây gần như luôn đã xong, `await` chỉ còn là hình thức. Ghép cùng
-    // `computeGlobalKeywordSuggestions` (I/O độc lập, tự nuốt lỗi, không
-    // throw) trong một `Promise.all` để không đợi tuần tự thêm lần nữa.
-    const [pagespeed, globalKeywordSuggestions] = await Promise.all([
+    // đây gần như luôn đã xong, `await` chỉ còn là hình thức. Ghép cùng 3 lượt
+    // gọi AI-hoặc-fallback khác (I/O độc lập, đều tự nuốt lỗi, không throw)
+    // trong một `Promise.all` để không đợi tuần tự thêm lần nào.
+    const [pagespeed, globalKeywordSuggestions, promptTemplateSuggestions, agentRoleSuggestions] = await Promise.all([
       pagespeedPromise,
       computeGlobalKeywordSuggestions(siteId, siteProfile),
+      computePromptTemplateSuggestions(siteId, siteProfile),
+      computeAgentRoleSuggestions(siteId, siteProfile),
     ])
 
     await applyDetectedMarketOnce(
@@ -223,7 +227,23 @@ const performAuditScan = async (
         page_signals: mergedPages as unknown as Json,
         site_profile: siteProfile as unknown as Json,
         pagespeed: pagespeed as unknown as Json,
-        global_keyword_suggestions: globalKeywordSuggestions as unknown as Json,
+        // `computeXSuggestions` trả `{source, data}` (hình dạng chung của
+        // `AiJsonResult<T>`) — đặt lại tên trường `data` thành tên mô tả
+        // đúng nội dung (`suggestions`/`templates`) lúc lưu, để hình dạng
+        // lưu trong DB và `AuditRun` (đọc lại ở `data/audit.ts`) rõ nghĩa
+        // hơn `data` chung chung.
+        global_keyword_suggestions: {
+          source: globalKeywordSuggestions.source,
+          suggestions: globalKeywordSuggestions.data,
+        } as unknown as Json,
+        prompt_template_suggestions: {
+          source: promptTemplateSuggestions.source,
+          templates: promptTemplateSuggestions.data,
+        } as unknown as Json,
+        agent_role_suggestions: {
+          source: agentRoleSuggestions.source,
+          suggestions: agentRoleSuggestions.data,
+        } as unknown as Json,
         completed_at: scannedAt,
       })
       .eq('id', runId)
