@@ -107,6 +107,45 @@ function ChannelHeadline({
     )
   }
 
+  // Instagram/Facebook có MỘT nguồn số liệu THỨ HAI ngoài `metrics_daily`:
+  // follower count gọi trực tiếp Graph API (xem
+  // `data/site-channels.ts::getChannelSummaries`), không phụ thuộc
+  // `summary.hasData` (vốn chỉ phản ánh đúng pipeline Page Insights theo
+  // ngày — hai pipeline độc lập, một cái lỗi không được che luôn cái kia,
+  // đúng bài học từ lần Page Insights lỗi âm thầm khiến follower/tương tác
+  // ĐÃ CÓ THẬT nhưng thẻ vẫn hiện "Đang đồng bộ lần đầu…" vĩnh viễn). Vì vậy
+  // hai nhánh này nằm TRƯỚC gate `!summary.hasData` chung bên dưới, tự quyết
+  // định hiện gì dựa trên từng nguồn có hay không.
+  if (provider === 'instagram' || provider === 'facebook') {
+    const { extra } = summary
+    if (!summary.hasData && !extra.followerCount) {
+      return (
+        <p className="text-[length:var(--text-sm)] text-[var(--color-ink-3)]">
+          Đang đồng bộ lần đầu…
+        </p>
+      )
+    }
+
+    // Instagram không có sessions/conversions (bảy cột chung của web
+    // analytics và ads) — reach/impressions/profile views nằm ở `extra`.
+    // Facebook: `page_impressions` rồi `page_engaged_users` đều bị Meta
+    // khai tử, chỉ còn `page_post_engagements` request được ở cấp Page (xem
+    // `facebook-metrics.ts`).
+    const secondary =
+      !summary.hasData
+        ? []
+        : provider === 'instagram'
+          ? [
+              { label: 'Reach', value: formatCompact(extra.reach ?? 0) },
+              { label: 'Hiển thị', value: formatCompact(extra.impressions ?? 0) },
+            ]
+          : [{ label: 'Tương tác bài viết', value: formatCompact(extra.postEngagements ?? 0) }]
+
+    return (
+      <HeadlineBlock label="Follower" value={formatCompact(extra.followerCount ?? 0)} secondary={secondary} />
+    )
+  }
+
   if (!summary.hasData) {
     return (
       <p className="text-[length:var(--text-sm)] text-[var(--color-ink-3)]">
@@ -126,36 +165,6 @@ function ChannelHeadline({
           { label: 'Phút xem', value: formatCompact(extra.watchTimeMinutes ?? 0) },
           { label: 'Subscriber mới', value: formatNumber(extra.subscribersGained ?? 0) },
         ]}
-      />
-    )
-  }
-
-  // Instagram không có sessions/conversions (bảy cột chung của web analytics
-  // và ads) — reach/impressions/profile views nằm ở `extra`, cùng cách xử lý
-  // YouTube ở trên.
-  if (provider === 'instagram') {
-    return (
-      <HeadlineBlock
-        label="Reach"
-        value={formatCompact(extra.reach ?? 0)}
-        secondary={[
-          { label: 'Hiển thị', value: formatCompact(extra.impressions ?? 0) },
-          { label: 'Lượt xem trang', value: formatCompact(extra.profileViews ?? 0) },
-        ]}
-      />
-    )
-  }
-
-  // Facebook (nội dung Page, KHÁC meta-ads) — `page_impressions` rồi
-  // `page_engaged_users` đều bị Meta khai tử, chỉ còn `page_post_engagements`
-  // request được ở cấp Page (xem `facebook-metrics.ts`) — một chỉ số duy
-  // nhất, không có secondary đáng tin cậy nào khác để ghép cặp.
-  if (provider === 'facebook') {
-    return (
-      <HeadlineBlock
-        label="Tương tác bài viết"
-        value={formatCompact(extra.postEngagements ?? 0)}
-        secondary={[]}
       />
     )
   }

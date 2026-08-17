@@ -1,6 +1,9 @@
 import 'server-only'
 
 import { PROVIDERS, isProviderId, type ProviderId } from '@/lib/domain/providers'
+import { fetchMetaFollowerCount } from '@/lib/providers/meta-discovery'
+import { resolvePageAccessToken } from '@/lib/sync/access-token'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
 
 export interface ChannelTotals {
@@ -94,7 +97,7 @@ export const getChannelSummaries = async (
 
   const { data: connections } = await supabase
     .from('connections')
-    .select('id, provider')
+    .select('id, provider, external_account_id')
     .eq('site_id', siteId)
 
   const { connectionsByProvider, connectionIdToProvider, snapshotConnectionIds, regularConnectionIds } =
@@ -176,6 +179,49 @@ export const getChannelSummaries = async (
       },
       extra: mergedExtra,
     })
+  }
+
+  // Follower count: KHÔNG có trong `metrics_daily` — Facebook/Instagram chỉ
+  // ghi lại chỉ số phát sinh theo ngày ở đó (`page_post_engagements`/
+  // reach/impressions, xem `facebook-metrics.ts`/`meta-metrics.ts`), số
+  // người theo dõi là trạng thái NGAY LÚC gọi. Gọi thẳng Graph API cùng cách
+  // trang chi tiết kênh đã làm (`getChannelDetail`, xem `fetchMetaFollowerCount`)
+  // thay vì đợi một lượt sync ghi lại — tối đa 2 lượt gọi (Facebook +
+  // Instagram, mỗi site chỉ có tối đa một connection mỗi loại trong thực tế
+  // dù code cộng dồn nếu có nhiều), không đáng kể so với chi phí trang chi
+  // tiết kênh đã chấp nhận. Lỗi ở đây KHÔNG được chặn cả trang Kênh — mỗi
+  // lượt tự nuốt lỗi (xem `fetchMetaFollowerCount`), thiếu follower count chỉ
+  // khiến thẻ thiếu một con số, không phải cả trang trắng.
+  const metaFollowerConnectionIds = (['facebook', 'instagram'] as const).flatMap(
+    (provider) => connectionsByProvider.get(provider) ?? [],
+  )
+  if (metaFollowerConnectionIds.length > 0) {
+    const admin = createAdminClient()
+    const connectionsById = new Map((connections ?? []).map((row) => [row.id, row]))
+
+    const followerResults = await Promise.all(
+      metaFollowerConnectionIds.map(async (connectionId) => {
+        const provider = connectionIdToProvider.get(connectionId)
+        const connectionRow = connectionsById.get(connectionId)
+        if (provider !== 'facebook' && provider !== 'instagram') return null
+        if (!connectionRow?.external_account_id) return null
+
+        const tokenResult = await resolvePageAccessToken(admin, connectionId, siteId, provider)
+        if (!tokenResult.ok) return null
+
+        const followerCount = await fetchMetaFollowerCount(tokenResult.accessToken, connectionRow.external_account_id)
+        return followerCount === null ? null : { provider, followerCount }
+      }),
+    )
+
+    for (const result of followerResults) {
+      if (!result) continue
+      const current = summaries.get(result.provider) as ChannelSummary
+      summaries.set(result.provider, {
+        ...current,
+        extra: { ...current.extra, followerCount: (current.extra.followerCount ?? 0) + result.followerCount },
+      })
+    }
   }
 
   return summaries
