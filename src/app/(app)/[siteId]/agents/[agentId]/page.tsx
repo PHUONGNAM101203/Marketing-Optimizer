@@ -61,6 +61,12 @@ export default async function AgentDetailPage({
     listRunsForAgent(agentId),
   ])
   if (!site || !agent) notFound()
+  // Người dùng thuộc CẢ site A lẫn site B, đang đứng ở URL của site B nhưng
+  // agentId lại thuộc site A — RLS đã chặn đọc cross-tenant thật sự, đây là
+  // hàng rào cho trường hợp cả hai site đều đọc được nhưng bị lẫn URL. 404
+  // giống hệt site không tồn tại — không phân biệt được với người ngoài, xem
+  // quy ước ở CLAUDE.md.
+  if (agent.siteId !== site.id) notFound()
 
   const now = new Date()
   const readTools = agent.tools.filter((tool) => !isWriteTool(tool.name))
