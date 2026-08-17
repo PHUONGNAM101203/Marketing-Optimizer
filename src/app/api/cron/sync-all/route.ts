@@ -35,6 +35,21 @@ const MAX_AGENTS_PER_CRON_RUN = 15
  * chưa từng tới `setAgentLastRunAt`) — đó là vấn đề khác, cố tình để ngoài
  * phạm vi sửa lỗi tối thiểu này.
  */
+/**
+ * "Tuần lịch" của một mốc thời gian, theo UTC — số nguyên tăng đều mỗi 7 ngày
+ * kể từ epoch Unix. Chỉ dùng ngày (bỏ giờ:phút:giây) rồi chia nguyên cho 7
+ * ngày: `floor(a/T) - floor(b/T) = (a-b)/T` mỗi khi `a-b` là bội số nguyên
+ * của `T` (tính chất của phép chia sàn) — mà agent nhịp tuần LUÔN due đúng
+ * một `dayOfWeek` cố định, nên hai lần due liên tiếp cách nhau đúng bội số
+ * của 7 ngày theo lịch. Vì vậy so sánh "cùng tuần lịch" bằng cách này luôn
+ * đúng bất kể epoch Unix rơi vào thứ mấy — không cần công thức tuần ISO
+ * (Thursday-of-the-week) phức tạp hơn cho đúng bài toán này.
+ */
+const weekBucket = (date: Date): number => {
+  const utcMidnight = Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate())
+  return Math.floor(utcMidnight / (7 * 24 * 60 * 60 * 1000))
+}
+
 const alreadyRanThisWindow = (
   cadence: AgentSchedule['cadence'],
   lastRunAt: string | null,
@@ -52,11 +67,17 @@ const alreadyRanThisWindow = (
   }
 
   if (cadence === 'weekly') {
-    // Agent nhịp tuần chỉ due đúng MỘT ngày/tuần (`dayOfWeek` khớp hôm nay),
-    // nên "trong 7 ngày gần nhất" là cửa sổ tuần hợp lệ — không cần tính số
-    // tuần ISO phức tạp.
-    const diffMs = now.getTime() - last.getTime()
-    return diffMs >= 0 && diffMs < 7 * 24 * 60 * 60 * 1000
+    // So theo TUẦN LỊCH (xem `weekBucket` ở trên), không phải mốc "cách nhau
+    // dưới 7*24h" như trước — `last_run_at` được ghi ở lúc `runAgent` HOÀN
+    // TẤT (sau `finishRun`/`setAgentLastRunAt`, có thể vài lượt gọi Claude
+    // sau khi round đầu bắt đầu), còn cron lại chạy ở một GIỜ CỐ ĐỊNH mỗi
+    // ngày (`vercel.json`) — nên lần due tuần kế luôn rơi vào đúng dưới
+    // 7*24h kể từ lúc hoàn tất lần trước, khiến so bằng mili-giây rơi luôn
+    // vào "đã chạy trong cửa sổ này" một cách sai, và agent chỉ thực chạy
+    // được mỗi TUẦN THỨ HAI. So theo tuần lịch không phụ thuộc độ trễ hoàn
+    // tất run — chỉ cần khác tuần lịch là due lại, đúng bài toán "một
+    // lần/tuần" thay vì "một lần/hơn-7-ngày".
+    return weekBucket(last) === weekBucket(now)
   }
 
   if (cadence === 'monthly') {
