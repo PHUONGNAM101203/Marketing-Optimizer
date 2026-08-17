@@ -264,6 +264,41 @@ export type Database = {
           },
         ]
       }
+      site_ai_keys: {
+        Row: {
+          api_key_enc: string
+          created_at: string
+          created_by: string | null
+          provider: string
+          site_id: string
+          updated_at: string
+        }
+        Insert: {
+          api_key_enc: string
+          created_at?: string
+          created_by?: string | null
+          provider?: string
+          site_id: string
+          updated_at?: string
+        }
+        Update: {
+          api_key_enc?: string
+          created_at?: string
+          created_by?: string | null
+          provider?: string
+          site_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "site_ai_keys_site_id_fkey"
+            columns: ["site_id"]
+            isOneToOne: false
+            referencedRelation: "sites"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       site_members: {
         Row: {
           created_at: string
@@ -711,6 +746,331 @@ export type Database = {
             columns: ["connection_id"]
             isOneToOne: false
             referencedRelation: "connections"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      prompts: {
+        Row: {
+          category: string
+          created_at: string
+          current_version_id: string | null
+          description: string
+          id: string
+          name: string
+          site_id: string
+          tags: string[]
+          updated_at: string
+          variables: Json
+        }
+        Insert: {
+          category: string
+          created_at?: string
+          current_version_id?: string | null
+          description?: string
+          id?: string
+          name: string
+          site_id: string
+          tags?: string[]
+          updated_at?: string
+          variables?: Json
+        }
+        Update: {
+          category?: string
+          created_at?: string
+          current_version_id?: string | null
+          description?: string
+          id?: string
+          name?: string
+          site_id?: string
+          tags?: string[]
+          updated_at?: string
+          variables?: Json
+        }
+        Relationships: [
+          {
+            foreignKeyName: "prompts_current_version_fk"
+            columns: ["current_version_id"]
+            isOneToOne: false
+            referencedRelation: "prompt_versions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "prompts_site_id_fkey"
+            columns: ["site_id"]
+            isOneToOne: false
+            referencedRelation: "sites"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      prompt_versions: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          id: string
+          notes: string | null
+          prompt_id: string
+          system_prompt: string
+          user_template: string
+          version: number
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          notes?: string | null
+          prompt_id: string
+          system_prompt: string
+          user_template: string
+          version: number
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          notes?: string | null
+          prompt_id?: string
+          system_prompt?: string
+          user_template?: string
+          version?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "prompt_versions_prompt_id_fkey"
+            columns: ["prompt_id"]
+            isOneToOne: false
+            referencedRelation: "prompts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      prompt_runs: {
+        Row: {
+          id: string
+          inputs: Json
+          latency_ms: number
+          model: string
+          output: string
+          prompt_id: string
+          ran_at: string
+          ran_by: string | null
+          rating: number | null
+          tokens_in: number
+          tokens_out: number
+          version_id: string
+        }
+        Insert: {
+          id?: string
+          inputs?: Json
+          latency_ms: number
+          model: string
+          output: string
+          prompt_id: string
+          ran_at?: string
+          ran_by?: string | null
+          rating?: number | null
+          tokens_in: number
+          tokens_out: number
+          version_id: string
+        }
+        Update: {
+          id?: string
+          inputs?: Json
+          latency_ms?: number
+          model?: string
+          output?: string
+          prompt_id?: string
+          ran_at?: string
+          ran_by?: string | null
+          rating?: number | null
+          tokens_in?: number
+          tokens_out?: number
+          version_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "prompt_runs_prompt_id_fkey"
+            columns: ["prompt_id"]
+            isOneToOne: false
+            referencedRelation: "prompts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "prompt_runs_version_id_fkey"
+            columns: ["version_id"]
+            isOneToOne: false
+            referencedRelation: "prompt_versions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      agents: {
+        Row: {
+          created_at: string
+          description: string
+          enabled: boolean
+          id: string
+          last_run_at: string | null
+          name: string
+          prompt_id: string
+          role: string
+          schedule: Json | null
+          site_id: string
+          tools: Json
+        }
+        Insert: {
+          created_at?: string
+          description?: string
+          enabled?: boolean
+          id?: string
+          last_run_at?: string | null
+          name: string
+          prompt_id: string
+          role: string
+          schedule?: Json | null
+          site_id: string
+          tools?: Json
+        }
+        Update: {
+          created_at?: string
+          description?: string
+          enabled?: boolean
+          id?: string
+          last_run_at?: string | null
+          name?: string
+          prompt_id?: string
+          role?: string
+          schedule?: Json | null
+          site_id?: string
+          tools?: Json
+        }
+        Relationships: [
+          {
+            foreignKeyName: "agents_prompt_id_fkey"
+            columns: ["prompt_id"]
+            isOneToOne: false
+            referencedRelation: "prompts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "agents_site_id_fkey"
+            columns: ["site_id"]
+            isOneToOne: false
+            referencedRelation: "sites"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      agent_runs: {
+        Row: {
+          agent_id: string
+          finished_at: string | null
+          id: string
+          site_id: string
+          started_at: string
+          status: string
+          steps: Json
+          summary: string | null
+          tokens_used: number | null
+          trigger: string
+        }
+        Insert: {
+          agent_id: string
+          finished_at?: string | null
+          id?: string
+          site_id: string
+          started_at?: string
+          status: string
+          steps?: Json
+          summary?: string | null
+          tokens_used?: number | null
+          trigger: string
+        }
+        Update: {
+          agent_id?: string
+          finished_at?: string | null
+          id?: string
+          site_id?: string
+          started_at?: string
+          status?: string
+          steps?: Json
+          summary?: string | null
+          tokens_used?: number | null
+          trigger?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "agent_runs_agent_id_fkey"
+            columns: ["agent_id"]
+            isOneToOne: false
+            referencedRelation: "agents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "agent_runs_site_id_fkey"
+            columns: ["site_id"]
+            isOneToOne: false
+            referencedRelation: "sites"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      pending_actions: {
+        Row: {
+          action_kind: string
+          created_at: string
+          decided_at: string | null
+          decided_by: string | null
+          decision: string | null
+          diff: Json
+          id: string
+          provider: string
+          rationale: string
+          run_id: string
+          summary: string
+          target_entity_id: string
+          target_entity_name: string
+          tool: string
+        }
+        Insert: {
+          action_kind: string
+          created_at?: string
+          decided_at?: string | null
+          decided_by?: string | null
+          decision?: string | null
+          diff?: Json
+          id?: string
+          provider: string
+          rationale: string
+          run_id: string
+          summary: string
+          target_entity_id: string
+          target_entity_name: string
+          tool: string
+        }
+        Update: {
+          action_kind?: string
+          created_at?: string
+          decided_at?: string | null
+          decided_by?: string | null
+          decision?: string | null
+          diff?: Json
+          id?: string
+          provider?: string
+          rationale?: string
+          run_id?: string
+          summary?: string
+          target_entity_id?: string
+          target_entity_name?: string
+          tool?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pending_actions_run_id_fkey"
+            columns: ["run_id"]
+            isOneToOne: false
+            referencedRelation: "agent_runs"
             referencedColumns: ["id"]
           },
         ]

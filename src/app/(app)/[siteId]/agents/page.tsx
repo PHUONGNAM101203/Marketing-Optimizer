@@ -1,19 +1,18 @@
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowRight, Bot, Clock, Lock, ShieldAlert } from 'lucide-react'
+import { ArrowRight, Bot, Clock, Lock } from 'lucide-react'
 import { PageHeader, PageShell } from '@/components/layout/page-header'
 import { DataGate } from '@/components/connections/data-gate'
 import { Card, SectionHead } from '@/components/ui/card'
 import { Badge, StatusDot } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
 import { Callout, EmptyState } from '@/components/ui/feedback'
-import { ProviderMark } from '@/components/connections/provider-mark'
+import { NewAgentDialog } from '@/components/agents/new-agent-dialog'
+import { ApprovalQueue } from '@/components/agents/approval-queue'
 import { getSite } from '@/lib/data/sites'
 import { getLatestAuditRun } from '@/lib/data/audit'
+import { listAgents, listPendingActionsForSite, listRunsForSite } from '@/lib/data/agents'
+import { listPrompts } from '@/lib/data/prompts'
 import { suggestAgentRoles } from '@/lib/audit/agent-suggestions'
-import { agentsOfSite, pendingActionsOfSite, runsOfSite } from '@/mock/agents'
-import { MOCK_TODAY } from '@/mock/dates'
-import { ACTION_KIND_LABELS } from '@/lib/domain/insight'
 import {
   AGENT_ROLE_LABELS,
   CADENCE_LABELS,
@@ -22,7 +21,6 @@ import {
   type Agent,
   type AgentRun,
   type AgentRunStatus,
-  type PendingAction,
 } from '@/lib/domain/agent'
 import { formatNumber, formatRelativeTime } from '@/lib/format'
 
@@ -49,15 +47,29 @@ export default async function AgentsPage({
   const site = await getSite(siteId)
   if (!site) notFound()
 
-  const agents = agentsOfSite(site.id)
-  const runs = runsOfSite(site.id)
-  const pending = pendingActionsOfSite(site.id)
+  const [agents, runs, pending, prompts, auditRun] = await Promise.all([
+    listAgents(site.id),
+    listRunsForSite(site.id),
+    listPendingActionsForSite(site.id),
+    listPrompts(site.id),
+    getLatestAuditRun(site.id),
+  ])
 
-  const auditRun = await getLatestAuditRun(site.id)
+  const now = new Date()
   const configuredRoles = new Set(agents.map((agent) => agent.role))
   const agentSuggestions = auditRun?.siteProfile
     ? suggestAgentRoles(auditRun.siteProfile).filter((suggestion) => !configuredRoles.has(suggestion.role))
     : []
+
+  // Chỉ những hành động CHƯA có quyết định mới thuộc hàng đợi "Cần bạn quyết"
+  // — `listPendingActionsForSite` trả về mọi hành động của Site kể cả đã
+  // duyệt/từ chối trước đó (lịch sử), nên phải lọc lại ở đây. Việc lọc này chỉ
+  // chạy MỘT LẦN ở lượt render server đầu tiên: `ApprovalQueue` (client) chụp
+  // lại danh sách này khi mount và không đồng bộ theo props mới sau đó — xem
+  // comment trong file đó để biết lý do (né race giữa `revalidatePath` và
+  // badge xác nhận "Đã duyệt").
+  const awaitingApproval = pending.filter((action) => action.decision === null)
+  const agentIdByRunId = Object.fromEntries(runs.map((run) => [run.id, run.agentId]))
 
   return (
     <PageShell>
@@ -65,10 +77,10 @@ export default async function AgentsPage({
         title="Agents"
         description="Agent chạy tác vụ nhiều bước trên dữ liệu của Site theo lịch. Chúng tự chạy được mọi thao tác ĐỌC — nhưng không thao tác GHI nào."
         action={
-          <Button variant="primary" size="md">
-            <Bot aria-hidden className="size-4" />
-            Tạo agent
-          </Button>
+          <NewAgentDialog
+            siteId={site.id}
+            prompts={prompts.map((prompt) => ({ id: prompt.id, name: prompt.name }))}
+          />
         }
       />
 
@@ -112,27 +124,14 @@ export default async function AgentsPage({
         </Callout>
       ) : null}
 
-      {pending.length > 0 ? (
-        <section className="flex flex-col gap-4">
-          <SectionHead
-            label="Cần bạn quyết"
-            title={`${pending.length} hành động đang chờ duyệt`}
-            description="Agent đã phân tích xong và dừng lại ở đây. Chưa có gì được gửi đi."
-          />
-          <div className="flex flex-col gap-3">
-            {pending.map((action) => (
-              <ApprovalCard key={action.id} action={action} />
-            ))}
-          </div>
-        </section>
-      ) : null}
+      <ApprovalQueue siteId={site.id} initialActions={awaitingApproval} agentIdByRunId={agentIdByRunId} />
 
       <section className="flex flex-col gap-4">
         <SectionHead label="Đội hình" title="Agent đã cấu hình" />
 
         <div className="grid gap-3 lg:grid-cols-2">
           {agents.map((agent) => (
-            <AgentCard key={agent.id} agent={agent} siteId={site.id} now={MOCK_TODAY} />
+            <AgentCard key={agent.id} agent={agent} siteId={site.id} now={now} />
           ))}
         </div>
       </section>
@@ -149,7 +148,7 @@ export default async function AgentsPage({
           ) : (
             <ul className="divide-y divide-[var(--color-rule)]">
               {runs.map((run) => (
-                <RunRow key={run.id} run={run} agents={agents} now={MOCK_TODAY} />
+                <RunRow key={run.id} run={run} agents={agents} now={now} />
               ))}
             </ul>
           )}
@@ -157,68 +156,6 @@ export default async function AgentsPage({
       </section>
       </DataGate>
     </PageShell>
-  )
-}
-
-function ApprovalCard({ action }: { readonly action: PendingAction }) {
-  return (
-    <Card tone="bordered" className="p-5">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0 flex-1">
-          <div className="mb-2 flex flex-wrap items-center gap-2">
-            <Badge tone="caution" icon={<ShieldAlert aria-hidden className="size-3" />}>
-              Chờ duyệt
-            </Badge>
-            <Badge tone="outline">{ACTION_KIND_LABELS[action.actionKind]}</Badge>
-            <span className="inline-flex items-center gap-1.5 text-[length:var(--text-xs)] text-[var(--color-ink-3)]">
-              <ProviderMark provider={action.provider} size="sm" />
-              {action.targetEntityName}
-            </span>
-          </div>
-
-          <p className="text-[length:var(--text-base)] font-medium text-[var(--color-ink)]">
-            {action.summary}
-          </p>
-        </div>
-      </div>
-
-      {/* Diff trước → sau: người duyệt phải thấy CHÍNH XÁC cái gì sẽ đổi, chứ
-          không phải một câu tóm tắt do mô hình viết. */}
-      <dl className="mt-4 overflow-hidden rounded-[var(--radius-md)] border border-[var(--color-rule)]">
-        {action.diff.map((row, index) => (
-          <div
-            key={row.field}
-            className={`grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)] items-center gap-3 px-3 py-2 text-[length:var(--text-sm)] ${
-              index > 0 ? 'border-t border-[var(--color-rule)]' : ''
-            }`}
-          >
-            <dt className="truncate text-[var(--color-ink-2)]">{row.field}</dt>
-            <dd data-numeric className="truncate text-[var(--color-ink-3)] line-through">
-              {row.before}
-            </dd>
-            <dd data-numeric className="truncate font-medium text-[var(--color-ink)]">
-              {row.after}
-            </dd>
-          </div>
-        ))}
-      </dl>
-
-      <p className="mt-3 max-w-prose text-[length:var(--text-sm)] text-[var(--color-ink-2)]">
-        {action.rationale}
-      </p>
-
-      <div className="mt-4 flex flex-wrap gap-2 border-t border-[var(--color-rule)] pt-4">
-        <Button variant="primary" size="md">
-          Duyệt và thực thi
-        </Button>
-        <Button variant="secondary" size="md">
-          Từ chối
-        </Button>
-        <Button variant="ghost" size="md">
-          Xem toàn bộ lượt chạy
-        </Button>
-      </div>
-    </Card>
   )
 }
 
@@ -269,8 +206,11 @@ function AgentCard({
           </Badge>
 
           {agent.schedule ? (
+            // Không hiện `hourOfDay` — cron dùng chung của app chỉ chạy 1
+            // lần/ngày ở giờ cố định và không đọc trường này cho bất kỳ nhịp
+            // nào, hiện "· 7:00" sẽ ngụ ý sai một giờ chạy không có thật.
             <Badge tone="outline" icon={<Clock aria-hidden className="size-3" />}>
-              {CADENCE_LABELS[agent.schedule.cadence]} · {agent.schedule.hourOfDay}:00
+              {CADENCE_LABELS[agent.schedule.cadence]}
             </Badge>
           ) : null}
 
