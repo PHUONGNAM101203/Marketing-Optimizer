@@ -36,11 +36,14 @@ const toGeminiContents = (messages: readonly AiMessage[]) =>
     parts: message.content.map((part) => {
       if (part.type === 'text') return { text: part.text }
       if (part.type === 'tool-use') return { functionCall: { name: part.name, args: part.input } }
-      // Gemini không có id gọi tool riêng như OpenAI/Anthropic (call_id/
-      // tool_use_id) — khớp functionResponse lại đúng lượt gọi bằng TÊN
-      // tool. `name` trên AiContentPart tool-result tồn tại chính vì lý do
-      // này (xem ai-types.ts).
-      return { functionResponse: { name: part.name, response: { result: part.content } } }
+      // Gemini CÓ id gọi tool riêng (`FunctionCall.id`/`FunctionResponse.id`,
+      // xem comment ở nhánh tool-use bên dưới) nhưng không phải lúc nào cũng
+      // trả về — khi có, `part.toolUseId` đã mang đúng id thật đó (được gán
+      // ở bước parse response); khi không, nó mang tên tool (fallback). Nối
+      // `id: part.toolUseId` vào đây để bất kể trường hợp nào, giá trị đã
+      // dùng làm id lúc trước cũng round-trip đúng lại cho Gemini khớp lượt
+      // gọi.
+      return { functionResponse: { id: part.toolUseId, name: part.name, response: { result: part.content } } }
     }),
   }))
 
@@ -80,12 +83,14 @@ export const callGemini = async (params: AiCallParams): Promise<AiCallResult> =>
     if (part.functionCall?.name) {
       content.push({
         type: 'tool-use',
-        // Gemini không trả id riêng cho lượt gọi tool — dùng tên tool làm id,
-        // khớp đúng cách `toGeminiContents` map tool-result.name ở lượt sau.
-        // Chỉ đúng nếu MỘT round không gọi CÙNG một tool hai lần — hợp lý với
-        // thiết kế agent hiện tại (mỗi round thường gọi mỗi tool tối đa 1
-        // lần).
-        id: part.functionCall.name,
+        // Gemini CÓ trả id riêng cho lượt gọi tool (`FunctionCall.id`, khớp
+        // với `FunctionResponse.id` — xác nhận qua type thật của
+        // `@google/genai@2.17.1`), nhưng field này optional và không phải
+        // lúc nào response cũng điền — ưu tiên id thật khi có, chỉ fallback
+        // về tên tool khi Gemini bỏ trống. Fallback-bằng-tên chỉ đúng nếu
+        // MỘT round không gọi CÙNG một tool hai lần — hợp lý với thiết kế
+        // agent hiện tại (mỗi round thường gọi mỗi tool tối đa 1 lần).
+        id: part.functionCall.id ?? part.functionCall.name,
         name: part.functionCall.name,
         input: (part.functionCall.args ?? {}) as Record<string, unknown>,
       })
