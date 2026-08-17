@@ -220,10 +220,19 @@ export const createPrompt = async (input: {
     // orphan sẽ nằm lại vĩnh viễn mà không có dấu vết nào trong log ngoài lỗi
     // gốc. Không throw lỗi dọn dẹp (che mất lỗi gốc, thứ caller cần thấy),
     // chỉ log thêm để còn cách dò ra hàng orphan sau này.
-    const { error: rollbackError } = await supabase.from('prompts').delete().eq('id', promptRow.id)
-    if (rollbackError) {
+    //
+    // `.select('id')` bắt buộc phải có: DELETE khớp 0 hàng (vd. policy chặn,
+    // hoặc hàng đã bị xoá bởi lượt gọi khác) trả `error: null` giống hệt xoá
+    // thành công — không kiểm số hàng trả về thì nhánh log này không bao giờ
+    // bắt được đúng lớp lỗi "im lặng" mà nó sinh ra để bắt.
+    const { data: rollbackRows, error: rollbackError } = await supabase
+      .from('prompts')
+      .delete()
+      .eq('id', promptRow.id)
+      .select('id')
+    if (rollbackError || !rollbackRows || rollbackRows.length === 0) {
       console.error(
-        `createPrompt: dọn hàng orphan prompt id=${promptRow.id} thất bại: ${rollbackError.message} — lỗi gốc: ${error instanceof Error ? error.message : String(error)}`,
+        `createPrompt: dọn hàng orphan prompt id=${promptRow.id} thất bại${rollbackError ? `: ${rollbackError.message}` : ' (khớp 0 hàng)'} — lỗi gốc: ${error instanceof Error ? error.message : String(error)}`,
       )
     }
     throw error
