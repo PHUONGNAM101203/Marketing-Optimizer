@@ -382,23 +382,23 @@ function DateRangeMenu({
   )
 }
 
-const RESYNC_INITIAL_STATE: ResyncState = { error: null, synced: 0, removed: 0 }
+const RESYNC_INITIAL_STATE: ResyncState = { error: null, started: false }
 
 /**
  * "Đồng bộ lại" đồng bộ THẬT: kéo lại số liệu của mọi connection, và gỡ
  * những connection không còn khớp domain của Site này — trường hợp một tài
  * khoản Google quản lý nhiều website và một kết nối cũ lỡ gắn nhầm tài sản
- * của website khác.
+ * của website khác. Việc đồng bộ thật chạy NỀN qua `after()` (xem
+ * `lib/actions/sync.ts`) — action trả lời gần như ngay lập tức nên không còn
+ * biết số `synced`/`removed` LÚC BẤM, chỉ báo "đã bắt đầu"; số liệu thật tự
+ * hiện qua chỉ báo "Đồng bộ … trước" ở topbar khi tải lại/điều hướng tiếp.
  */
-// `null` khi không có gì đáng báo (0 đồng bộ, 0 gỡ, không lỗi) — im lặng
+// `null` khi không có gì đáng báo (chưa bấm lần nào, không lỗi) — im lặng
 // còn hơn một thông báo không mang thông tin gì, đứng chình ình cho tới lần
 // bấm tiếp theo và dễ đè lên các trạng thái khác ở góc trên cùng.
 function describeResync(state: ResyncState): string | null {
   if (state.error) return state.error
-  if (state.removed > 0) {
-    return `Đã đồng bộ ${state.synced} — gỡ ${state.removed} kết nối sai website.`
-  }
-  if (state.synced > 0) return `Đã đồng bộ ${state.synced} kết nối.`
+  if (state.started) return 'Đang đồng bộ nền — bạn có thể tiếp tục thao tác khác, số liệu sẽ tự cập nhật khi xong.'
   return null
 }
 

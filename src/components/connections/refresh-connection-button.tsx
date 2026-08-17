@@ -5,7 +5,7 @@ import { RefreshCw } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { syncConnectionAction, type SyncConnectionState } from '@/lib/actions/sync'
 
-const INITIAL_STATE: SyncConnectionState = { error: null, ok: false }
+const INITIAL_STATE: SyncConnectionState = { error: null, started: false }
 
 export function RefreshConnectionButton({
   connectionId,
