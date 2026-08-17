@@ -155,7 +155,7 @@ export interface SiteCrawl {
 const AI_BOTS = ['GPTBot', 'ClaudeBot', 'PerplexityBot', 'Google-Extended', 'CCBot'] as const
 
 /** Trang bị chặn bot không phải nội dung thật — loại hẳn khỏi MỌI phép suy
- * diễn (rules SEO/GEO/AIO, citability, site profile), không chỉ một chỗ.
+ * diễn (rules SEO/GEO/AIO/AEO, citability, site profile), không chỉ một chỗ.
  * Dùng CHUNG một hàm ở đây để không có nơi nào lỡ quên lọc và lại tính điểm
  * từ nội dung màn hình chặn. */
 export const realPagesOf = (crawl: SiteCrawl): readonly PageSignals[] =>

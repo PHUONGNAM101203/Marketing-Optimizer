@@ -12,7 +12,7 @@ import { getLatestAuditRun } from '@/lib/data/audit'
 import { AUDIT_CATEGORIES, AUDIT_CATEGORY_LABELS, findingsOf, scoreOf } from '@/lib/domain/audit'
 import { formatRelativeTime } from '@/lib/format'
 
-export const metadata = { title: 'Kiểm tra SEO/GEO/AIO' }
+export const metadata = { title: 'Kiểm tra SEO/GEO/AIO/AEO' }
 
 export default async function AuditPage({
   params,
@@ -31,8 +31,8 @@ export default async function AuditPage({
       <AuditRunningPoller isRunning={isRunning} />
 
       <PageHeader
-        title="Kiểm tra SEO/GEO/AIO"
-        description="Quét kỹ thuật toàn site — nền tảng cho công cụ tìm kiếm truyền thống (SEO), cho AI trích xuất khi tổng hợp câu trả lời (GEO), và cho AI Overviews/answer engine (AIO)."
+        title="Kiểm tra SEO/GEO/AIO/AEO"
+        description="Quét kỹ thuật toàn site — nền tảng cho công cụ tìm kiếm truyền thống (SEO), cho AI trích xuất khi tổng hợp câu trả lời (GEO), cho AI Overviews (AIO), và cho nội dung được trích làm câu trả lời trực tiếp (AEO)."
         action={<RunAuditButton siteId={site.id} status={run?.status ?? null} truncated={run?.truncated ?? false} />}
         meta={
           run ? (

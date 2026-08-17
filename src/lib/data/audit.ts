@@ -17,6 +17,7 @@ interface AuditRunRow {
   readonly seo_score: number | null
   readonly geo_score: number | null
   readonly aio_score: number | null
+  readonly aeo_score: number | null
   readonly findings: unknown
   readonly page_citability: unknown
   readonly site_profile: unknown
@@ -54,6 +55,7 @@ const toAuditRun = (row: AuditRunRow): AuditRun => {
     seoScore: row.seo_score,
     geoScore: row.geo_score,
     aioScore: row.aio_score,
+    aeoScore: row.aeo_score,
     findings: (row.findings as readonly AuditFinding[] | null) ?? [],
     pageCitability: (row.page_citability as readonly PageCitabilityScore[] | null) ?? [],
     siteProfile: row.site_profile as SiteProfile | null,
@@ -71,7 +73,7 @@ const toAuditRun = (row: AuditRunRow): AuditRun => {
  * dưới cần tới. Trang Tổng quan gọi hàm này trên MỌI lượt render (kể cả mỗi
  * lần đổi khoảng ngày) nên kéo cả blob đó qua dây mỗi lần là phí. */
 const AUDIT_RUN_COLUMNS =
-  'id, site_id, status, pages_scanned, sitemap_url_count, truncated, blocked_by_bot_protection, seo_score, geo_score, aio_score, findings, page_citability, site_profile, pagespeed, error, started_at, completed_at'
+  'id, site_id, status, pages_scanned, sitemap_url_count, truncated, blocked_by_bot_protection, seo_score, geo_score, aio_score, aeo_score, findings, page_citability, site_profile, pagespeed, error, started_at, completed_at'
 
 export const getLatestAuditRun = async (siteId: string): Promise<AuditRun | null> => {
   const supabase = await createClient()

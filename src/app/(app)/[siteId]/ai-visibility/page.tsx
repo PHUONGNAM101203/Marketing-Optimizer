@@ -76,7 +76,7 @@ export default async function AiVisibilityPage({
           deltaPct={null}
           footnote={
             pageCitability.length === 0
-              ? 'Chưa có dữ liệu — chạy Kiểm tra SEO/GEO/AIO trước'
+              ? 'Chưa có dữ liệu — chạy Kiểm tra SEO/GEO/AIO/AEO trước'
               : `Trung bình ${pageCitability.length} trang đã quét`
           }
         />
@@ -102,10 +102,10 @@ export default async function AiVisibilityPage({
           title="Chưa có điểm citability"
         >
           <p>
-            Điểm citability tính từ chính lượt quét kỹ thuật SEO/GEO/AIO — chưa quét lần nào thì
+            Điểm citability tính từ chính lượt quét kỹ thuật SEO/GEO/AIO/AEO — chưa quét lần nào thì
             chưa có gì để hiện. Chạy quét ở trang{' '}
             <Link href={`/${site.id}/audit`} className="font-medium text-[var(--color-signal)] hover:underline">
-              Kiểm tra SEO/GEO/AIO
+              Kiểm tra SEO/GEO/AIO/AEO
             </Link>{' '}
             trước.
           </p>

@@ -16,6 +16,7 @@ export type Database = {
     Tables: {
       audit_runs: {
         Row: {
+          aeo_score: number | null
           aio_score: number | null
           blocked_by_bot_protection: boolean
           completed_at: string | null
@@ -37,6 +38,7 @@ export type Database = {
           truncated: boolean
         }
         Insert: {
+          aeo_score?: number | null
           aio_score?: number | null
           blocked_by_bot_protection?: boolean
           completed_at?: string | null
@@ -58,6 +60,7 @@ export type Database = {
           truncated?: boolean
         }
         Update: {
+          aeo_score?: number | null
           aio_score?: number | null
           blocked_by_bot_protection?: boolean
           completed_at?: string | null

@@ -5,8 +5,10 @@ import type { SiteCrawl } from '../crawler'
 
 /**
  * Luật GEO — sẵn sàng để AI TRÍCH XUẤT nội dung khi tổng hợp câu trả lời.
- * Vài luật ở đây là suy luận có tính diễn giải (`heuristic: true`) — đọc kỹ
- * comment ở `domain/audit.ts` về ý nghĩa cờ đó trước khi thêm luật mới.
+ * Cấu trúc "trả lời trực tiếp" đã chuyển sang AEO (đo answer-engine
+ * readiness cụ thể hơn, xem `aeo.ts`). Vài luật ở đây là suy luận có tính
+ * diễn giải (`heuristic: true`) — đọc kỹ comment ở `domain/audit.ts` về ý
+ * nghĩa cờ đó trước khi thêm luật mới.
  */
 
 const finding = (
@@ -67,26 +69,6 @@ export const evaluateGeoRules = (crawl: SiteCrawl): readonly AuditFinding[] => {
           ? 'Bổ sung JSON-LD cho các trang còn thiếu.'
           : null,
       `${pagesWithSchema}/${pages.length} trang có JSON-LD${recognizedTypesFound.length > 0 ? ` (loại: ${recognizedTypesFound.join(', ')})` : ''}`,
-    ),
-  )
-
-  // Câu trả lời trực tiếp: heading có đoạn văn ngay sau, không phải heading
-  // rồi tới heading khác hoặc danh sách rỗng — cấu trúc này dễ trích xuất
-  // thành một câu trả lời độc lập hơn văn bản tự do không có mốc rõ ràng.
-  const pagesWithDirectAnswer = pages.filter(
-    (page) => page.headings.length > 0 && Boolean(page.firstParagraph) && page.firstParagraph!.length > 40,
-  ).length
-  findings.push(
-    finding(
-      'geo-direct-answers',
-      pagesWithDirectAnswer === 0 ? 'warn' : pagesWithDirectAnswer < pages.length ? 'warn' : 'pass',
-      'Cấu trúc "trả lời trực tiếp"',
-      'Nội dung mở đầu bằng một đoạn trả lời thẳng vào vấn đề (không phải dẫn dắt dài dòng) dễ được AI trích nguyên văn hơn khi tổng hợp câu trả lời.',
-      pagesWithDirectAnswer < pages.length
-        ? 'Mở đầu mỗi trang/bài viết bằng 1–3 câu trả lời trực tiếp câu hỏi chính, chi tiết/bối cảnh đưa xuống sau.'
-        : null,
-      `${pagesWithDirectAnswer}/${pages.length} trang có đoạn mở đầu đủ dài ngay sau heading`,
-      true,
     ),
   )
 

@@ -162,7 +162,7 @@ const performAuditScan = async (
     // Trang bị chặn bot (Cloudflare/WAF) không phải nội dung thật — loại khỏi
     // MỌI phép tính bên dưới (rules, citability, hồ sơ site).
     const realCrawl: SiteCrawl = { ...mergedCrawl, pages: realPagesOf(mergedCrawl) }
-    const { findings, seoScore, geoScore, aioScore } = evaluateAllRules(realCrawl)
+    const { findings, seoScore, geoScore, aioScore, aeoScore } = evaluateAllRules(realCrawl)
     const scannedAt = new Date().toISOString()
     const pageCitability = realCrawl.pages.map((page) => computePageCitability(page, siteId, scannedAt))
     const siteProfile = computeSiteProfile(realCrawl, siteName)
@@ -194,6 +194,7 @@ const performAuditScan = async (
         seo_score: seoScore,
         geo_score: geoScore,
         aio_score: aioScore,
+        aeo_score: aeoScore,
         // Các trường jsonb là readonly ở phía TypeScript, cột jsonb ở phía
         // Supabase đòi kiểu có thể mutate — chỉ khác biệt kiểu, không khác
         // giá trị.

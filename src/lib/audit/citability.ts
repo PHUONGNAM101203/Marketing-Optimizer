@@ -5,7 +5,7 @@ import type { PageSignals } from './crawler'
 
 /**
  * Điểm citability THẬT — tính từ chính dữ liệu đã crawl cho lượt quét
- * SEO/GEO/AIO (`crawler.ts`), không quét thêm lần nào riêng. Sáu trục ở đây
+ * SEO/GEO/AIO/AEO (`crawler.ts`), không quét thêm lần nào riêng. Sáu trục ở đây
  * là một cách nhìn KHÁC của cùng tín hiệu kỹ thuật dùng cho luật GEO
  * (`rules/geo.ts`) — điểm số ít, dễ đọc; bảng này xếp theo TRANG để biết
  * chính xác trang nào cần sửa trước.

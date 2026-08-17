@@ -57,7 +57,7 @@ export const buildNavSections = (siteId: string): readonly NavSection[] => {
       items: [
         { href: `${base}/insights`, label: 'Đề xuất', icon: Lightbulb },
         { href: `${base}/ai-visibility`, label: 'Hiện diện AI', icon: Sparkles },
-        { href: `${base}/audit`, label: 'Kiểm tra SEO/GEO/AIO', icon: ScanSearch },
+        { href: `${base}/audit`, label: 'Kiểm tra SEO/GEO/AIO/AEO', icon: ScanSearch },
         { href: `${base}/planner`, label: 'Kế hoạch', icon: CalendarRange },
       ],
     },

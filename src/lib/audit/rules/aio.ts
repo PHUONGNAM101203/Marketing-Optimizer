@@ -4,10 +4,12 @@ import type { AuditFinding } from '@/lib/domain/audit'
 import type { SiteCrawl } from '../crawler'
 
 /**
- * Luật AIO — sẵn sàng cho AI Overviews/answer engine cụ thể: crawler AI có
- * vào được không, nội dung có định dạng dễ trích không (danh sách/bảng/FAQ).
- * Bổ sung, không lặp lại "Hiện diện AI" (đo citation rate SỐNG qua API) —
- * đây là các phép kiểm tra KỸ THUẬT tĩnh, đọc trực tiếp từ trang đã quét.
+ * Luật AIO — sẵn sàng cho AI Overviews: crawler AI có vào được không, nội
+ * dung có định dạng dễ trích không (danh sách/bảng, tóm tắt súc tích). Cấu
+ * trúc FAQ/câu hỏi đã chuyển sang AEO (đo answer-engine readiness cụ thể
+ * hơn, xem `aeo.ts`). Bổ sung, không lặp lại "Hiện diện AI" (đo citation rate
+ * SỐNG qua API) — đây là các phép kiểm tra KỸ THUẬT tĩnh, đọc trực tiếp từ
+ * trang đã quét.
  */
 
 const finding = (
@@ -39,24 +41,6 @@ export const evaluateAioRules = (crawl: SiteCrawl): readonly AuditFinding[] => {
       blockedBots.length === 0
         ? 'Không chặn crawler AI nào trong robots.txt'
         : `Đang chặn: ${blockedBots.map(([bot]) => bot).join(', ')}`,
-    ),
-  )
-
-  const faqPages = pages.filter(
-    (page) =>
-      page.jsonLdTypes.includes('FAQPage') ||
-      page.headings.filter((heading) => heading.text.trim().endsWith('?')).length >= 2,
-  ).length
-  findings.push(
-    finding(
-      'aio-faq-pattern',
-      faqPages === 0 ? 'warn' : 'pass',
-      'Cấu trúc FAQ hoặc câu hỏi rõ ràng',
-      'FAQPage schema hoặc heading dạng câu hỏi là định dạng AI Overviews trích dẫn nhiều nhất — mỗi câu hỏi kèm câu trả lời ngắn ngay bên dưới.',
-      faqPages === 0
-        ? 'Thêm mục FAQ (kèm FAQPage schema) cho các trang sản phẩm/dịch vụ chính, mỗi câu hỏi có câu trả lời ngắn gọn ngay sau.'
-        : null,
-      `${faqPages}/${pages.length} trang có FAQPage schema hoặc ≥2 heading dạng câu hỏi`,
     ),
   )
 

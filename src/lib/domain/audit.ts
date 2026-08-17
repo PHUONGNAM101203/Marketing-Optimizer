@@ -7,31 +7,38 @@
  * có thể citability thấp (ít được hỏi tới) nhưng nền tảng kỹ thuật vẫn tốt,
  * hoặc ngược lại — hai trục độc lập, không suy ra nhau được.
  *
- * Ba hạng mục cố tình KHÔNG trộn chung một điểm:
+ * Bốn hạng mục cố tình KHÔNG trộn chung một điểm:
  *   · SEO — nền tảng kỹ thuật cho công cụ tìm kiếm truyền thống (Google/Bing).
  *   · GEO (Generative Engine Optimization) — sẵn sàng để AI TRÍCH XUẤT nội
- *     dung khi tổng hợp câu trả lời (llms.txt, schema, cấu trúc trả lời trực
- *     tiếp).
- *   · AIO — sẵn sàng cho AI Overviews/answer engine cụ thể: crawler AI có bị
- *     chặn không, có định dạng dễ trích (danh sách/bảng/FAQ) không.
+ *     dung khi tổng hợp câu trả lời (llms.txt, schema, tín hiệu E-E-A-T).
+ *   · AIO — sẵn sàng cho AI Overviews cụ thể: crawler AI có bị chặn không,
+ *     có định dạng dễ trích (danh sách/bảng, tóm tắt súc tích) không.
+ *   · AEO (Answer Engine Optimization) — nội dung có được CẤU TRÚC để bị
+ *     trích nguyên văn làm câu trả lời không (FAQ, trả lời trực tiếp, HowTo,
+ *     Speakable, heading dạng câu hỏi) — featured snippet, trợ lý giọng nói,
+ *     "People Also Ask". Trước 17/8/2026, 2 luật đầu (FAQ pattern, trả lời
+ *     trực tiếp) từng nằm ở AIO/GEO — dời sang đây vì đó mới đúng là điều
+ *     chúng đo (xem docs/superpowers/specs/2026-08-17-aeo-audit-category-design.md).
  */
 
 import type { PageCitabilityScore } from './geo'
 
-export type AuditCategory = 'seo' | 'geo' | 'aio'
+export type AuditCategory = 'seo' | 'geo' | 'aio' | 'aeo'
 
-export const AUDIT_CATEGORIES: readonly AuditCategory[] = ['seo', 'geo', 'aio']
+export const AUDIT_CATEGORIES: readonly AuditCategory[] = ['seo', 'geo', 'aio', 'aeo']
 
 export const AUDIT_CATEGORY_LABELS: Readonly<Record<AuditCategory, string>> = {
   seo: 'SEO',
   geo: 'GEO',
   aio: 'AIO',
+  aeo: 'AEO',
 }
 
 export const AUDIT_CATEGORY_DESCRIPTIONS: Readonly<Record<AuditCategory, string>> = {
   seo: 'Nền tảng kỹ thuật cho Google/Bing tìm và xếp hạng trang — thẻ meta, heading, tốc độ cấu trúc, sitemap.',
-  geo: 'Sẵn sàng để AI (ChatGPT, Perplexity, Claude…) trích xuất đúng nội dung khi tổng hợp câu trả lời — llms.txt, schema, cấu trúc trả lời trực tiếp.',
-  aio: 'Sẵn sàng cho AI Overviews và answer engine — crawler AI có được phép vào không, nội dung có định dạng dễ trích (danh sách/bảng/FAQ) không.',
+  geo: 'Sẵn sàng để AI (ChatGPT, Perplexity, Claude…) trích xuất đúng nội dung khi tổng hợp câu trả lời — llms.txt, schema, tín hiệu E-E-A-T.',
+  aio: 'Sẵn sàng cho AI Overviews — crawler AI có được phép vào không, nội dung có định dạng dễ trích (danh sách/bảng, tóm tắt súc tích) không.',
+  aeo: 'Nội dung có được cấu trúc để bị trích nguyên văn làm câu trả lời không — FAQ, trả lời trực tiếp, HowTo, Speakable, heading dạng câu hỏi.',
 }
 
 export type AuditFindingStatus = 'pass' | 'warn' | 'fail'
@@ -137,6 +144,11 @@ export interface AuditRun {
   readonly seoScore: number | null
   readonly geoScore: number | null
   readonly aioScore: number | null
+  /** `null` cho audit chạy trước 17/8/2026 (cột chưa tồn tại) hoặc crawl
+   * rỗng — `AuditCategoryPanel` đã tự hiện đúng trạng thái "chưa có dữ liệu"
+   * dựa trên `findings.length === 0` của category đó, không cần phân biệt gì
+   * thêm ở đây. */
+  readonly aeoScore: number | null
   readonly findings: readonly AuditFinding[]
   readonly pageCitability: readonly PageCitabilityScore[]
   readonly siteProfile: SiteProfile | null
@@ -147,7 +159,13 @@ export interface AuditRun {
 }
 
 export const scoreOf = (run: AuditRun, category: AuditCategory): number | null =>
-  category === 'seo' ? run.seoScore : category === 'geo' ? run.geoScore : run.aioScore
+  category === 'seo'
+    ? run.seoScore
+    : category === 'geo'
+      ? run.geoScore
+      : category === 'aio'
+        ? run.aioScore
+        : run.aeoScore
 
 export const findingsOf = (
   run: AuditRun,
