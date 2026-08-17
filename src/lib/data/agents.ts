@@ -153,10 +153,17 @@ export const createAgent = async (input: {
   return toAgent(data as AgentRow)
 }
 
+/**
+ * `agents` UPDATE chỉ có policy cho owner/admin (migration 20260814000012).
+ * Với một `viewer`, update này khớp 0 hàng — Supabase trả `error: null` cho
+ * UPDATE 0 hàng (không tự ném lỗi), nên PHẢI tự kiểm `data` rỗng rồi ném lỗi
+ * ở đây, nếu không request "thành công" một cách im lặng mà không đổi gì.
+ */
 export const setAgentEnabled = async (agentId: string, enabled: boolean): Promise<void> => {
   const supabase = await createClient()
-  const { error } = await supabase.from('agents').update({ enabled }).eq('id', agentId)
+  const { data, error } = await supabase.from('agents').update({ enabled }).eq('id', agentId).select('id')
   if (error) throw new Error(`Không đổi được trạng thái agent: ${error.message}`)
+  if (!data || data.length === 0) throw new Error('Bạn không có quyền bật/tắt agent này.')
 }
 
 export const listRunsForSite = async (siteId: string): Promise<readonly AgentRun[]> => {
@@ -348,19 +355,27 @@ export const createPendingAction = async (input: {
 
 /** Dùng client phiên người dùng — `pending_actions` có policy UPDATE cho
  * `authenticated` (gate ở mức admin site), đây là đường ghi hợp lệ duy nhất
- * qua phiên người dùng cho bảng này (duyệt/từ chối). */
+ * qua phiên người dùng cho bảng này (duyệt/từ chối).
+ *
+ * Với một `viewer` (không đạt gate owner/admin trong policy), update này
+ * khớp 0 hàng — Supabase trả `error: null` cho UPDATE 0 hàng, im lặng như
+ * thành công thật. Không kiểm `data` rỗng thì `approval-actions.tsx` sẽ hiện
+ * badge "Đã duyệt" dù hàng `pending_actions` không hề đổi — một lời hứa sai
+ * về trạng thái hệ thống. */
 export const decidePendingAction = async (
   pendingActionId: string,
   decision: 'approved' | 'rejected',
   decidedBy: string,
 ): Promise<void> => {
   const supabase = await createClient()
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from('pending_actions')
     .update({ decision, decided_by: decidedBy, decided_at: new Date().toISOString() })
     .eq('id', pendingActionId)
+    .select('id')
 
   if (error) throw new Error(`Không lưu được quyết định: ${error.message}`)
+  if (!data || data.length === 0) throw new Error('Bạn không có quyền duyệt hành động này.')
 }
 
 export const setAgentLastRunAt = async (agentId: string, at: string): Promise<void> => {
