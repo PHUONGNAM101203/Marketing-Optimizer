@@ -127,7 +127,7 @@ export interface SaveAiConfigState {
 /**
  * Kết nối/cập nhật provider AI của một Site. Chỉ MỘT provider kết nối tại
  * một thời điểm (khoá chính `site_ai_keys.site_id`, xem migration
- * 20260817000002) — submit thẳng một provider KHÁC provider đang kết nối bị
+ * 20260817000003_site_ai_keys_multi_provider.sql) — submit thẳng một provider KHÁC provider đang kết nối bị
  * từ chối ở đây, không âm thầm ghi đè; phải `disconnectSiteAiConfigAction`
  * trước. Cùng khuôn quyền `has_site_role` với `saveSiteOAuthApp`
  * (`actions/oauth-apps.ts`).
