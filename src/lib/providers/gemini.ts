@@ -35,7 +35,7 @@ const toGeminiContents = (messages: readonly AiMessage[]) =>
     role: toGeminiRole(message.role),
     parts: message.content.map((part) => {
       if (part.type === 'text') return { text: part.text }
-      if (part.type === 'tool-use') return { functionCall: { name: part.name, args: part.input } }
+      if (part.type === 'tool-use') return { functionCall: { id: part.id, name: part.name, args: part.input } }
       // Gemini CÓ id gọi tool riêng (`FunctionCall.id`/`FunctionResponse.id`,
       // xem comment ở nhánh tool-use bên dưới) nhưng không phải lúc nào cũng
       // trả về — khi có, `part.toolUseId` đã mang đúng id thật đó (được gán
