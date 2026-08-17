@@ -1,13 +1,16 @@
 'use client'
 
-import { useActionState, useEffect, useState } from 'react'
+import { useActionState, useEffect, useRef, useState, useTransition } from 'react'
 import { Check, ExternalLink, Settings2, TriangleAlert } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { DialogContent, DialogRoot, DialogTrigger } from '@/components/ui/dialog'
 import { FormField, inputClass } from '@/components/ui/form-field'
+import { ComboboxField } from '@/components/ui/combobox-field'
 import {
   saveSiteAiConfigAction,
   disconnectSiteAiConfigAction,
+  listAvailableModelsAction,
+  refreshSiteAiModelsAction,
   type SaveAiConfigState,
   type DisconnectAiConfigState,
 } from '@/lib/actions/ai-keys'
@@ -122,6 +125,7 @@ export function AiKeySetup({ siteId, connection }: AiKeySetupProps) {
                 formAction={saveAction}
                 pending={savePending}
                 defaultModel={connection.model}
+                initialModelOptions={connection.availableModels}
               />
             </DialogContent>
           </DialogRoot>
@@ -210,6 +214,7 @@ export function AiKeySetup({ siteId, connection }: AiKeySetupProps) {
           formAction={saveAction}
           pending={savePending}
           defaultModel=""
+          initialModelOptions={[]}
         />
       </DialogContent>
     </DialogRoot>
@@ -224,6 +229,7 @@ function ConnectForm({
   formAction,
   pending,
   defaultModel,
+  initialModelOptions,
 }: {
   readonly siteId: string
   readonly provider: AiProvider
@@ -232,7 +238,40 @@ function ConnectForm({
   readonly formAction: (formData: FormData) => void
   readonly pending: boolean
   readonly defaultModel: string
+  readonly initialModelOptions: readonly string[]
 }) {
+  const apiKeyInputRef = useRef<HTMLInputElement>(null)
+  const [modelOptions, setModelOptions] = useState<readonly string[]>(initialModelOptions)
+  const [selectedModel, setSelectedModel] = useState(defaultModel)
+  const [modelsError, setModelsError] = useState<string | null>(null)
+  const [modelsPending, startModelsTransition] = useTransition()
+
+  // Ưu tiên key VỪA GÕ trên form (đổi key + muốn xem model của key mới) —
+  // rơi về key ĐÃ LƯU (refreshSiteAiModelsAction) chỉ khi đang sửa một kết
+  // nối có sẵn VÀ ô API Key để trống. Không có key nào khả dụng (kết nối mới
+  // + chưa gõ gì) thì báo lỗi thay vì gọi hàm sai.
+  const handleFetchModels = () => {
+    setModelsError(null)
+    const typedKey = apiKeyInputRef.current?.value.trim() ?? ''
+
+    startModelsTransition(async () => {
+      const result = typedKey
+        ? await listAvailableModelsAction(provider, typedKey)
+        : isUpdating
+          ? await refreshSiteAiModelsAction(siteId)
+          : { models: [] as readonly string[], error: 'Nhập API Key trước khi tải danh sách model.' }
+
+      if (result.error) {
+        setModelsError(result.error)
+        return
+      }
+      setModelOptions(result.models)
+      if (result.models.length > 0 && !result.models.includes(selectedModel)) {
+        setSelectedModel(result.models[0])
+      }
+    })
+  }
+
   return (
     <form action={formAction} className="flex flex-col gap-4">
       <input type="hidden" name="siteId" value={siteId} />
@@ -244,6 +283,7 @@ function ConnectForm({
         hint={isUpdating ? 'Đã lưu trước đó — để trống nếu không đổi. Không hiện lại được vì lý do bảo mật.' : undefined}
       >
         <input
+          ref={apiKeyInputRef}
           id="ai-key-api-key"
           name="apiKey"
           type="password"
@@ -254,18 +294,52 @@ function ConnectForm({
         />
       </FormField>
 
-      <FormField label="Model" htmlFor="ai-key-model" hint={MODEL_HINTS[provider]}>
-        <input
-          id="ai-key-model"
-          name="model"
-          type="text"
-          required
-          autoComplete="off"
-          spellCheck={false}
-          defaultValue={defaultModel}
-          className={inputClass}
-        />
-      </FormField>
+      <div className="flex flex-col gap-2">
+        <div className="flex items-center justify-between">
+          <span className="text-[length:var(--text-sm)] font-medium text-[var(--color-ink)]">Model</span>
+          <button
+            type="button"
+            onClick={handleFetchModels}
+            disabled={modelsPending}
+            className="text-[length:var(--text-xs)] font-medium text-[var(--color-signal)] hover:underline disabled:opacity-50"
+          >
+            {modelsPending ? 'Đang tải…' : 'Tải danh sách model'}
+          </button>
+        </div>
+
+        {modelOptions.length > 0 ? (
+          <ComboboxField
+            name="model"
+            options={modelOptions}
+            value={selectedModel}
+            onValueChange={setSelectedModel}
+            placeholder="Chọn model…"
+            required
+            emptyLabel="Không có model nào khớp."
+          />
+        ) : (
+          <input
+            name="model"
+            type="text"
+            required
+            autoComplete="off"
+            spellCheck={false}
+            value={selectedModel}
+            onChange={(e) => setSelectedModel(e.target.value)}
+            placeholder={MODEL_HINTS[provider]}
+            className={inputClass}
+          />
+        )}
+
+        {modelOptions.length === 0 ? (
+          <p className="text-[length:var(--text-xs)] text-[var(--color-ink-2)]">{MODEL_HINTS[provider]}</p>
+        ) : null}
+        {modelsError ? (
+          <p role="alert" className="text-[length:var(--text-xs)] text-[var(--color-negative)]">
+            {modelsError}
+          </p>
+        ) : null}
+      </div>
 
       {state.error ? (
         <p
