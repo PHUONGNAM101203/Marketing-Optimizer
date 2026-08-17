@@ -107,7 +107,18 @@ const fetchPageSpeedStrategy = async (
   }
   if (!response.ok) return null
 
-  const body = (await response.json()) as PsiResponse
+  // `response.json()` từng đứng NGOÀI try/catch — PSI trả 200 nhưng thân
+  // response không parse được JSON (đã xảy ra thật, 8/2026: gây throw không
+  // bắt được, làm CRASH CẢ TIẾN TRÌNH `after()` đang chạy crawl song song
+  // giữa chừng — audit_runs kẹt ở `status: 'running'` mãi mãi, `error: null`,
+  // vì tiến trình chết trước khi kịp chạy tới catch của `performAuditScan`).
+  // Không được để một nhánh PSI lỗi làm hỏng CẢ audit đang chạy song song.
+  let body: PsiResponse
+  try {
+    body = (await response.json()) as PsiResponse
+  } catch {
+    return null
+  }
   const categories = body.lighthouseResult?.categories
   const audits = body.lighthouseResult?.audits ?? {}
 

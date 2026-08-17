@@ -164,10 +164,28 @@ const performAuditScan = async (
     // (`new URL(siteUrl).origin`) — không cần đợi bất kỳ kết quả crawl nào.
     // Xếp chồng thời gian PSI (tối đa 45s) vào bên trong 240s crawl thay vì
     // cộng nối đuôi cho PSI gần như luôn xong trước khi cần dùng tới.
+    // `.catch()` NGAY tại đây, không đợi bên gọi `await` mới xử lý lỗi —
+    // promise này được TẠO NGAY (không phải một hàm đợi gọi mới chạy) và chỉ
+    // `await` ở tít bên dưới, SAU KHI crawl (tới 240s) xong. Một promise bị
+    // reject mà chưa có handler nào gắn vào coi là "unhandled rejection" —
+    // Node hiện đại (từ bản 15) CRASH LUÔN CẢ TIẾN TRÌNH cho lỗi này theo mặc
+    // định, giết chết `after()` đang crawl song song giữa chừng dù không có
+    // gì trong CHÍNH crawl bị lỗi. Đã xảy ra thật (8/2026, site handdn.com):
+    // `audit_runs` kẹt ở `status: 'running'` mãi mãi, `pages_scanned` dừng
+    // đúng lúc PSI chết, `error: null` vì tiến trình chết trước khi kịp chạy
+    // tới catch của `performAuditScan`. Đã vá lỗ hổng cụ thể trong
+    // `pagespeed.ts` (JSON.parse thiếu try/catch), nhưng vẫn giữ `.catch()`
+    // phòng thủ ở đây — không nhánh phụ nào (PSI hôm nay, thứ khác mai sau)
+    // được phép giết cả audit chỉ vì chạy song song với phần việc chính.
     const pagespeedApiKey = getConfiguredPageSpeedApiKey()
-    const pagespeedPromise = pagespeedApiKey
-      ? fetchPageSpeedInsights(new URL(siteUrl).origin, pagespeedApiKey)
-      : Promise.resolve(null)
+    const pagespeedPromise = (
+      pagespeedApiKey ? fetchPageSpeedInsights(new URL(siteUrl).origin, pagespeedApiKey) : Promise.resolve(null)
+    ).catch((error: unknown) => {
+      console.error(
+        `PSI lỗi không mong đợi (site ${siteId}): ${error instanceof Error ? error.message : String(error)}`,
+      )
+      return null
+    })
 
     const crawl = await crawlSite(siteUrl, alreadyCoveredUrls, reportProgress)
 
