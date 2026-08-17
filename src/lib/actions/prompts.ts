@@ -2,7 +2,13 @@
 
 import { revalidatePath } from 'next/cache'
 import { callClaude, extractText, DEFAULT_CLAUDE_MODEL } from '@/lib/providers/anthropic'
-import { createPrompt, createPromptVersion, recordPromptRun, ratePromptRun } from '@/lib/data/prompts'
+import {
+  createPrompt,
+  createPromptVersion,
+  recordPromptRun,
+  ratePromptRun,
+  versionBelongsToPrompt,
+} from '@/lib/data/prompts'
 import { resolveVariables, fillTemplate, VariableResolutionError } from '@/lib/prompts/resolve-variables'
 import { getSite } from '@/lib/data/sites'
 import { resolveClaudeApiKey } from '@/lib/data/site-ai-keys'
@@ -110,6 +116,16 @@ export const testRunPromptAction = async (input: {
   const apiKey = await resolveClaudeApiKey(site.id)
   if (!apiKey) {
     return { run: null, error: 'Chưa cấu hình Claude API Key cho website này. Vào Cài đặt để thêm.' }
+  }
+
+  // Client tự gửi cả promptId lẫn versionId — RLS chặn được ghi cross-tenant
+  // nhưng không chặn được gán nhầm version của một prompt KHÁC trong cùng
+  // site, thứ sẽ làm hỏng audit trail mà `prompt_runs.version_id` tồn tại để
+  // đảm bảo. Kiểm trước khi tốn một lượt gọi Claude cho một request chắc chắn
+  // sẽ bị từ chối lúc ghi.
+  const versionMatches = await versionBelongsToPrompt(input.promptId, input.versionId)
+  if (!versionMatches) {
+    return { run: null, error: 'Bản prompt đã chọn không khớp với prompt này. Tải lại trang và thử lại.' }
   }
 
   let resolvedVars: Readonly<Record<string, string>>

@@ -282,6 +282,24 @@ export const createPromptVersion = async (input: {
   return updated
 }
 
+/** Xác nhận `versionId` thuộc đúng `promptId` trước khi ghi `prompt_runs` —
+ * RLS chặn ghi cross-tenant nhưng không chặn được việc gán nhầm version của
+ * MỘT prompt KHÁC trong cùng site (client tự gửi cả hai id, không có gì ràng
+ * buộc chúng khớp nhau ở tầng DB), hỏng audit trail mà `prompt_runs` tồn tại
+ * để đảm bảo — `version_id` sẽ trỏ tới một bản chưa từng sinh ra output đó. */
+export const versionBelongsToPrompt = async (promptId: string, versionId: string): Promise<boolean> => {
+  const supabase = await createClient()
+  const { data, error } = await supabase
+    .from('prompt_versions')
+    .select('id')
+    .eq('id', versionId)
+    .eq('prompt_id', promptId)
+    .maybeSingle()
+
+  if (error) throw new Error(`Không kiểm tra được bản prompt: ${error.message}`)
+  return data !== null
+}
+
 export const recordPromptRun = async (input: {
   readonly promptId: string
   readonly versionId: string
