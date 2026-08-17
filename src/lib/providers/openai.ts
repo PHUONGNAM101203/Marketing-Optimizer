@@ -72,10 +72,17 @@ export const callOpenAi = async (params: AiCallParams): Promise<AiCallResult> =>
       description: tool.description,
       parameters: tool.inputSchema,
       // `strict` là field bắt buộc trong type SDK thật (khác brief gốc, xem
-      // báo cáo Task 5) — `AiToolDefinition.inputSchema` không đảm bảo tuân
-      // thủ ràng buộc JSON Schema nghiêm ngặt mà OpenAI yêu cầu khi bật
-      // strict mode, nên để `false` cho an toàn thay vì validate sai mà lỗi.
-      strict: false,
+      // báo cáo Task 5). Để `null` chứ không phải `false`: theo doc OpenAI
+      // (developers.openai.com/api/docs/guides/function-calling), khi
+      // `strict` là `null`/omitted, hệ thống TỰ ĐỘNG chuẩn hoá schema sang
+      // dạng strict-compatible nếu có thể, và chỉ rơi về non-strict khi
+      // không chuẩn hoá được — tức là vẫn có cùng lưới an toàn (không bao
+      // giờ bị từ chối vì schema của `AiToolDefinition.inputSchema` không
+      // tuân thủ strict), NHƯNG những tool có schema đã đủ điều kiện strict
+      // vẫn được hưởng lợi ích đối số bám sát schema (structured outputs).
+      // `false` sẽ khoá cứng mọi tool vào non-strict vô điều kiện, bỏ lỡ lợi
+      // ích đó một cách không cần thiết.
+      strict: null,
     })),
     max_output_tokens: params.maxTokens ?? 8000,
   })
