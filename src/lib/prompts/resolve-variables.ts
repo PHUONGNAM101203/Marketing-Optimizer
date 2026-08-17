@@ -1,7 +1,7 @@
 import 'server-only'
 
 import { getChannelSummaries } from '@/lib/data/site-channels'
-import { getCampaignPerformance } from '@/lib/data/entities'
+import { getCampaignPerformance, getChannelSummariesForAgent } from '@/lib/data/entities'
 import { deriveMetrics } from '@/lib/metrics/derive'
 import { hasCapability, PROVIDER_META, PROVIDERS } from '@/lib/domain/providers'
 import { formatCurrencyCompact, formatDateRange } from '@/lib/format'
@@ -26,13 +26,33 @@ export class VariableResolutionError extends Error {
   }
 }
 
-type Resolver = (site: Site, range: { readonly start: string; readonly end: string }) => Promise<string>
+/**
+ * 'session' đọc qua client phiên người dùng (cookie) — đúng cho "Chạy thử"
+ * trong Prompt Studio, có request-scoped session thật. 'admin' đọc qua
+ * service_role — bắt buộc cho vòng lặp agent (`run-agent.ts`), chạy trong
+ * `after()`/cron KHÔNG có phiên người dùng nào để đọc cookie từ đó.
+ */
+type ClientMode = 'session' | 'admin'
+
+type Resolver = (
+  site: Site,
+  range: { readonly start: string; readonly end: string },
+  clientMode: ClientMode,
+) => Promise<string>
 
 const SPEND_PROVIDERS = PROVIDERS.filter((provider) => hasCapability(provider, 'spend'))
 
 const METRIC_RESOLVERS: Readonly<Record<string, Resolver>> = {
-  accountCpa: async (site, range) => {
-    const summaries = await getChannelSummaries(site.id, range)
+  // `accountCpa` là biến prompt duy nhất đọc `getChannelSummaries` — hàm đó
+  // dùng client phiên (cookie), vỡ khi gọi từ `after()`/cron không có phiên
+  // (xem `getChannelSummariesForAgent` ở `data/entities.ts`). Rẽ theo
+  // `clientMode` để "Chạy thử" (có phiên) và agent (không phiên) cùng dùng
+  // được resolver này thay vì agent lỗi mọi lượt chạy có khai `{{accountCpa}}`.
+  accountCpa: async (site, range, clientMode) => {
+    const summaries =
+      clientMode === 'session'
+        ? await getChannelSummaries(site.id, range)
+        : await getChannelSummariesForAgent(site.id, range)
     let costMicros = 0
     let conversions = 0
     for (const provider of SPEND_PROVIDERS) {
@@ -85,6 +105,10 @@ export const resolveVariables = async (params: {
   readonly site: Site
   readonly range: { readonly start: string; readonly end: string }
   readonly manualInputs: Readonly<Record<string, string>>
+  /** Xem `ClientMode` — 'session' cho "Chạy thử" (`actions/prompts.ts`),
+   * 'admin' cho vòng lặp agent (`agents/run-agent.ts`). Chỉ resolver nào thật
+   * sự cần rẽ nhánh (hiện tại là `accountCpa`) mới đọc giá trị này. */
+  readonly clientMode: ClientMode
 }): Promise<Readonly<Record<string, string>>> => {
   const resolved: Record<string, string> = {}
 
@@ -114,7 +138,7 @@ export const resolveVariables = async (params: {
       continue
     }
 
-    resolved[variable.name] = await resolver(params.site, params.range)
+    resolved[variable.name] = await resolver(params.site, params.range, params.clientMode)
   }
 
   return resolved

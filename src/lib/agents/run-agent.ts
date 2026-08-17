@@ -159,6 +159,9 @@ export const runAgent = async (agentId: string, trigger: 'schedule' | 'manual'):
         site,
         range,
         manualInputs: {},
+        // Chạy trong after()/cron — không có phiên người dùng (xem comment
+        // đầu file về fetchAgentRow/fetchPromptRow/fetchSiteRow).
+        clientMode: 'admin',
       })
     } catch (error) {
       const message = error instanceof VariableResolutionError ? error.message : 'Lỗi không xác định khi điền biến prompt'

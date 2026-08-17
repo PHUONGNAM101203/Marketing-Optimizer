@@ -119,6 +119,8 @@ export const testRunPromptAction = async (input: {
       site,
       range: input.range,
       manualInputs: input.manualInputs,
+      // Có phiên người dùng thật ở đây (Server Action gọi trực tiếp từ form).
+      clientMode: 'session',
     })
   } catch (error) {
     if (error instanceof VariableResolutionError) return { run: null, error: error.message }
