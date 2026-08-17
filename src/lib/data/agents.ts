@@ -231,32 +231,26 @@ export const getRun = async (runId: string): Promise<AgentRun | null> => {
   return run ?? null
 }
 
-/** Trần số `agent_runs` gần nhất xét tới khi tìm hành động chờ duyệt — một
- * hành động chờ duyệt CHỈ có thể sinh ra từ một run vừa mới dừng lại chờ
- * người dùng quyết (xem bất biến an toàn ở `run-agent.ts`), nên run nào quá
- * cũ gần như chắc chắn đã được quyết hoặc không còn ai quan tâm. Vài trăm run
- * gần nhất là dư sức cho cả hàng đợi "chờ duyệt" thật lẫn lịch sử đã quyết mà
- * `agents/page.tsx` còn hiển thị — tránh việc `.in('run_id', …)` phình theo
- * toàn bộ lịch sử run của Site không giới hạn.
+/**
+ * Lọc `pending_actions` trực tiếp bằng embedded filter qua `agent_runs` (cú
+ * pháp `!inner` — đã dùng ở `google-source-connection.ts`), KHÔNG dựng danh
+ * sách `run_id` rồi `.in()` — bản trước dùng hai lượt truy vấn với
+ * `.limit(300)` trên `agent_runs`, nhưng "300 run gần nhất" không phải tập
+ * cha bảo đảm của "run còn hành động CHƯA quyết": một hành động không ai bấm
+ * duyệt/từ chối vẫn `decision = null` mãi mãi, còn run mới liên tục đẩy nó ra
+ * khỏi cửa sổ 300 — Site hoạt động nhiều có thể lặng lẽ mất một hành động
+ * đang chờ duyệt thật khỏi hàng đợi, không có lỗi/log nào báo. Lọc thẳng theo
+ * `agent_runs.site_id` qua embedded filter là tập cha ĐÚNG NGHĨA (mọi hành
+ * động của Site, không giới hạn theo độ mới của run), và không còn dựng chuỗi
+ * UUID dài trong URL như `.in('run_id', …)` từng làm.
  */
-const RECENT_RUNS_FOR_PENDING_ACTIONS = 300
-
 export const listPendingActionsForSite = async (siteId: string): Promise<readonly PendingAction[]> => {
   const supabase = await createClient()
-  const { data: runRows, error: runsError } = await supabase
-    .from('agent_runs')
-    .select('id')
-    .eq('site_id', siteId)
-    .order('started_at', { ascending: false })
-    .limit(RECENT_RUNS_FOR_PENDING_ACTIONS)
-  if (runsError) throw new Error(`Không đọc được danh sách lượt chạy: ${runsError.message}`)
-  const runIds = (runRows ?? []).map((r) => r.id)
-  if (runIds.length === 0) return []
 
   const { data: pendingRows, error } = await supabase
     .from('pending_actions')
-    .select('*')
-    .in('run_id', runIds)
+    .select('*, agent_runs!inner(site_id)')
+    .eq('agent_runs.site_id', siteId)
     .order('created_at', { ascending: false })
 
   if (error) throw new Error(`Không đọc được hành động chờ duyệt: ${error.message}`)
