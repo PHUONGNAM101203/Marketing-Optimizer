@@ -23,6 +23,7 @@ export type Database = {
           error: string | null
           findings: Json
           geo_score: number | null
+          global_keyword_suggestions: Json
           id: string
           page_citability: Json
           page_signals: Json | null
@@ -45,6 +46,7 @@ export type Database = {
           error?: string | null
           findings?: Json
           geo_score?: number | null
+          global_keyword_suggestions?: Json
           id?: string
           page_citability?: Json
           page_signals?: Json | null
@@ -67,6 +69,7 @@ export type Database = {
           error?: string | null
           findings?: Json
           geo_score?: number | null
+          global_keyword_suggestions?: Json
           id?: string
           page_citability?: Json
           page_signals?: Json | null

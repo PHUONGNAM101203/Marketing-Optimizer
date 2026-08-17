@@ -8,6 +8,7 @@ import { crawlSite, realPagesOf, type PageSignals, type SiteCrawl } from '@/lib/
 import { evaluateAllRules } from '@/lib/audit/rules'
 import { computePageCitability } from '@/lib/audit/citability'
 import { computeSiteProfile } from '@/lib/audit/site-profile'
+import { computeGlobalKeywordSuggestions } from '@/lib/audit/global-suggestions'
 import { applyDetectedMarketOnce } from '@/lib/audit/apply-market'
 import { fetchPageSpeedInsights, getConfiguredPageSpeedApiKey } from '@/lib/audit/pagespeed'
 import { createAdminClient } from '@/lib/supabase/admin'
@@ -170,7 +171,13 @@ const performAuditScan = async (
     // Site tự nhập — chỉ gọi PSI khi máy chủ ĐÃ có key, không âm thầm bỏ qua
     // bằng cách thử gọi thiếu key rồi nuốt lỗi.
     const pagespeedApiKey = getConfiguredPageSpeedApiKey()
-    const pagespeed = pagespeedApiKey ? await fetchPageSpeedInsights(crawl.origin, pagespeedApiKey) : null
+    // Song song — cả hai đều là I/O độc lập, `computeGlobalKeywordSuggestions`
+    // tự nuốt lỗi (không throw) nên chạy song song không rủi ro làm hỏng
+    // nhánh PSI hay ngược lại.
+    const [pagespeed, globalKeywordSuggestions] = await Promise.all([
+      pagespeedApiKey ? fetchPageSpeedInsights(crawl.origin, pagespeedApiKey) : Promise.resolve(null),
+      computeGlobalKeywordSuggestions(siteId, siteProfile),
+    ])
 
     await applyDetectedMarketOnce(
       admin,
@@ -203,6 +210,7 @@ const performAuditScan = async (
         page_signals: mergedPages as unknown as Json,
         site_profile: siteProfile as unknown as Json,
         pagespeed: pagespeed as unknown as Json,
+        global_keyword_suggestions: globalKeywordSuggestions as unknown as Json,
         completed_at: scannedAt,
       })
       .eq('id', runId)

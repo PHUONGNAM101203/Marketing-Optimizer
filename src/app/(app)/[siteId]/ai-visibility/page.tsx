@@ -23,7 +23,7 @@ import { AddSuggestedPromptButton } from '@/components/geo/add-suggested-prompt-
 import { getSite } from '@/lib/data/sites'
 import { getLatestAuditRun } from '@/lib/data/audit'
 import { listTrackedPrompts } from '@/lib/data/tracked-prompts'
-import { suggestPrompts } from '@/lib/audit/prompt-suggestions'
+import { getLatestCitationCheckByPrompt, countCitationChecks } from '@/lib/data/citation-checks'
 import {
   CITABILITY_AXIS_LABELS,
   type CitabilityAxes,
@@ -45,6 +45,10 @@ export default async function AiVisibilityPage({
 
   const [run, prompts] = await Promise.all([getLatestAuditRun(site.id), listTrackedPrompts(site.id)])
   const activePrompts = prompts.filter((prompt) => prompt.enabled)
+  const [latestCheckByPrompt, citationCheckCount] = await Promise.all([
+    getLatestCitationCheckByPrompt(prompts.map((prompt) => prompt.id)),
+    countCitationChecks(site.id),
+  ])
   const pageCitability = run?.pageCitability ?? []
   const averageCitability =
     pageCitability.length === 0
@@ -56,7 +60,7 @@ export default async function AiVisibilityPage({
       : [...pageCitability].sort((a, b) => a.overall - b.overall)[0]
 
   const trackedTexts = new Set(prompts.map((prompt) => prompt.text))
-  const suggestions = (run?.siteProfile ? suggestPrompts(run.siteProfile) : []).filter(
+  const suggestions = (run?.globalKeywordSuggestions ?? []).filter(
     (suggestion) => !trackedTexts.has(suggestion.text),
   )
 
@@ -88,10 +92,9 @@ export default async function AiVisibilityPage({
         />
         <StatTile
           label="Lượt kiểm tra trích dẫn"
-          value="0"
+          value={formatNumber(citationCheckCount)}
           metric="sessions"
           deltaPct={null}
-          footnote="Chưa kết nối API AI — xem ghi chú bên dưới"
         />
       </StatRow>
 
@@ -111,19 +114,6 @@ export default async function AiVisibilityPage({
           </p>
         </Callout>
       ) : null}
-
-      <Callout
-        tone="caution"
-        icon={<Sparkles aria-hidden className="size-5 text-[var(--color-caution)]" />}
-        title="Kiểm tra trích dẫn thật (ChatGPT/Claude/Gemini/Perplexity) chưa kết nối"
-      >
-        <p>
-          Câu hỏi theo dõi bên dưới đã lưu thật, nhưng CHẠY kiểm tra (hỏi từng engine, đọc câu trả
-          lời có nhắc tới bạn không) cần API key riêng của bạn cho từng engine — Google AI
-          Overviews và Copilot không có API công khai nên không tự động hoá được. Cho tôi biết
-          engine nào bạn muốn nối trước (và API key tương ứng) để bật phần này.
-        </p>
-      </Callout>
 
       {!site.llmsTxtContent ? (
         <Callout
@@ -161,7 +151,7 @@ export default async function AiVisibilityPage({
           <SectionHead
             label="Gợi ý"
             title="Câu hỏi gợi ý theo chủ đề"
-            description={`Sinh từ mẫu câu + từ khoá thật trích ra từ nội dung site (lĩnh vực: ${run?.siteProfile?.category}) — chỉnh lại cho đúng giọng thương hiệu trước khi dùng, đây không phải câu AI tự viết.`}
+            description={`AI sinh từ chủ đề site (lĩnh vực: ${run?.siteProfile?.category}) — câu hỏi/từ khoá được tìm kiếm nhiều nhất về chủ đề này trên toàn thế giới, không riêng site bạn. Chỉnh lại cho đúng giọng thương hiệu trước khi dùng.`}
           />
           <div className="flex flex-col gap-2">
             {suggestions.map((suggestion) => (
@@ -189,7 +179,12 @@ export default async function AiVisibilityPage({
         ) : (
           <div className="flex flex-col gap-3">
             {prompts.map((prompt) => (
-              <TrackedPromptCard key={prompt.id} prompt={prompt} siteId={site.id} />
+              <TrackedPromptCard
+                key={prompt.id}
+                prompt={prompt}
+                siteId={site.id}
+                latestCheck={latestCheckByPrompt.get(prompt.id) ?? null}
+              />
             ))}
           </div>
         )}

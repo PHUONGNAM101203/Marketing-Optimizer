@@ -50,27 +50,39 @@ const toGeminiContents = (messages: readonly AiMessage[]) =>
 export const callGemini = async (params: AiCallParams): Promise<AiCallResult> => {
   const client = getClient(params.apiKey)
 
+  // Web search GỐC của Gemini (`googleSearch`) — chạy phía SERVER Google
+  // trong CÙNG lượt gọi, không phải tool tự định nghĩa cần round-trip. CHƯA
+  // ai chạy thử với key thật — cú pháp bám theo `Tool.googleSearch` khai
+  // trong SDK (`node_modules/@google/genai/dist/genai.d.ts`). Gemini được
+  // biết là KHÔNG cho trộn `googleSearch` với `functionDeclarations` trong
+  // cùng một lượt gọi ở một số phiên bản API — không phải vấn đề ở đây vì
+  // nơi gọi duy nhất bật `enableWebSearch` (kiểm tra trích dẫn) không đồng
+  // thời truyền `tools` tự định nghĩa nào.
+  const tools =
+    params.enableWebSearch
+      ? [{ googleSearch: {} }]
+      : params.tools && params.tools.length > 0
+        ? [
+            {
+              functionDeclarations: params.tools.map((tool) => ({
+                name: tool.name,
+                description: tool.description,
+                // `parametersJsonSchema` chấp nhận JSON Schema thuần — tool
+                // registry (`agents/tools.ts`) đã viết theo JSON Schema sẵn,
+                // dùng trực tiếp thay vì dịch sang format OpenAPI-subset
+                // riêng của Gemini (`Type` enum).
+                parametersJsonSchema: tool.inputSchema,
+              })),
+            },
+          ]
+        : undefined
+
   const response = await client.models.generateContent({
     model: params.model,
     contents: toGeminiContents(params.messages),
     config: {
       systemInstruction: params.systemPrompt,
-      tools:
-        params.tools && params.tools.length > 0
-          ? [
-              {
-                functionDeclarations: params.tools.map((tool) => ({
-                  name: tool.name,
-                  description: tool.description,
-                  // `parametersJsonSchema` chấp nhận JSON Schema thuần — tool
-                  // registry (`agents/tools.ts`) đã viết theo JSON Schema sẵn,
-                  // dùng trực tiếp thay vì dịch sang format OpenAPI-subset
-                  // riêng của Gemini (`Type` enum).
-                  parametersJsonSchema: tool.inputSchema,
-                })),
-              },
-            ]
-          : undefined,
+      tools,
       maxOutputTokens: params.maxTokens ?? 8000,
     },
   })

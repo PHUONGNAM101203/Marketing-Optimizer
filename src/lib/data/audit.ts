@@ -3,7 +3,7 @@ import 'server-only'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import type { AuditFinding, AuditRun, AuditRunStatus, PageSpeedResult, SiteProfile } from '@/lib/domain/audit'
-import type { PageCitabilityScore } from '@/lib/domain/geo'
+import type { PageCitabilityScore, PromptIntent } from '@/lib/domain/geo'
 import type { PageSignals } from '@/lib/audit/crawler'
 
 interface AuditRunRow {
@@ -22,6 +22,7 @@ interface AuditRunRow {
   readonly page_citability: unknown
   readonly site_profile: unknown
   readonly pagespeed: unknown
+  readonly global_keyword_suggestions: unknown
   readonly error: string | null
   readonly started_at: string
   readonly completed_at: string | null
@@ -60,6 +61,8 @@ const toAuditRun = (row: AuditRunRow): AuditRun => {
     pageCitability: (row.page_citability as readonly PageCitabilityScore[] | null) ?? [],
     siteProfile: row.site_profile as SiteProfile | null,
     pagespeed: row.pagespeed as PageSpeedResult | null,
+    globalKeywordSuggestions:
+      (row.global_keyword_suggestions as readonly { readonly text: string; readonly intent: PromptIntent }[] | null) ?? [],
     error: isStaleRunning
       ? 'Lượt quét trước bị gián đoạn giữa chừng (máy chủ khởi động lại hoặc gặp sự cố) — bấm "Quét tiếp" để chạy lại. Phần đã quét được ở các lượt trước đó (nếu có) không mất, lượt sau vẫn cộng dồn tiếp.'
       : row.error,
@@ -73,7 +76,7 @@ const toAuditRun = (row: AuditRunRow): AuditRun => {
  * dưới cần tới. Trang Tổng quan gọi hàm này trên MỌI lượt render (kể cả mỗi
  * lần đổi khoảng ngày) nên kéo cả blob đó qua dây mỗi lần là phí. */
 const AUDIT_RUN_COLUMNS =
-  'id, site_id, status, pages_scanned, sitemap_url_count, truncated, blocked_by_bot_protection, seo_score, geo_score, aio_score, aeo_score, findings, page_citability, site_profile, pagespeed, error, started_at, completed_at'
+  'id, site_id, status, pages_scanned, sitemap_url_count, truncated, blocked_by_bot_protection, seo_score, geo_score, aio_score, aeo_score, findings, page_citability, site_profile, pagespeed, global_keyword_suggestions, error, started_at, completed_at'
 
 export const getLatestAuditRun = async (siteId: string): Promise<AuditRun | null> => {
   const supabase = await createClient()

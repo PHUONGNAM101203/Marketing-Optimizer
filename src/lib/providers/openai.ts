@@ -62,28 +62,37 @@ const fromOpenAiOutput = (response: OpenAI.Responses.Response): readonly AiConte
 export const callOpenAi = async (params: AiCallParams): Promise<AiCallResult> => {
   const client = getClient(params.apiKey)
 
+  const customTools: readonly OpenAI.Responses.Tool[] = (params.tools ?? []).map((tool) => ({
+    type: 'function' as const,
+    name: tool.name,
+    description: tool.description,
+    parameters: tool.inputSchema,
+    // `strict` là field bắt buộc trong type SDK thật (khác brief gốc, xem
+    // báo cáo Task 5). Để `null` chứ không phải `false`: theo doc OpenAI
+    // (developers.openai.com/api/docs/guides/function-calling), khi
+    // `strict` là `null`/omitted, hệ thống TỰ ĐỘNG chuẩn hoá schema sang
+    // dạng strict-compatible nếu có thể, và chỉ rơi về non-strict khi
+    // không chuẩn hoá được — tức là vẫn có cùng lưới an toàn (không bao
+    // giờ bị từ chối vì schema của `AiToolDefinition.inputSchema` không
+    // tuân thủ strict), NHƯNG những tool có schema đã đủ điều kiện strict
+    // vẫn được hưởng lợi ích đối số bám sát schema (structured outputs).
+    // `false` sẽ khoá cứng mọi tool vào non-strict vô điều kiện, bỏ lỡ lợi
+    // ích đó một cách không cần thiết.
+    strict: null,
+  }))
+  // Web search GỐC của OpenAI (Responses API) — chạy phía SERVER OpenAI
+  // trong CÙNG lượt gọi, không phải tool tự định nghĩa cần round-trip. CHƯA
+  // ai chạy thử với key thật — cú pháp bám theo `WebSearchTool` khai trong
+  // SDK (`node_modules/openai/resources/responses/responses.d.ts`).
+  const tools: readonly OpenAI.Responses.Tool[] = params.enableWebSearch
+    ? [...customTools, { type: 'web_search' }]
+    : customTools
+
   const response = await client.responses.create({
     model: params.model,
     instructions: params.systemPrompt,
     input: toOpenAiInput(params.messages),
-    tools: params.tools?.map((tool) => ({
-      type: 'function' as const,
-      name: tool.name,
-      description: tool.description,
-      parameters: tool.inputSchema,
-      // `strict` là field bắt buộc trong type SDK thật (khác brief gốc, xem
-      // báo cáo Task 5). Để `null` chứ không phải `false`: theo doc OpenAI
-      // (developers.openai.com/api/docs/guides/function-calling), khi
-      // `strict` là `null`/omitted, hệ thống TỰ ĐỘNG chuẩn hoá schema sang
-      // dạng strict-compatible nếu có thể, và chỉ rơi về non-strict khi
-      // không chuẩn hoá được — tức là vẫn có cùng lưới an toàn (không bao
-      // giờ bị từ chối vì schema của `AiToolDefinition.inputSchema` không
-      // tuân thủ strict), NHƯNG những tool có schema đã đủ điều kiện strict
-      // vẫn được hưởng lợi ích đối số bám sát schema (structured outputs).
-      // `false` sẽ khoá cứng mọi tool vào non-strict vô điều kiện, bỏ lỡ lợi
-      // ích đó một cách không cần thiết.
-      strict: null,
-    })),
+    tools: tools.length > 0 ? [...tools] : undefined,
     max_output_tokens: params.maxTokens ?? 8000,
   })
 

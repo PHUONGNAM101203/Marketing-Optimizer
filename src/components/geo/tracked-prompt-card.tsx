@@ -1,4 +1,4 @@
-import { Trash2 } from 'lucide-react'
+import { Check, Trash2, X } from 'lucide-react'
 import { Card } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { SubmitButton } from '@/components/ui/submit-button'
@@ -6,19 +6,25 @@ import {
   deleteTrackedPromptAction,
   toggleTrackedPromptAction,
 } from '@/lib/actions/tracked-prompts'
-import { AI_ENGINE_LABELS, PROMPT_INTENT_LABELS, type TrackedPrompt } from '@/lib/domain/geo'
+import { CitationCheckButton } from './citation-check-button'
+import { AI_ENGINE_LABELS, PROMPT_INTENT_LABELS, type CitationCheck, type TrackedPrompt } from '@/lib/domain/geo'
+import { formatRelativeTime } from '@/lib/format'
 
 /**
- * Chưa nối API kiểm tra trích dẫn thật (xem callout ở trang chính) — thẻ này
- * chỉ hiện câu hỏi đã lưu THẬT và trạng thái bật/tắt, KHÔNG bịa số liệu
- * "đã được nhắc mấy lần" khi chưa có lượt kiểm tra nào thật sự chạy.
+ * `latestCheck` là lượt kiểm tra GẦN NHẤT trên MỘT engine — site chỉ cấu
+ * hình được một provider AI tại một thời điểm (`site_ai_keys`), nên dù
+ * `prompt.engines` liệt kê nhiều engine mong muốn, lượt kiểm tra thật sự
+ * chạy được luôn giới hạn ở đúng engine site đang kết nối (xem docblock
+ * `runCitationCheckAction`). `null` = chưa từng kiểm tra.
  */
 export function TrackedPromptCard({
   prompt,
   siteId,
+  latestCheck,
 }: {
   readonly prompt: TrackedPrompt
   readonly siteId: string
+  readonly latestCheck: CitationCheck | null
 }) {
   return (
     <Card className="p-5" tone={prompt.enabled ? 'bordered' : 'inset'}>
@@ -58,9 +64,31 @@ export function TrackedPromptCard({
         </div>
       </div>
 
-      <p className="mt-4 text-[length:var(--text-sm)] text-[var(--color-ink-3)]">
-        Chưa có lượt kiểm tra nào — cần kết nối API AI để tự động hỏi và đọc câu trả lời.
-      </p>
+      <div className="mt-4 flex flex-wrap items-end justify-between gap-3 border-t border-[var(--color-rule)] pt-4">
+        {latestCheck ? (
+          <div className="flex items-start gap-2.5">
+            {latestCheck.cited ? (
+              <Check aria-hidden className="mt-0.5 size-4 shrink-0 text-[var(--color-positive)]" />
+            ) : (
+              <X aria-hidden className="mt-0.5 size-4 shrink-0 text-[var(--color-ink-3)]" />
+            )}
+            <div>
+              <p className="text-[length:var(--text-sm)] text-[var(--color-ink)]">
+                {latestCheck.cited ? 'Được nhắc tới' : 'Chưa được nhắc tới'} trên{' '}
+                {AI_ENGINE_LABELS[latestCheck.engine]} · {formatRelativeTime(latestCheck.checkedAt, new Date())}
+              </p>
+              {latestCheck.excerpt ? (
+                <p className="mt-0.5 text-[length:var(--text-xs)] text-[var(--color-ink-3)]">
+                  &ldquo;{latestCheck.excerpt}&rdquo;
+                </p>
+              ) : null}
+            </div>
+          </div>
+        ) : (
+          <p className="text-[length:var(--text-sm)] text-[var(--color-ink-3)]">Chưa có lượt kiểm tra nào.</p>
+        )}
+        <CitationCheckButton siteId={siteId} promptId={prompt.id} promptText={prompt.text} />
+      </div>
     </Card>
   )
 }

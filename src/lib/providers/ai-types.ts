@@ -52,5 +52,14 @@ export interface AiCallParams {
   readonly systemPrompt: string
   readonly messages: readonly AiMessage[]
   readonly tools?: readonly AiToolDefinition[]
+  /** Bật web search GỐC của hãng (Anthropic/OpenAI/Gemini đều có, cú pháp
+   * khác nhau hoàn toàn — không đi qua `tools`/`AiToolDefinition` ở trên, đó
+   * là cho tool tự định nghĩa chạy round-trip phía client, còn web search
+   * chạy phía SERVER của hãng, trả thẳng câu trả lời cuối trong CÙNG một lượt
+   * gọi, không cần vòng lặp tool-use/tool-result). Dùng cho kiểm tra trích
+   * dẫn (`citation-checks.ts`) — cần câu trả lời mô phỏng sát hành vi
+   * ChatGPT/Perplexity thật (có tra cứu web), không phải chỉ dựa vào kiến
+   * thức huấn luyện. */
+  readonly enableWebSearch?: boolean
   readonly maxTokens?: number
 }
