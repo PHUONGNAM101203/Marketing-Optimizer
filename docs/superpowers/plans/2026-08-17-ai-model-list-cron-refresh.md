@@ -584,33 +584,186 @@ git commit -m "feat: refresh every connected site's AI model cache from the dail
 
 ---
 
-### Task 10: Wire the dropdown into the Settings UI
+### Task 10: Build a searchable combobox and wire it into the Settings UI
 
 **Files:**
+- Create: `src/components/ui/combobox-field.tsx`
 - Modify: `src/components/settings/ai-key-setup.tsx`
 
 **Interfaces:**
-- Consumes: `listAvailableModelsAction`, `refreshSiteAiModelsAction` (Task 8), `SiteAiConnection`'s new `availableModels` field (Task 7).
+- Consumes: `listAvailableModelsAction`, `refreshSiteAiModelsAction` (Task 8), `SiteAiConnection`'s new `availableModels` field (Task 7), Radix's `Popover` (`radix-ui` package, already a dependency — see `src/components/ui/date-picker-field.tsx` for the exact same trigger-button + `Popover.Content` pattern already used in this codebase).
+- Produces: `export interface ComboboxFieldProps { readonly id?: string; readonly name: string; readonly options: readonly string[]; readonly value: string; readonly onValueChange: (value: string) => void; readonly placeholder?: string; readonly required?: boolean; readonly emptyLabel?: string }` and `export function ComboboxField(props: ComboboxFieldProps)` — a generic, reusable type-to-filter dropdown (not `<select>`), consumed by Task 10's own UI wiring below. Generic on purpose (`options: readonly string[]`, not AI-specific) so other features can reuse it later, matching this repo's other `ui/` primitives (`date-picker-field.tsx`, `time-picker-field.tsx`) being generic, feature-agnostic building blocks.
 
-- [ ] **Step 1: Read the current file in full**
+- [ ] **Step 1: Read the precedent**
+
+Read `src/components/ui/date-picker-field.tsx` in full — this is the exact structural pattern to follow: a `<button>` trigger (styled with `inputClass`) inside `PopoverPrimitive.Trigger asChild`, wrapped in `PopoverPrimitive.Root`, with `PopoverPrimitive.Portal` → `PopoverPrimitive.Content` holding the actual picker UI, styled with this repo's design tokens (`--color-paper`, `--color-rule`, `--radius-lg`, `--shadow-lift`, etc. — copy the exact token names from that file, don't invent new ones). Also read `src/components/ui/form-field.tsx` for `inputClass`.
+
+- [ ] **Step 2: Create the combobox primitive**
+
+Create `src/components/ui/combobox-field.tsx`:
+
+```tsx
+'use client'
+
+import { useId, useMemo, useState } from 'react'
+import { Popover as PopoverPrimitive } from 'radix-ui'
+import { Check, ChevronsUpDown, Search } from 'lucide-react'
+import { cn } from '@/lib/cn'
+import { inputClass } from './form-field'
+
+/* Hallmark · component: combobox-field · theme: studied-DNA (Ink & Signal)
+ * states: default · hover · focus · active · disabled · empty
+ *
+ * `<select>` không lọc được khi danh sách dài (model AI có thể lên tới hàng
+ * chục cái) — combobox này thay bằng ô tìm kèm danh sách lọc trực tiếp, cùng
+ * khuôn Popover-trên-nút-trigger đã dùng ở `date-picker-field.tsx`. Vẫn có
+ * một input ẩn mang giá trị thật để hoạt động đúng trong
+ * `<form action={...}>` của Server Action, giống hệt cách DatePickerField
+ * làm — Popover chỉ là giao diện chọn giá trị, input ẩn mới là thứ submit.
+ */
+
+export interface ComboboxFieldProps {
+  readonly id?: string
+  readonly name: string
+  readonly options: readonly string[]
+  readonly value: string
+  readonly onValueChange: (value: string) => void
+  readonly placeholder?: string
+  readonly required?: boolean
+  readonly emptyLabel?: string
+}
+
+export function ComboboxField({
+  id,
+  name,
+  options,
+  value,
+  onValueChange,
+  placeholder = 'Chọn…',
+  required,
+  emptyLabel = 'Không tìm thấy kết quả.',
+}: ComboboxFieldProps) {
+  const generatedId = useId()
+  const inputId = id ?? generatedId
+  const [open, setOpen] = useState(false)
+  const [query, setQuery] = useState('')
+
+  const filtered = useMemo(() => {
+    const trimmed = query.trim().toLowerCase()
+    if (!trimmed) return options
+    return options.filter((option) => option.toLowerCase().includes(trimmed))
+  }, [options, query])
+
+  const handleOpenChange = (next: boolean): void => {
+    setOpen(next)
+    if (!next) setQuery('')
+  }
+
+  const handleSelect = (option: string): void => {
+    onValueChange(option)
+    setOpen(false)
+    setQuery('')
+  }
+
+  return (
+    <PopoverPrimitive.Root open={open} onOpenChange={handleOpenChange}>
+      <input type="hidden" id={inputId} name={name} value={value} required={required} readOnly />
+
+      <PopoverPrimitive.Trigger asChild>
+        <button
+          type="button"
+          className={cn(
+            inputClass,
+            'flex items-center justify-between gap-2 text-left',
+            !value && 'text-[var(--color-ink-3)]',
+          )}
+        >
+          <span className="truncate">{value || placeholder}</span>
+          <ChevronsUpDown aria-hidden className="size-4 shrink-0 text-[var(--color-ink-3)]" />
+        </button>
+      </PopoverPrimitive.Trigger>
+
+      <PopoverPrimitive.Portal>
+        <PopoverPrimitive.Content
+          align="start"
+          sideOffset={6}
+          className="z-50 flex w-72 flex-col overflow-hidden rounded-[var(--radius-lg)] border border-[var(--color-rule)] bg-[var(--color-paper)] shadow-[var(--shadow-lift)]"
+        >
+          <div className="flex items-center gap-2 border-b border-[var(--color-rule)] px-3 py-2">
+            <Search aria-hidden className="size-4 shrink-0 text-[var(--color-ink-3)]" />
+            <input
+              autoFocus
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Tìm model…"
+              className="w-full bg-transparent text-[length:var(--text-sm)] text-[var(--color-ink)] outline-none placeholder:text-[var(--color-ink-3)]"
+            />
+          </div>
+          <div className="max-h-64 overflow-y-auto p-1">
+            {filtered.length === 0 ? (
+              <p className="px-3 py-2 text-[length:var(--text-sm)] text-[var(--color-ink-3)]">{emptyLabel}</p>
+            ) : (
+              filtered.map((option) => (
+                <button
+                  key={option}
+                  type="button"
+                  onClick={() => handleSelect(option)}
+                  className={cn(
+                    'flex w-full items-center gap-2 rounded-[var(--radius-sm)] px-3 py-2 text-left text-[length:var(--text-sm)] text-[var(--color-ink)]',
+                    'transition-colors duration-[var(--dur-fast)] ease-[var(--ease-out)] hover:bg-[var(--color-paper-3)]',
+                  )}
+                >
+                  <Check
+                    aria-hidden
+                    className={cn(
+                      'size-4 shrink-0 text-[var(--color-signal)]',
+                      option === value ? 'opacity-100' : 'opacity-0',
+                    )}
+                  />
+                  <span className="truncate">{option}</span>
+                </button>
+              ))
+            )}
+          </div>
+        </PopoverPrimitive.Content>
+      </PopoverPrimitive.Portal>
+    </PopoverPrimitive.Root>
+  )
+}
+```
+
+- [ ] **Step 3: Verify the primitive compiles**
+
+Run: `npx tsc --noEmit`
+Run: `npm run lint`
+
+- [ ] **Step 4: Commit the primitive**
+
+```bash
+git add src/components/ui/combobox-field.tsx
+git commit -m "feat: add ComboboxField, a searchable type-to-filter dropdown"
+```
+
+- [ ] **Step 5: Read the current Settings component in full**
 
 Read `src/components/settings/ai-key-setup.tsx` — you'll be modifying the imports, both `<ConnectForm>` call sites in `AiKeySetup`, and rewriting the `ConnectForm` function itself.
 
-- [ ] **Step 2: Update imports**
+- [ ] **Step 6: Update imports**
 
-Add to the existing `'react'` import: `useRef`, `useTransition`. Add a new import:
+Add to the existing `'react'` import: `useRef`, `useTransition`. Add two new imports:
 
 ```ts
 import { listAvailableModelsAction, refreshSiteAiModelsAction } from '@/lib/actions/ai-keys'
+import { ComboboxField } from '@/components/ui/combobox-field'
 ```
 
-- [ ] **Step 3: Pass `initialModelOptions` at both `<ConnectForm>` call sites**
+- [ ] **Step 7: Pass `initialModelOptions` at both `<ConnectForm>` call sites**
 
 In the "connected" branch's `<ConnectForm ... />` (inside the update dialog), add the prop `initialModelOptions={connection.availableModels}`.
 
 In the "not connected" branch's `<ConnectForm ... />`, add the prop `initialModelOptions={[]}`.
 
-- [ ] **Step 4: Rewrite `ConnectForm`**
+- [ ] **Step 8: Rewrite `ConnectForm`**
 
 Replace the entire `ConnectForm` function with:
 
@@ -702,18 +855,15 @@ function ConnectForm({
         </div>
 
         {modelOptions.length > 0 ? (
-          <select
+          <ComboboxField
             name="model"
+            options={modelOptions}
             value={selectedModel}
-            onChange={(e) => setSelectedModel(e.target.value)}
-            className={inputClass}
-          >
-            {modelOptions.map((m) => (
-              <option key={m} value={m}>
-                {m}
-              </option>
-            ))}
-          </select>
+            onValueChange={setSelectedModel}
+            placeholder="Chọn model…"
+            required
+            emptyLabel="Không có model nào khớp."
+          />
         ) : (
           <input
             name="model"
@@ -773,21 +923,21 @@ function ConnectForm({
 }
 ```
 
-Note: `name="model"` appears on exactly one of the `<select>`/`<input>` at a time (conditional render), so the form always submits exactly one `model` field with `selectedModel`'s current value — this is intentional, not a duplicate-field bug.
+Note: `name="model"` appears on exactly one of `ComboboxField`'s hidden input or the fallback `<input>` at a time (conditional render), so the form always submits exactly one `model` field with `selectedModel`'s current value — this is intentional, not a duplicate-field bug.
 
-- [ ] **Step 5: Verify types compile**
+- [ ] **Step 9: Verify types compile**
 
 Run: `npx tsc --noEmit`
 
-- [ ] **Step 6: Verify lint passes**
+- [ ] **Step 10: Verify lint passes**
 
 Run: `npm run lint`
 
-- [ ] **Step 7: Commit**
+- [ ] **Step 11: Commit**
 
 ```bash
 git add src/components/settings/ai-key-setup.tsx
-git commit -m "feat: replace free-text Model field with a live-fetched dropdown"
+git commit -m "feat: replace free-text Model field with a searchable combobox dropdown"
 ```
 
 ---
