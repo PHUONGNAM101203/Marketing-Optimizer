@@ -138,9 +138,11 @@ export const getCampaignPerformance = async (
  * đầu. Bản gốc dùng `createClient()` đọc cookie qua `next/headers`, đúng cho
  * nơi có phiên (trang Kênh) nhưng vỡ trong `after()`.
  *
- * KHÔNG sửa `site-channels.ts` — hàm gốc vẫn đúng và cần giữ nguyên cho các
- * nơi gọi khác (trang Tổng quan, trang Kênh). Logic gộp số liệu ở đây PHẢI
- * khớp Y HỆT bản gốc, chỉ đổi client — sửa một bản thì nhớ đối chiếu bản kia.
+ * KHÔNG sửa LOGIC của `site-channels.ts` — hàm gốc vẫn đúng và cần giữ
+ * nguyên cho các nơi gọi khác (trang Tổng quan, trang Kênh). Logic gộp số
+ * liệu ở đây PHẢI khớp Y HỆT bản gốc, chỉ đổi client — sửa một bản thì nhớ
+ * đối chiếu bản kia. (`SNAPSHOT_PROVIDERS` — hằng số, không phải logic — đã
+ * export ra dùng chung, không còn là bản sao riêng ở file này.)
  */
 
 const agentSummaryToIsoDate = (date: Date): string => date.toISOString().slice(0, 10)
