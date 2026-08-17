@@ -109,16 +109,20 @@ export const refreshAllSiteAiModelCaches = async (): Promise<{ readonly refreshe
 
   let refreshed = 0
   let failed = 0
-  for (const result of results) {
+  // `Promise.allSettled` giữ đúng thứ tự mảng input — đối chiếu theo index
+  // với `rows` để log kèm site_id, không thì N site lỗi cùng lúc sẽ không
+  // phân biệt được lỗi thuộc site nào từ log cron.
+  results.forEach((result, index) => {
     if (result.status === 'fulfilled') {
       refreshed += 1
     } else {
       failed += 1
+      const siteId = rows?.[index]?.site_id ?? 'không rõ'
       console.error(
-        `Không làm mới được danh sách model: ${result.reason instanceof Error ? result.reason.message : String(result.reason)}`,
+        `Không làm mới được danh sách model cho site ${siteId}: ${result.reason instanceof Error ? result.reason.message : String(result.reason)}`,
       )
     }
-  }
+  })
 
   return { refreshed, failed }
 }
