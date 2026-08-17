@@ -1,8 +1,10 @@
-import { NextResponse, type NextRequest } from 'next/server'
+import { after, NextResponse, type NextRequest } from 'next/server'
 import { METRICS_ADAPTERS } from '@/lib/providers'
 import { syncConnection } from '@/lib/sync/sync-connection'
+import { runAgent } from '@/lib/agents/run-agent'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { cronEnv } from '@/lib/supabase/env'
+import type { AgentSchedule } from '@/lib/domain/agent'
 
 /**
  * Đồng bộ tự động, chạy theo lịch (xem `vercel.json`) — không cần bấm "Đồng
@@ -42,5 +44,33 @@ export async function GET(request: NextRequest) {
     else failed += 1
   }
 
-  return NextResponse.json({ synced, failed, total: (connections ?? []).length })
+  // Lập lịch agent: chỉ hỗ trợ daily/weekly/monthly qua cron 1 lần/ngày.
+  // 'hourly' không khả thi với lịch này (xem Global Constraints).
+  const today = new Date()
+  const todayDayOfWeek = today.getUTCDay()
+
+  const { data: dueAgents } = await admin
+    .from('agents')
+    .select('id, schedule')
+    .eq('enabled', true)
+    .not('schedule', 'is', null)
+
+  let agentsScheduled = 0
+
+  for (const agent of dueAgents ?? []) {
+    const schedule = agent.schedule as unknown as AgentSchedule
+    const isDue =
+      schedule.cadence === 'daily' ||
+      (schedule.cadence === 'weekly' && schedule.dayOfWeek === todayDayOfWeek) ||
+      (schedule.cadence === 'monthly' && today.getUTCDate() === 1)
+
+    if (!isDue) continue
+
+    // Không await tuần tự từng agent — mỗi agent có thể mất nhiều lượt gọi
+    // Claude, giữ cron chờ hết tất cả sẽ dễ chạm timeout của chính cron route.
+    after(() => runAgent(agent.id, 'schedule'))
+    agentsScheduled += 1
+  }
+
+  return NextResponse.json({ synced, failed, total: (connections ?? []).length, agentsScheduled })
 }
