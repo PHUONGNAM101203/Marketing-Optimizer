@@ -216,7 +216,16 @@ export const createPrompt = async (input: {
 
     if (updateError) throw new Error(`Không gán được bản hiện tại: ${updateError.message}`)
   } catch (error) {
-    await supabase.from('prompts').delete().eq('id', promptRow.id)
+    // Best-effort — nếu chính lượt xoá dọn dẹp này cũng lỗi, hàng `prompts`
+    // orphan sẽ nằm lại vĩnh viễn mà không có dấu vết nào trong log ngoài lỗi
+    // gốc. Không throw lỗi dọn dẹp (che mất lỗi gốc, thứ caller cần thấy),
+    // chỉ log thêm để còn cách dò ra hàng orphan sau này.
+    const { error: rollbackError } = await supabase.from('prompts').delete().eq('id', promptRow.id)
+    if (rollbackError) {
+      console.error(
+        `createPrompt: dọn hàng orphan prompt id=${promptRow.id} thất bại: ${rollbackError.message} — lỗi gốc: ${error instanceof Error ? error.message : String(error)}`,
+      )
+    }
     throw error
   }
 
