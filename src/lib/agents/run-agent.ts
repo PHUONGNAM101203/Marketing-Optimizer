@@ -1,7 +1,7 @@
 import 'server-only'
 
 import { createRun, appendRunStep, finishRun, setAgentLastRunAt } from '@/lib/data/agents'
-import { resolveVariables, VariableResolutionError } from '@/lib/prompts/resolve-variables'
+import { resolveVariables, fillTemplate, VariableResolutionError } from '@/lib/prompts/resolve-variables'
 import { callClaude, extractText, DEFAULT_CLAUDE_MODEL } from '@/lib/providers/anthropic'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { TOOL_REGISTRY } from './tools'
@@ -152,10 +152,10 @@ export const runAgent = async (agentId: string, trigger: 'schedule' | 'manual'):
       return
     }
 
-    let filledTemplate = currentVersion.userTemplate
-    for (const [name, value] of Object.entries(resolvedVars)) {
-      filledTemplate = filledTemplate.replaceAll(`{{${name}}}`, value)
-    }
+    // Dùng chung `fillTemplate` với `testRunPromptAction` (`actions/prompts.ts`)
+    // — trước đây thay bằng `replaceAll` khớp chính xác, không chấp nhận
+    // `{{ name }}` có khoảng trắng như bước validate/rút biến đã chấp nhận.
+    const filledTemplate = fillTemplate(currentVersion.userTemplate, resolvedVars)
 
     const enabledToolNames = new Set<AgentToolName>(agentRow.tools.filter((t) => t.enabled).map((t) => t.name))
     const toolDefs = [...enabledToolNames].map((name) => ({

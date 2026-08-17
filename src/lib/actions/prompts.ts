@@ -3,10 +3,10 @@
 import { revalidatePath } from 'next/cache'
 import { callClaude, extractText, DEFAULT_CLAUDE_MODEL } from '@/lib/providers/anthropic'
 import { createPrompt, createPromptVersion, recordPromptRun, ratePromptRun } from '@/lib/data/prompts'
-import { resolveVariables, VariableResolutionError } from '@/lib/prompts/resolve-variables'
+import { resolveVariables, fillTemplate, VariableResolutionError } from '@/lib/prompts/resolve-variables'
 import { getSite } from '@/lib/data/sites'
 import { getCurrentUser } from '@/lib/supabase/server'
-import { findUndeclaredVariables, VARIABLE_PATTERN } from '@/lib/domain/prompt'
+import { findUndeclaredVariables } from '@/lib/domain/prompt'
 import type { PromptCategory, PromptRun, PromptTemplate, PromptVariable } from '@/lib/domain/prompt'
 
 const requireUserId = async (): Promise<string> => {
@@ -119,14 +119,13 @@ export const testRunPromptAction = async (input: {
     throw error
   }
 
-  // Dùng lại đúng VARIABLE_PATTERN của bước rút tên biến (chấp nhận
-  // `{{ name }}` có khoảng trắng) — thay vì tự dựng chuỗi `{{name}}` cứng,
-  // vốn sẽ bỏ sót biến có khoảng trắng đã được coi là "đã khai báo" ở bước
-  // kiểm tra undeclared variables phía trên.
-  const filledTemplate = input.userTemplate.replace(
-    VARIABLE_PATTERN,
-    (_match, name: string) => resolvedVars[name] ?? '',
-  )
+  // `fillTemplate` dùng lại đúng VARIABLE_PATTERN của bước rút tên biến
+  // (chấp nhận `{{ name }}` có khoảng trắng) — thay vì tự dựng chuỗi
+  // `{{name}}` cứng, vốn sẽ bỏ sót biến có khoảng trắng đã được coi là "đã
+  // khai báo" ở bước kiểm tra undeclared variables phía trên. Dùng chung với
+  // `run-agent.ts` để hai đường "Chạy thử" và agent luôn thay biến giống hệt
+  // nhau.
+  const filledTemplate = fillTemplate(input.userTemplate, resolvedVars)
 
   const { message, latencyMs } = await callClaude({
     systemPrompt: input.systemPrompt,

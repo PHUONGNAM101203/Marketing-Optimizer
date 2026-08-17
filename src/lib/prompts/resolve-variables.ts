@@ -5,6 +5,7 @@ import { getCampaignPerformance } from '@/lib/data/entities'
 import { deriveMetrics } from '@/lib/metrics/derive'
 import { hasCapability, PROVIDER_META, PROVIDERS } from '@/lib/domain/providers'
 import { formatCurrencyCompact, formatDateRange } from '@/lib/format'
+import { VARIABLE_PATTERN } from '@/lib/domain/prompt'
 import type { PromptVariable } from '@/lib/domain/prompt'
 import type { Site } from '@/lib/domain/site'
 
@@ -118,3 +119,18 @@ export const resolveVariables = async (params: {
 
   return resolved
 }
+
+/**
+ * Thay `{{ tên }}` bằng giá trị đã resolve — dùng CHUNG một nơi cho cả
+ * Prompt Studio "Chạy thử" (`actions/prompts.ts`) lẫn vòng lặp agent
+ * (`agents/run-agent.ts`). Trước đây `run-agent.ts` tự thay bằng
+ * `replaceAll(\`{{${name}}}\`, ...)` — khớp chính xác, không chấp nhận
+ * khoảng trắng trong `{{ name }}` như `VARIABLE_PATTERN`/`extractVariableNames`
+ * đã chấp nhận, nên một prompt hợp lệ ở Prompt Studio có thể chạy qua agent
+ * mà biến không được thay. Dùng lại đúng `VARIABLE_PATTERN` để hai đường
+ * luôn khớp nhau.
+ */
+export const fillTemplate = (
+  template: string,
+  resolvedVars: Readonly<Record<string, string>>,
+): string => template.replace(VARIABLE_PATTERN, (_match, name: string) => resolvedVars[name] ?? '')
