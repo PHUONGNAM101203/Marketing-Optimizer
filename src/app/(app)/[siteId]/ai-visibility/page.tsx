@@ -24,6 +24,7 @@ import { getSite } from '@/lib/data/sites'
 import { getLatestAuditRun } from '@/lib/data/audit'
 import { listTrackedPrompts } from '@/lib/data/tracked-prompts'
 import { getLatestCitationCheckByPrompt, countCitationChecks } from '@/lib/data/citation-checks'
+import { getSiteAiConnection } from '@/lib/data/site-ai-keys'
 import {
   CITABILITY_AXIS_LABELS,
   type CitabilityAxes,
@@ -43,7 +44,11 @@ export default async function AiVisibilityPage({
   const site = await getSite(siteId)
   if (!site) notFound()
 
-  const [run, prompts] = await Promise.all([getLatestAuditRun(site.id), listTrackedPrompts(site.id)])
+  const [run, prompts, aiConnection] = await Promise.all([
+    getLatestAuditRun(site.id),
+    listTrackedPrompts(site.id),
+    getSiteAiConnection(site.id),
+  ])
   const activePrompts = prompts.filter((prompt) => prompt.enabled)
   const [latestCheckByPrompt, citationCheckCount] = await Promise.all([
     getLatestCitationCheckByPrompt(prompts.map((prompt) => prompt.id)),
@@ -98,6 +103,36 @@ export default async function AiVisibilityPage({
           deltaPct={null}
         />
       </StatRow>
+
+      {!aiConnection ? (
+        // Cố tình KHÔNG lồng trong điều kiện `suggestions.length > 0` — trước
+        // đây callout "chưa cấu hình AI" chỉ hiện bên trong khối gợi ý, mà
+        // khối đó chỉ render khi ĐÃ có ít nhất một lượt quét audit sinh ra
+        // suggestions. Một site mới toanh (chưa quét lần nào) thì
+        // `run === null` → `suggestions` rỗng → cả khối gợi ý biến mất, kéo
+        // theo cả lời nhắc "vào Cài đặt cấu hình AI" biến mất theo — site mới
+        // không có cách nào biết cần làm gì. Tách callout này ra độc lập, chỉ
+        // phụ thuộc `aiConnection`, để LUÔN hiện ngay từ lần đầu vào trang,
+        // không cần kết nối kênh nào hay quét audit trước.
+        <Callout
+          tone="signal"
+          icon={<Sparkles aria-hidden className="size-5 text-[var(--color-signal)]" />}
+          title="Chưa cấu hình AI provider"
+        >
+          <p>
+            Vào{' '}
+            <Link href={`/${site.id}/settings`} className="font-medium text-[var(--color-signal)] hover:underline">
+              Cài đặt
+            </Link>{' '}
+            kết nối một provider AI (Claude, OpenAI, hoặc Gemini) — không cần kết nối kênh dữ liệu
+            nào trước. Sau khi cấu hình, quét lại{' '}
+            <Link href={`/${site.id}/audit`} className="font-medium text-[var(--color-signal)] hover:underline">
+              Kiểm tra SEO/GEO/AIO/AEO
+            </Link>{' '}
+            để có 10 câu hỏi/từ khoá do AI sinh theo đúng chủ đề sản phẩm, thay vì gợi ý mẫu cố định.
+          </p>
+        </Callout>
+      ) : null}
 
       {pageCitability.length === 0 ? (
         <Callout
@@ -158,23 +193,27 @@ export default async function AiVisibilityPage({
                 : `Mẫu tạm thời, sinh từ khoá thật trích ra từ nội dung site (lĩnh vực: ${run?.siteProfile?.category}) — chưa phải 10 câu hỏi/từ khoá AI sinh theo đúng thiết kế.`
             }
           />
-          {suggestionSource === 'template' ? (
+          {suggestionSource === 'template' && aiConnection ? (
+            // `!aiConnection` đã có callout riêng ở đầu trang (không lồng
+            // trong khối gợi ý này) — ở NHÁNH này, site ĐÃ cấu hình AI
+            // provider nhưng lượt quét gần nhất vẫn rơi về mẫu, nên thông
+            // điệp phải khác: không phải "chưa cấu hình", mà là lượt sinh AI
+            // đã không thành công (vd. hết hạn mức, model không phản hồi
+            // đúng định dạng...) — quét lại để thử lần nữa, không cần đụng gì
+            // tới cấu hình.
             <Callout
               tone="signal"
               icon={<Sparkles aria-hidden className="size-5 text-[var(--color-signal)]" />}
               title="Đang hiện gợi ý mẫu, chưa phải AI thật"
             >
               <p>
-                Site chưa cấu hình AI provider nên đang hiện gợi ý mẫu (4 câu cố định) thay vì 10 câu
-                hỏi AI sinh theo đúng chủ đề sản phẩm. Vào{' '}
-                <Link href={`/${site.id}/settings`} className="font-medium text-[var(--color-signal)] hover:underline">
-                  Cài đặt
-                </Link>{' '}
-                kết nối một provider AI, rồi quét lại{' '}
+                Đã cấu hình {aiConnection.provider}, nhưng lượt quét gần nhất không sinh được gợi ý AI
+                (có thể do hết hạn mức, lỗi tạm thời từ provider, hoặc model trả về sai định dạng) nên
+                đang hiện gợi ý mẫu (4 câu cố định) thay thế. Quét lại{' '}
                 <Link href={`/${site.id}/audit`} className="font-medium text-[var(--color-signal)] hover:underline">
                   Kiểm tra SEO/GEO/AIO/AEO
                 </Link>{' '}
-                để có gợi ý thật.
+                để thử sinh gợi ý AI lần nữa.
               </p>
             </Callout>
           ) : null}
