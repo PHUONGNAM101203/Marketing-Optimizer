@@ -134,3 +134,26 @@ export const callGemini = async (params: AiCallParams): Promise<AiCallResult> =>
     model: params.model,
   }
 }
+
+/**
+ * `ai.models.list()` trả về `Promise<Pager<Model>>` — PHẢI await một lần lấy
+ * Pager rồi mới `for await` lặp qua Pager đó (khác Anthropic/OpenAI, list()
+ * của hai hãng kia tự async-iterable, không cần await trước). Field định
+ * danh model là `.name` dạng `"models/{id}"`, KHÔNG phải `.id` — bỏ tiền tố
+ * trước khi lưu/hiện. Lọc `supportedActions.includes('generateContent')` để
+ * loại model chỉ hỗ trợ embedContent (embedding) — field JS SDK đổi tên từ
+ * `supportedGenerationMethods` bên REST, xác nhận qua source SDK đã decompile,
+ * không phải suy đoán từ doc REST.
+ */
+export const listGeminiModels = async (apiKey: string): Promise<readonly string[]> => {
+  const client = getClient(apiKey)
+  const pager = await client.models.list()
+  const ids: string[] = []
+  for await (const model of pager) {
+    if (model.name && model.supportedActions?.includes('generateContent')) {
+      ids.push(model.name.replace(/^models\//, ''))
+    }
+  }
+  // Gemini không công bố thứ tự trả về — sắp alphabet cho dropdown ổn định.
+  return ids.sort()
+}
