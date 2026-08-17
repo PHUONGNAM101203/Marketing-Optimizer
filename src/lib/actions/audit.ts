@@ -151,6 +151,22 @@ const performAuditScan = async (
       }
     }
 
+    // Bắt đầu PSI NGAY, chạy SONG SONG với crawl bên dưới — không đợi crawl
+    // xong mới gọi. Trước đây PSI chạy TUẦN TỰ sau crawl (`crawlSite` có thể
+    // ăn tới 240s theo `CRAWL_DEADLINE_MS`), chỉ còn dư ~60s cho toàn bộ phần
+    // còn lại của `after()` (bao gồm cả 45s timeout riêng của chính PSI) tính
+    // theo trần 300s một lượt gọi server-side của Vercel — sát tới mức PSI
+    // thường bị cắt ngang giữa chừng, hiện lỗi "quá thời gian chờ" dù chính
+    // PSI chưa chắc đã thật sự chậm. PSI chỉ cần URL trang chủ (`origin`),
+    // suy được thẳng từ `siteUrl` giống hệt cách `crawlSite` tự làm nội bộ
+    // (`new URL(siteUrl).origin`) — không cần đợi bất kỳ kết quả crawl nào.
+    // Xếp chồng thời gian PSI (tối đa 45s) vào bên trong 240s crawl thay vì
+    // cộng nối đuôi cho PSI gần như luôn xong trước khi cần dùng tới.
+    const pagespeedApiKey = getConfiguredPageSpeedApiKey()
+    const pagespeedPromise = pagespeedApiKey
+      ? fetchPageSpeedInsights(new URL(siteUrl).origin, pagespeedApiKey)
+      : Promise.resolve(null)
+
     const crawl = await crawlSite(siteUrl, alreadyCoveredUrls, reportProgress)
 
     // Ghép cuối cùng dùng LẠI đúng `liveMergedByUrl` đã cập nhật xuyên suốt
@@ -167,15 +183,12 @@ const performAuditScan = async (
     const scannedAt = new Date().toISOString()
     const pageCitability = realCrawl.pages.map((page) => computePageCitability(page, siteId, scannedAt))
     const siteProfile = computeSiteProfile(realCrawl, siteName)
-    // Key PSI cấu hình chung toàn hệ thống (biến môi trường), không phải mỗi
-    // Site tự nhập — chỉ gọi PSI khi máy chủ ĐÃ có key, không âm thầm bỏ qua
-    // bằng cách thử gọi thiếu key rồi nuốt lỗi.
-    const pagespeedApiKey = getConfiguredPageSpeedApiKey()
-    // Song song — cả hai đều là I/O độc lập, `computeGlobalKeywordSuggestions`
-    // tự nuốt lỗi (không throw) nên chạy song song không rủi ro làm hỏng
-    // nhánh PSI hay ngược lại.
+    // `pagespeedPromise` đã chạy song song với crawl từ đầu (xem trên) — tới
+    // đây gần như luôn đã xong, `await` chỉ còn là hình thức. Ghép cùng
+    // `computeGlobalKeywordSuggestions` (I/O độc lập, tự nuốt lỗi, không
+    // throw) trong một `Promise.all` để không đợi tuần tự thêm lần nữa.
     const [pagespeed, globalKeywordSuggestions] = await Promise.all([
-      pagespeedApiKey ? fetchPageSpeedInsights(crawl.origin, pagespeedApiKey) : Promise.resolve(null),
+      pagespeedPromise,
       computeGlobalKeywordSuggestions(siteId, siteProfile),
     ])
 

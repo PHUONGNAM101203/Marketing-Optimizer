@@ -28,7 +28,11 @@ import type { PageSpeedResult, PageSpeedStrategy, PageSpeedStrategyResult } from
  */
 
 const PSI_ENDPOINT = 'https://www.googleapis.com/pagespeedonline/v5/runPagespeed'
-const PSI_TIMEOUT_MS = 45_000
+// Chạy SONG SONG với crawl (tới 240s, xem `actions/audit.ts::performAuditScan`)
+// từ 17/8/2026 — không còn tranh chấp thời gian với phần crawl/PSI tuần tự
+// như trước, nên nới rộng từ 45s lên 90s cho các trang nặng/Lighthouse chậm,
+// vẫn nằm gọn trong ngân sách 240s.
+const PSI_TIMEOUT_MS = 90_000
 
 /** `null` khi biến môi trường chưa được đặt — dùng để quyết định có gọi PSI
  * hay không (không âm thầm gọi thiếu key rồi nuốt lỗi). */
