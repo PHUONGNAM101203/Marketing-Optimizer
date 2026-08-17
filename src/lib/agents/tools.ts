@@ -213,7 +213,7 @@ export const TOOL_REGISTRY: Readonly<Record<AgentToolName, ToolDefinition>> = {
     run: (input, ctx) =>
       proposeAction(
         'publish-report',
-        'adjust-budget', // không có ActionKind riêng cho "publish" — xem ghi chú trong migration Task 2, cột không ràng buộc CHECK nên giá trị này chỉ để hiển thị nhãn, chọn tạm giá trị gần nghĩa nhất
+        'publish-report',
         { ...input, provider: 'ga4', entityId: 'report', entityName: 'Báo cáo tuần', diff: [] },
         ctx,
       ),

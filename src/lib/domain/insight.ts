@@ -71,6 +71,7 @@ export type ActionKind =
   | 'replace-creative'
   | 'add-negative-keyword'
   | 'adjust-bid'
+  | 'publish-report'
 
 export const ACTION_KIND_LABELS: Readonly<Record<ActionKind, string>> = {
   'adjust-budget': 'Điều chỉnh ngân sách',
@@ -80,6 +81,7 @@ export const ACTION_KIND_LABELS: Readonly<Record<ActionKind, string>> = {
   'replace-creative': 'Thay creative',
   'add-negative-keyword': 'Thêm từ khoá phủ định',
   'adjust-bid': 'Điều chỉnh giá thầu',
+  'publish-report': 'Đăng báo cáo',
 }
 
 /**
