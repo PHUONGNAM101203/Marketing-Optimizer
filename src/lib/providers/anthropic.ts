@@ -2,6 +2,8 @@ import 'server-only'
 
 import Anthropic from '@anthropic-ai/sdk'
 
+import type { AiCallParams, AiCallResult, AiContentPart, AiStopReason } from './ai-types'
+
 /**
  * Gọi Claude qua stream rồi gom lại thành message hoàn chỉnh — không gọi
  * `.create()` trực tiếp. `.create()` không-stream có nguy cơ chạm timeout
@@ -77,3 +79,60 @@ export const extractText = (message: Anthropic.Message): string =>
     .filter((block): block is Anthropic.TextBlock => block.type === 'text')
     .map((block) => block.text)
     .join('\n')
+
+const toAnthropicContent = (parts: readonly AiContentPart[]): Anthropic.MessageParam['content'] =>
+  parts.map((part) => {
+    if (part.type === 'text') return { type: 'text' as const, text: part.text }
+    if (part.type === 'tool-use') return { type: 'tool_use' as const, id: part.id, name: part.name, input: part.input }
+    return { type: 'tool_result' as const, tool_use_id: part.toolUseId, content: part.content }
+  })
+
+const fromAnthropicContent = (content: Anthropic.Message['content']): readonly AiContentPart[] =>
+  content
+    .filter(
+      (block): block is Anthropic.TextBlock | Anthropic.ToolUseBlock =>
+        block.type === 'text' || block.type === 'tool_use',
+    )
+    .map((block): AiContentPart =>
+      block.type === 'text'
+        ? { type: 'text', text: block.text }
+        : { type: 'tool-use', id: block.id, name: block.name, input: block.input as Record<string, unknown> },
+    )
+
+const STOP_REASON_MAP: Readonly<Record<string, AiStopReason>> = {
+  end_turn: 'end_turn',
+  tool_use: 'tool_use',
+  max_tokens: 'max_tokens',
+}
+
+/**
+ * Adapter cho lớp trừu tượng đa nhà cung cấp (`providers/ai.ts`) — dịch
+ * `AiMessage`/`AiToolDefinition` sang hình dạng SDK Anthropic thật, và
+ * `Anthropic.Message` ngược lại thành `AiCallResult`. Dùng lại đúng
+ * `getClient`/`clientsByApiKey` đã có sẵn ở trên, không dựng client riêng.
+ */
+export const callAnthropic = async (params: AiCallParams): Promise<AiCallResult> => {
+  const client = getClient(params.apiKey)
+
+  const stream = client.messages.stream({
+    model: params.model,
+    max_tokens: params.maxTokens ?? 8000,
+    system: params.systemPrompt,
+    messages: params.messages.map((m) => ({ role: m.role, content: toAnthropicContent(m.content) })),
+    tools: params.tools?.map((tool) => ({
+      name: tool.name,
+      description: tool.description,
+      input_schema: tool.inputSchema as Anthropic.Tool.InputSchema,
+    })),
+  })
+
+  const message = await stream.finalMessage()
+
+  return {
+    content: fromAnthropicContent(message.content),
+    stopReason: STOP_REASON_MAP[message.stop_reason ?? ''] ?? 'other',
+    tokensIn: message.usage.input_tokens,
+    tokensOut: message.usage.output_tokens,
+    model: message.model,
+  }
+}
