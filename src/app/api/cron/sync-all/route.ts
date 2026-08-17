@@ -2,6 +2,7 @@ import { after, NextResponse, type NextRequest } from 'next/server'
 import { METRICS_ADAPTERS } from '@/lib/providers'
 import { syncConnection } from '@/lib/sync/sync-connection'
 import { runAgent } from '@/lib/agents/run-agent'
+import { refreshAllSiteAiModelCaches } from '@/lib/data/site-ai-keys'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { cronEnv } from '@/lib/supabase/env'
 import type { AgentSchedule } from '@/lib/domain/agent'
@@ -166,5 +167,14 @@ export async function GET(request: NextRequest) {
     agentsScheduled += 1
   }
 
-  return NextResponse.json({ synced, failed, total: (connections ?? []).length, agentsScheduled })
+  const { refreshed: modelsRefreshed, failed: modelsFailed } = await refreshAllSiteAiModelCaches()
+
+  return NextResponse.json({
+    synced,
+    failed,
+    total: (connections ?? []).length,
+    agentsScheduled,
+    modelsRefreshed,
+    modelsFailed,
+  })
 }
