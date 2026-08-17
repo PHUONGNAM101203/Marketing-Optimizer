@@ -1,6 +1,6 @@
 'use client'
 
-import { useActionState } from 'react'
+import { useActionState, useEffect, useRef } from 'react'
 import { Check, ExternalLink, TriangleAlert } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { FormField, inputClass } from '@/components/ui/form-field'
@@ -23,8 +23,21 @@ export interface AiKeySetupProps {
 export function AiKeySetup({ siteId, isConfigured }: AiKeySetupProps) {
   const [state, formAction, pending] = useActionState<SaveAiKeyState, FormData>(
     saveSiteAiKeyAction,
-    { error: null, success: false },
+    { error: null, success: false, changed: false },
   )
+  const apiKeyInputRef = useRef<HTMLInputElement>(null)
+
+  // Chỉ xoá input khi thực sự có lượt ghi thật (`changed`) — submit trống
+  // "không đổi gì" (`success` nhưng không `changed`) không chạm vào input,
+  // không có gì để xoá. Phụ thuộc vào `state` (đổi định danh mỗi lần action
+  // chạy xong) chứ không phải `state.changed` riêng lẻ, để hai lượt lưu thật
+  // liên tiếp đều kích hoạt lại — so registered value không đổi giữa hai lần
+  // thành công liên tiếp sẽ không kích hoạt lại effect nếu chỉ phụ thuộc field.
+  useEffect(() => {
+    if (state.success && state.changed && apiKeyInputRef.current) {
+      apiKeyInputRef.current.value = ''
+    }
+  }, [state])
 
   return (
     <form action={formAction} className="flex flex-col gap-4">
@@ -50,6 +63,7 @@ export function AiKeySetup({ siteId, isConfigured }: AiKeySetupProps) {
         }
       >
         <input
+          ref={apiKeyInputRef}
           id="ai-key-api-key"
           name="apiKey"
           type="password"
@@ -70,7 +84,7 @@ export function AiKeySetup({ siteId, isConfigured }: AiKeySetupProps) {
         </p>
       ) : null}
 
-      {state.success ? (
+      {state.success && state.changed ? (
         <p
           role="status"
           className="flex items-center gap-2 rounded-[var(--radius-md)] bg-[var(--color-positive-soft)] p-3 text-[length:var(--text-sm)] text-[var(--color-ink)]"

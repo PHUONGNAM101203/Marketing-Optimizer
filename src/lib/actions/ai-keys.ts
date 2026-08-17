@@ -32,6 +32,12 @@ const schema = z.object({
 export interface SaveAiKeyState {
   readonly error: string | null
   readonly success: boolean
+  /** `true` chỉ khi thực sự có upsert ghi xuống `site_ai_keys` — `false` cho
+   * mọi đường không ghi gì, kể cả khi `success` là `true` (vd. để trống form
+   * khi đã cấu hình = "không đổi", coi là thành công nhưng không phải một lượt
+   * lưu thật). UI dựa vào field này để không hiển thị "Đã lưu." nhầm cho một
+   * submit không làm gì cả. */
+  readonly changed: boolean
 }
 
 export async function saveSiteAiKeyAction(
@@ -44,11 +50,11 @@ export async function saveSiteAiKeyAction(
   })
 
   if (!parsed.success) {
-    return { error: parsed.error.issues[0]?.message ?? 'Dữ liệu không hợp lệ', success: false }
+    return { error: parsed.error.issues[0]?.message ?? 'Dữ liệu không hợp lệ', success: false, changed: false }
   }
 
   const user = await getCurrentUser()
-  if (!user) return { error: 'Phiên đăng nhập đã hết hạn.', success: false }
+  if (!user) return { error: 'Phiên đăng nhập đã hết hạn.', success: false, changed: false }
 
   const { siteId, apiKey } = parsed.data
 
@@ -62,6 +68,7 @@ export async function saveSiteAiKeyAction(
     return {
       error: 'Chỉ chủ sở hữu hoặc quản trị viên của website mới được cấu hình Claude API Key.',
       success: false,
+      changed: false,
     }
   }
 
@@ -73,10 +80,12 @@ export async function saveSiteAiKeyAction(
     const alreadyConfigured = await siteAnthropicApiKeyConfigured(siteId)
 
     if (!alreadyConfigured) {
-      return { error: 'Claude API Key bắt buộc ở lần thiết lập đầu tiên.', success: false }
+      return { error: 'Claude API Key bắt buộc ở lần thiết lập đầu tiên.', success: false, changed: false }
     }
 
-    return { error: null, success: true }
+    // Không ghi gì — `changed: false` để UI không báo "Đã lưu." cho một submit
+    // không làm gì cả.
+    return { error: null, success: true, changed: false }
   }
 
   const { error } = await admin.from('site_ai_keys').upsert({
@@ -88,9 +97,9 @@ export async function saveSiteAiKeyAction(
   })
 
   if (error) {
-    return { error: `Không lưu được cấu hình: ${error.message}`, success: false }
+    return { error: `Không lưu được cấu hình: ${error.message}`, success: false, changed: false }
   }
 
   revalidatePath(`/${siteId}/settings`)
-  return { error: null, success: true }
+  return { error: null, success: true, changed: true }
 }
