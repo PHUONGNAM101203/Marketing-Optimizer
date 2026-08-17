@@ -146,17 +146,16 @@ function ChannelHeadline({
     )
   }
 
-  // Facebook (nội dung Page, KHÁC meta-ads) — cùng dạng insight theo ngày
-  // như Instagram, chỉ tên field khác (page_impressions/engaged_users).
+  // Facebook (nội dung Page, KHÁC meta-ads) — `page_impressions` rồi
+  // `page_engaged_users` đều bị Meta khai tử, chỉ còn `page_post_engagements`
+  // request được ở cấp Page (xem `facebook-metrics.ts`) — một chỉ số duy
+  // nhất, không có secondary đáng tin cậy nào khác để ghép cặp.
   if (provider === 'facebook') {
     return (
       <HeadlineBlock
-        label="Lượt hiển thị"
-        value={formatCompact(extra.impressions ?? 0)}
-        secondary={[
-          { label: 'Người tương tác', value: formatCompact(extra.engagedUsers ?? 0) },
-          { label: 'Tương tác bài viết', value: formatCompact(extra.postEngagements ?? 0) },
-        ]}
+        label="Tương tác bài viết"
+        value={formatCompact(extra.postEngagements ?? 0)}
+        secondary={[]}
       />
     )
   }
@@ -250,21 +249,23 @@ function HeadlineBlock({
         </p>
       </div>
 
-      <dl className="mt-auto grid grid-cols-2 gap-x-4 gap-y-2 border-t border-[var(--color-rule)] pt-3">
-        {secondary.map((item) => (
-          <div key={item.label} className="min-w-0">
-            <dt className="truncate text-[length:var(--text-2xs)] text-[var(--color-ink-3)]">
-              {item.label}
-            </dt>
-            <dd
-              data-numeric
-              className="truncate text-[length:var(--text-sm)] font-medium text-[var(--color-ink)]"
-            >
-              {item.value}
-            </dd>
-          </div>
-        ))}
-      </dl>
+      {secondary.length > 0 && (
+        <dl className="mt-auto grid grid-cols-2 gap-x-4 gap-y-2 border-t border-[var(--color-rule)] pt-3">
+          {secondary.map((item) => (
+            <div key={item.label} className="min-w-0">
+              <dt className="truncate text-[length:var(--text-2xs)] text-[var(--color-ink-3)]">
+                {item.label}
+              </dt>
+              <dd
+                data-numeric
+                className="truncate text-[length:var(--text-sm)] font-medium text-[var(--color-ink)]"
+              >
+                {item.value}
+              </dd>
+            </div>
+          ))}
+        </dl>
+      )}
     </>
   )
 }

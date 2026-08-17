@@ -361,17 +361,17 @@ export function ChannelDetailBody({
               label: 'Dashboard',
               panel: (
                 <div className="flex flex-col gap-6">
-                  {/* `page_impressions` bị Meta khai tử (15/11/2025, xem
-                      `facebook-metrics.ts`) — đổi sang `engagedUsers`, metric
-                      duy nhất còn request được ở cấp Page. */}
+                  {/* `page_impressions` rồi `page_engaged_users` đều bị Meta
+                      khai tử — chỉ còn `page_post_engagements` request được
+                      ở cấp Page, xem `facebook-metrics.ts`. */}
                   <TrendCard
-                    title="Người dùng tương tác Page theo ngày"
+                    title="Tương tác bài viết Page theo ngày"
                     data={dailySeries.map((point) => ({
                       date: point.date,
-                      engagedUsers: point.extra.engagedUsers ?? 0,
+                      postEngagements: point.extra.postEngagements ?? 0,
                     }))}
-                    metricKey="engagedUsers"
-                    label="Người dùng tương tác"
+                    metricKey="postEngagements"
+                    label="Tương tác bài viết"
                   />
                   <MetaDashboard
                     postsInRange={postsInRange}

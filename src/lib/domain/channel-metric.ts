@@ -34,11 +34,11 @@ export const channelChartMetric = (provider: ProviderId): ChannelChartMetric | n
       return { label: 'Lượt xem', format: 'number', getValue: (point) => point.extra.views ?? 0 }
     case 'instagram':
       return { label: 'Reach', format: 'number', getValue: (point) => point.extra.reach ?? 0 }
-    // `page_impressions` bị Meta khai tử (15/11/2025, xem `facebook-metrics.ts`)
-    // — đổi sang `engagedUsers`, metric duy nhất còn request được ở cấp Page
-    // chưa nằm trong danh sách khai tử.
+    // `page_impressions` bị Meta khai tử (15/11/2025) rồi đến lượt
+    // `page_engaged_users` (15/6/2026, xem `facebook-metrics.ts`) — chỉ còn
+    // `page_post_engagements` request được ở cấp Page.
     case 'facebook':
-      return { label: 'Người dùng tương tác', format: 'number', getValue: (point) => point.extra.engagedUsers ?? 0 }
+      return { label: 'Tương tác bài viết', format: 'number', getValue: (point) => point.extra.postEngagements ?? 0 }
     // Snapshot (xem SNAPSHOT_PROVIDERS ở site-channels.ts) — mỗi điểm là
     // trạng thái TẠI lần đồng bộ đó, không phải phát sinh trong ngày, nhưng
     // vẫn vẽ được đường xu hướng follower theo thời gian bình thường.

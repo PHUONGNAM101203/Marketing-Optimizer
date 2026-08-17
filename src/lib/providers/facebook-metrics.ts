@@ -8,19 +8,24 @@ import type { MetricsAdapter } from './metrics-types'
  * `period=day` THẬT — không phải snapshot như TikTok Display API (xem ghi
  * chú `SNAPSHOT_PROVIDERS` ở `data/site-channels.ts`).
  *
- * `page_impressions` ĐÃ BỎ (8/2026) — XÁC MINH qua blog chính thức Meta
- * (developers.facebook.com/blog/post/2025/08/15/page-insights-api-updates),
- * KHÔNG phải research chung chung như bản trước: metric `impressions` cấp
- * Page bị khai tử từ 15/11/2025 (đã qua từ lâu tính đến giờ), gọi metric này
- * làm CẢ request `/insights` bị Graph API từ chối (không phải chỉ bỏ qua
- * riêng metric đó) — đây là lý do `metrics_daily` của Facebook trống hoàn
- * toàn dù `read_insights` đã được cấp đúng, khiến trang Tổng quan hiện mãi
- * "Đang đồng bộ...". `page_engaged_users`/`page_post_engagements` KHÔNG nằm
- * trong danh sách khai tử này (chỉ metric tên "impressions"/"page fans" bị
- * nêu đích danh) nên vẫn giữ. CHƯA xác minh được thay thế đúng cho
- * "impressions" (Meta hướng dẫn dùng metric "views" mới, tên field cụ thể
- * chưa đối chiếu được với response thật của app này — xem lịch sử commit,
- * không đoán thêm để tránh lặp lại đúng lỗi vừa sửa).
+ * `page_impressions` ĐÃ BỎ (15/11/2025) — xử lý ở lần sửa trước (8/2026).
+ *
+ * `page_engaged_users` CŨNG ĐÃ BỎ — đợt khai tử THỨ HAI, hiệu lực 15/6/2026
+ * (đã qua), cùng blog Meta nêu trên: "a number of Page Insights metrics will
+ * be deprecated for all API versions" kể từ mốc đó — request gộp cả hai
+ * metric bị Graph API từ chối nguyên request (HTTP 400 `#100 The value must
+ * be a valid insights metric`), lặp lại đúng kiểu lỗi của `page_impressions`
+ * trước đây. XÁC MINH lại 17/8/2026 bằng cách đọc thẳng bảng metric hiện
+ * hành tại developers.facebook.com/docs/graph-api/reference/insights/ —
+ * `page_engaged_users` KHÔNG còn xuất hiện trong bảng đó, trong khi
+ * `page_post_engagements` vẫn còn nguyên (period day/week/days_28). KHÔNG có
+ * metric thay thế nào được Meta nêu đích danh cho "engaged users" ở cấp
+ * `period=day` (chỉ có `page_lifetime_engaged_followers_unique`, vốn là
+ * snapshot lifetime/unique, không hợp với vòng lặp `period=day` đang dùng ở
+ * đây) — không đoán thêm, bỏ hẳn field này thay vì tự chế một phép ánh xạ
+ * chưa ai xác nhận. Mọi nơi từng đọc `extra.engagedUsers` (channel-card.tsx,
+ * channel-metric.ts, channel-detail-body.tsx) đã đổi sang
+ * `extra.postEngagements`.
  */
 
 const GRAPH_VERSION = 'v25.0'
@@ -55,7 +60,7 @@ export const facebookMetricsAdapter: MetricsAdapter = {
 
   async fetchDailyMetrics({ accessToken, externalAccountId, startDate, endDate }) {
     const url = new URL(`https://graph.facebook.com/${GRAPH_VERSION}/${externalAccountId}/insights`)
-    url.searchParams.set('metric', 'page_engaged_users,page_post_engagements')
+    url.searchParams.set('metric', 'page_post_engagements')
     url.searchParams.set('period', 'day')
     url.searchParams.set('since', startDate)
     url.searchParams.set('until', endDate)
@@ -76,28 +81,22 @@ export const facebookMetricsAdapter: MetricsAdapter = {
 
     const data = (await response.json()) as { data?: readonly FacebookInsightMetric[] }
 
-    const byDate = new Map<string, { engagedUsers: number; postEngagements: number }>()
+    const byDate = new Map<string, number>()
 
     for (const metric of data.data ?? []) {
+      if (metric.name !== 'page_post_engagements') continue
       for (const point of metric.values ?? []) {
         if (!point.end_time) continue
-        const date = point.end_time.slice(0, 10)
-        const current = byDate.get(date) ?? { engagedUsers: 0, postEngagements: 0 }
-        if (metric.name === 'page_engaged_users') current.engagedUsers = point.value ?? 0
-        if (metric.name === 'page_post_engagements') current.postEngagements = point.value ?? 0
-        byDate.set(date, current)
+        byDate.set(point.end_time.slice(0, 10), point.value ?? 0)
       }
     }
 
     return [...byDate.entries()]
       .sort(([a], [b]) => a.localeCompare(b))
-      .map(([date, extra]) => ({
+      .map(([date, postEngagements]) => ({
         ...ZERO_ROW,
         date,
-        extra: {
-          engagedUsers: extra.engagedUsers,
-          postEngagements: extra.postEngagements,
-        },
+        extra: { postEngagements },
       }))
   },
 }
