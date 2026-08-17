@@ -17,6 +17,57 @@ import type { AgentSchedule } from '@/lib/domain/agent'
  */
 export const maxDuration = 300
 
+/**
+ * Trần số agent được giao cho `after()` trong MỘT lần cron — hằng số nhỏ vì
+ * đây là cron 1 lần/ngày dùng chung với sync connection, không phải hàng đợi
+ * riêng cho agent (xem Global Constraints: không thêm cron thứ hai). Agent
+ * due nhưng vượt trần chỉ trễ tới lượt cron kế, không mất.
+ */
+const MAX_AGENTS_PER_CRON_RUN = 15
+
+/**
+ * Dedup: bỏ qua agent đã chạy (thành công/thất bại/chờ duyệt — bất kỳ nhánh
+ * kết thúc nào, xem `setAgentLastRunAt` trong `run-agent.ts`) trong đúng cửa
+ * sổ của nhịp hiện tại. Chặn được hai trường hợp: Vercel retry nguyên
+ * invocation cron sau lỗi (agent đã chạy ở lượt trước đó không bị chạy lại
+ * từ đầu), và agent tự due hai lần nếu logic `isDue` phía trên có kẽ hở nào
+ * đó. KHÔNG phải reaper cho run bị kẹt `status='running'` mãi mãi (run đó
+ * chưa từng tới `setAgentLastRunAt`) — đó là vấn đề khác, cố tình để ngoài
+ * phạm vi sửa lỗi tối thiểu này.
+ */
+const alreadyRanThisWindow = (
+  cadence: AgentSchedule['cadence'],
+  lastRunAt: string | null,
+  now: Date,
+): boolean => {
+  if (!lastRunAt) return false
+  const last = new Date(lastRunAt)
+
+  if (cadence === 'daily') {
+    return (
+      last.getUTCFullYear() === now.getUTCFullYear() &&
+      last.getUTCMonth() === now.getUTCMonth() &&
+      last.getUTCDate() === now.getUTCDate()
+    )
+  }
+
+  if (cadence === 'weekly') {
+    // Agent nhịp tuần chỉ due đúng MỘT ngày/tuần (`dayOfWeek` khớp hôm nay),
+    // nên "trong 7 ngày gần nhất" là cửa sổ tuần hợp lệ — không cần tính số
+    // tuần ISO phức tạp.
+    const diffMs = now.getTime() - last.getTime()
+    return diffMs >= 0 && diffMs < 7 * 24 * 60 * 60 * 1000
+  }
+
+  if (cadence === 'monthly') {
+    return last.getUTCFullYear() === now.getUTCFullYear() && last.getUTCMonth() === now.getUTCMonth()
+  }
+
+  // 'hourly': không bao giờ vào tới đây vì `isDue` ở trên đã luôn false cho
+  // nhịp này (xem Global Constraints) — nhánh này chỉ để switch đủ kiểu.
+  return false
+}
+
 export async function GET(request: NextRequest) {
   const { CRON_SECRET } = cronEnv()
   if (request.headers.get('authorization') !== `Bearer ${CRON_SECRET}`) {
@@ -51,13 +102,19 @@ export async function GET(request: NextRequest) {
 
   const { data: dueAgents } = await admin
     .from('agents')
-    .select('id, schedule')
+    .select('id, schedule, last_run_at')
     .eq('enabled', true)
     .not('schedule', 'is', null)
 
   let agentsScheduled = 0
 
   for (const agent of dueAgents ?? []) {
+    // Chặn ngay khi chạm trần — agent còn lại due ở lượt này sẽ due lại đúng
+    // ở lần cron kế tiếp (chỉ trễ, không mất), thay vì bung `after()` không
+    // giới hạn khiến vòng lặp đồng bộ connection ở trên (đã tiêu một phần
+    // `maxDuration`=300s) làm invocation bị Vercel giết giữa chừng.
+    if (agentsScheduled >= MAX_AGENTS_PER_CRON_RUN) break
+
     const schedule = agent.schedule as unknown as AgentSchedule
     const isDue =
       schedule.cadence === 'daily' ||
@@ -65,6 +122,7 @@ export async function GET(request: NextRequest) {
       (schedule.cadence === 'monthly' && today.getUTCDate() === 1)
 
     if (!isDue) continue
+    if (alreadyRanThisWindow(schedule.cadence, agent.last_run_at, today)) continue
 
     // Không await tuần tự từng agent — mỗi agent có thể mất nhiều lượt gọi
     // Claude, giữ cron chờ hết tất cả sẽ dễ chạm timeout của chính cron route.
