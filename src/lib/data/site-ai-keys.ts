@@ -14,28 +14,6 @@ import { createAdminClient } from '@/lib/supabase/admin'
  * nơi gọi đã tự xác minh quyền — bảng này không tự bảo vệ được bằng RLS.
  */
 
-/**
- * Hàm mà `testRunPromptAction`/`runAgent` thực sự gọi để lấy Claude API Key
- * dùng cho một Site: ưu tiên key Site tự cấu hình (chỉ khi provider đang kết
- * nối là 'anthropic' — key của provider khác không phải Claude API Key), rơi
- * về biến môi trường ANTHROPIC_API_KEY dùng chung nếu Site chưa cấu hình
- * (giữ các deploy/dev hiện tại dựa vào env var không bị hỏng). `null` khi cả
- * hai đều thiếu — nơi gọi tự biến thành lỗi hiển thị "chưa cấu hình", hàm
- * này không throw. Còn dùng bởi `actions/prompts.ts`/`agents/run-agent.ts`
- * cho tới Task 11/12 — sẽ được thay bằng `resolveAiConfig` khi đó.
- */
-export const resolveClaudeApiKey = async (siteId: string): Promise<string | null> => {
-  const admin = createAdminClient()
-  const { data } = await admin
-    .from('site_ai_keys')
-    .select('provider, api_key_enc')
-    .eq('site_id', siteId)
-    .maybeSingle()
-
-  if (data && data.provider === 'anthropic') return decrypt(data.api_key_enc)
-  return process.env.ANTHROPIC_API_KEY ?? null
-}
-
 export interface SiteAiConnection {
   readonly provider: AiProvider
   readonly model: string

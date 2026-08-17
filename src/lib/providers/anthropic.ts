@@ -34,52 +34,6 @@ const getClient = (apiKey: string): Anthropic => {
   return client
 }
 
-export interface ClaudeToolDefinition {
-  readonly name: string
-  readonly description: string
-  readonly inputSchema: Record<string, unknown>
-}
-
-export interface ClaudeMessage {
-  readonly role: 'user' | 'assistant'
-  readonly content: Anthropic.MessageParam['content']
-}
-
-export const callClaude = async (params: {
-  readonly apiKey: string
-  readonly systemPrompt: string
-  readonly messages: readonly ClaudeMessage[]
-  readonly model?: string
-  readonly tools?: readonly ClaudeToolDefinition[]
-  readonly maxTokens?: number
-}): Promise<{ readonly message: Anthropic.Message; readonly latencyMs: number }> => {
-  const client = getClient(params.apiKey)
-  const startedAt = Date.now()
-
-  const stream = client.messages.stream({
-    model: params.model ?? DEFAULT_CLAUDE_MODEL,
-    max_tokens: params.maxTokens ?? 8000,
-    system: params.systemPrompt,
-    messages: params.messages as Anthropic.MessageParam[],
-    tools: params.tools?.map((tool) => ({
-      name: tool.name,
-      description: tool.description,
-      input_schema: tool.inputSchema as Anthropic.Tool.InputSchema,
-    })),
-  })
-
-  const message = await stream.finalMessage()
-  return { message, latencyMs: Date.now() - startedAt }
-}
-
-/** Rút text thuần từ content blocks — dùng cho lượt gọi một-chiều (Chạy thử),
- * nơi không cần phân biệt block loại gì, chỉ cần câu trả lời cuối. */
-export const extractText = (message: Anthropic.Message): string =>
-  message.content
-    .filter((block): block is Anthropic.TextBlock => block.type === 'text')
-    .map((block) => block.text)
-    .join('\n')
-
 const toAnthropicContent = (parts: readonly AiContentPart[]): Anthropic.MessageParam['content'] =>
   parts.map((part) => {
     if (part.type === 'text') return { type: 'text' as const, text: part.text }
@@ -106,6 +60,23 @@ const STOP_REASON_MAP: Readonly<Record<string, AiStopReason>> = {
 }
 
 /**
+ * Web search GỐC của Anthropic — chạy phía SERVER Anthropic trong CÙNG lượt
+ * gọi, không phải tool tự định nghĩa cần round-trip (khác `tools` bên dưới).
+ * `20260318` là bản mới nhất SDK khai (`WebSearchTool20260318`,
+ * `@anthropic-ai/sdk` đã cài) tính tới 8/2026 — dùng bản mới nhất thay vì
+ * `20250305` cũ hơn cũng có trong SDK.
+ *
+ * CHƯA ai chạy thử với key thật — cú pháp bám theo type khai trong SDK
+ * (`node_modules/@anthropic-ai/sdk/resources/messages/messages.d.ts`,
+ * `WebSearchTool20260318`), cần verify khi có lượt gọi kiểm tra trích dẫn
+ * thật đầu tiên.
+ */
+const ANTHROPIC_WEB_SEARCH_TOOL: Anthropic.WebSearchTool20260318 = {
+  type: 'web_search_20260318',
+  name: 'web_search',
+}
+
+/**
  * Adapter cho lớp trừu tượng đa nhà cung cấp (`providers/ai.ts`) — dịch
  * `AiMessage`/`AiToolDefinition` sang hình dạng SDK Anthropic thật, và
  * `Anthropic.Message` ngược lại thành `AiCallResult`. Dùng lại đúng
@@ -114,16 +85,22 @@ const STOP_REASON_MAP: Readonly<Record<string, AiStopReason>> = {
 export const callAnthropic = async (params: AiCallParams): Promise<AiCallResult> => {
   const client = getClient(params.apiKey)
 
+  const customTools: readonly Anthropic.ToolUnion[] =
+    params.tools?.map((tool) => ({
+      name: tool.name,
+      description: tool.description,
+      input_schema: tool.inputSchema as Anthropic.Tool.InputSchema,
+    })) ?? []
+  const tools: readonly Anthropic.ToolUnion[] = params.enableWebSearch
+    ? [...customTools, ANTHROPIC_WEB_SEARCH_TOOL]
+    : customTools
+
   const stream = client.messages.stream({
     model: params.model,
     max_tokens: params.maxTokens ?? 8000,
     system: params.systemPrompt,
     messages: params.messages.map((m) => ({ role: m.role, content: toAnthropicContent(m.content) })),
-    tools: params.tools?.map((tool) => ({
-      name: tool.name,
-      description: tool.description,
-      input_schema: tool.inputSchema as Anthropic.Tool.InputSchema,
-    })),
+    tools: tools.length > 0 ? [...tools] : undefined,
   })
 
   const message = await stream.finalMessage()

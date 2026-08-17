@@ -2,15 +2,15 @@ import 'server-only'
 
 import { createRun, appendRunStep, finishRun, setAgentLastRunAt } from '@/lib/data/agents'
 import { resolveVariables, fillTemplate, VariableResolutionError } from '@/lib/prompts/resolve-variables'
-import { callClaude, extractText, DEFAULT_CLAUDE_MODEL } from '@/lib/providers/anthropic'
-import { resolveClaudeApiKey } from '@/lib/data/site-ai-keys'
+import { callAi, extractText } from '@/lib/providers/ai'
+import { resolveAiConfig } from '@/lib/data/site-ai-keys'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { TOOL_REGISTRY } from './tools'
 import { isWriteTool } from '@/lib/domain/agent'
 import type { AgentTool, AgentToolName } from '@/lib/domain/agent'
 import type { PromptVariable } from '@/lib/domain/prompt'
 import type { Site } from '@/lib/domain/site'
-import type Anthropic from '@anthropic-ai/sdk'
+import type { AiContentPart, AiMessage } from '@/lib/providers/ai'
 
 const MAX_ROUNDS = 8
 
@@ -103,7 +103,7 @@ const fetchSiteRow = async (admin: AdminClient, siteId: string): Promise<Site | 
  * ra ngoài): ngay khi MỘT round có bất kỳ tool_use nào MÀ THỰC SỰ ĐƯỢC THỰC
  * THI (tức là tool đó được agent bật VÀ `isWriteTool` trả true), hàm gọi
  * `finishRun` với status 'pending-approval' rồi `return` NGAY — không có
- * đường nào trong hàm này quay lại gọi `callClaude` sau đó, kể cả khi model
+ * đường nào trong hàm này quay lại gọi `callAi` sau đó, kể cả khi model
  * cũng xin gọi tool đọc trong cùng round đó. Mọi tool trong round (đọc lẫn
  * ghi, kể cả tool không được bật) vẫn được ghi step trước khi return — chỉ
  * là không có round tiếp theo được mở ra.
@@ -129,14 +129,14 @@ export const runAgent = async (agentId: string, trigger: 'schedule' | 'manual'):
 
   try {
     // Cùng thông điệp với `testRunPromptAction` (`actions/prompts.ts`) — chưa
-    // cấu hình Claude API Key là một lỗi CÓ THỂ SỬA từ UI, không phải lỗi hệ
-    // thống, nên `finishRun('failed', ...)` với summary rõ nguyên nhân thay
-    // vì throw một lỗi chung chung.
-    const apiKey = await resolveClaudeApiKey(agentRow.siteId)
-    if (!apiKey) {
+    // cấu hình AI Key là một lỗi CÓ THỂ SỬA từ UI, không phải lỗi hệ thống,
+    // nên `finishRun('failed', ...)` với summary rõ nguyên nhân thay vì throw
+    // một lỗi chung chung.
+    const aiConfig = await resolveAiConfig(agentRow.siteId)
+    if (!aiConfig) {
       await finishRun(run.id, {
         status: 'failed',
-        summary: 'Chưa cấu hình Claude API Key cho website này. Vào Cài đặt để thêm.',
+        summary: 'Chưa cấu hình AI Key cho website này. Vào Cài đặt để thêm.',
         tokensUsed: 0,
       })
       finished = true
@@ -184,38 +184,36 @@ export const runAgent = async (agentId: string, trigger: 'schedule' | 'manual'):
       inputSchema: TOOL_REGISTRY[name].inputSchema,
     }))
 
-    const messages: { role: 'user' | 'assistant'; content: Anthropic.MessageParam['content'] }[] = [
-      { role: 'user', content: filledTemplate },
-    ]
+    const messages: AiMessage[] = [{ role: 'user', content: [{ type: 'text', text: filledTemplate }] }]
 
     for (let round = 0; round < MAX_ROUNDS; round += 1) {
-      const { message } = await callClaude({
-        apiKey,
+      const result = await callAi({
+        provider: aiConfig.provider,
+        apiKey: aiConfig.apiKey,
+        model: aiConfig.model,
         systemPrompt: currentVersion.systemPrompt,
         messages,
-        model: DEFAULT_CLAUDE_MODEL,
         tools: toolDefs,
       })
 
-      totalTokens += message.usage.input_tokens + message.usage.output_tokens
+      totalTokens += result.tokensIn + result.tokensOut
 
-      if (message.stop_reason !== 'tool_use') {
+      if (result.stopReason !== 'tool_use') {
         // Chỉ ghi MỘT step 'output' cho lượt kết thúc — `extractText` đã gộp
-        // đúng những text block này rồi, ghi thêm 'thought' nữa là lặp y hệt
+        // đúng những text part này rồi, ghi thêm 'thought' nữa là lặp y hệt
         // nội dung trong transcript.
-        const finalText = extractText(message)
+        const finalText = extractText(result)
         await appendRunStep(run.id, { kind: 'output', tool: null, content: finalText, at: new Date().toISOString() })
 
-        if (message.stop_reason === 'end_turn') {
+        if (result.stopReason === 'end_turn') {
           await finishRun(run.id, { status: 'succeeded', summary: finalText, tokensUsed: totalTokens })
         } else {
-          // max_tokens/refusal/stop_sequence/pause_turn/... KHÔNG phải một
-          // phân tích đã hoàn tất — coi là thất bại và nêu rõ lý do dừng để
-          // phân biệt với kết thúc bình thường.
-          const reasonLabel = message.stop_reason ?? 'không rõ'
+          // max_tokens/other KHÔNG phải một phân tích đã hoàn tất — coi là
+          // thất bại và nêu rõ lý do dừng để phân biệt với kết thúc bình
+          // thường.
           await finishRun(run.id, {
             status: 'failed',
-            summary: `Dừng bất thường (${reasonLabel}): ${finalText}`,
+            summary: `Dừng bất thường (${result.stopReason}): ${finalText}`,
             tokensUsed: totalTokens,
           })
         }
@@ -224,27 +222,31 @@ export const runAgent = async (agentId: string, trigger: 'schedule' | 'manual'):
         return
       }
 
-      const textBlocks = message.content.filter((b): b is Anthropic.TextBlock => b.type === 'text')
-      for (const block of textBlocks) {
-        await appendRunStep(run.id, { kind: 'thought', tool: null, content: block.text, at: new Date().toISOString() })
+      const textParts = result.content.filter(
+        (p): p is Extract<AiContentPart, { type: 'text' }> => p.type === 'text',
+      )
+      for (const part of textParts) {
+        await appendRunStep(run.id, { kind: 'thought', tool: null, content: part.text, at: new Date().toISOString() })
       }
 
-      const toolUseBlocks = message.content.filter((b): b is Anthropic.ToolUseBlock => b.type === 'tool_use')
-      messages.push({ role: 'assistant', content: message.content })
+      const toolUseParts = result.content.filter(
+        (p): p is Extract<AiContentPart, { type: 'tool-use' }> => p.type === 'tool-use',
+      )
+      messages.push({ role: 'assistant', content: result.content })
 
       let hasWriteTool = false
-      const toolResults: Anthropic.ToolResultBlockParam[] = []
+      const toolResultParts: AiContentPart[] = []
 
-      for (const block of toolUseBlocks) {
-        const toolName = block.name as AgentToolName
+      for (const part of toolUseParts) {
+        const toolName = part.name as AgentToolName
         await appendRunStep(run.id, {
           kind: 'tool-call',
           tool: toolName,
-          content: JSON.stringify(block.input),
+          content: JSON.stringify(part.input),
           at: new Date().toISOString(),
         })
 
-        // Phòng vệ theo chiều sâu: `toolDefs` gửi cho Claude đã lọc theo tool
+        // Phòng vệ theo chiều sâu: `toolDefs` gửi cho model đã lọc theo tool
         // được bật, nhưng model vẫn có thể trả về tên tool KHÔNG nằm trong đó
         // (bịa tên, hoặc gọi một tool đã tắt) — không chạy tool đó, kể cả khi
         // nó tồn tại trong TOOL_REGISTRY.
@@ -258,7 +260,7 @@ export const runAgent = async (agentId: string, trigger: 'schedule' | 'manual'):
           resultText = `Tool "${toolName}" không tồn tại.`
         } else {
           if (isWriteTool(toolName)) hasWriteTool = true
-          resultText = await definition.run(block.input as Record<string, unknown>, {
+          resultText = await definition.run(part.input, {
             siteId: agentRow.siteId,
             runId: run.id,
             range,
@@ -267,7 +269,7 @@ export const runAgent = async (agentId: string, trigger: 'schedule' | 'manual'):
         }
 
         await appendRunStep(run.id, { kind: 'tool-result', tool: toolName, content: resultText, at: new Date().toISOString() })
-        toolResults.push({ type: 'tool_result', tool_use_id: block.id, content: resultText })
+        toolResultParts.push({ type: 'tool-result', toolUseId: part.id, name: part.name, content: resultText })
       }
 
       if (hasWriteTool) {
@@ -284,7 +286,7 @@ export const runAgent = async (agentId: string, trigger: 'schedule' | 'manual'):
         return
       }
 
-      messages.push({ role: 'user', content: toolResults })
+      messages.push({ role: 'user', content: toolResultParts })
     }
 
     await finishRun(run.id, {
@@ -295,7 +297,7 @@ export const runAgent = async (agentId: string, trigger: 'schedule' | 'manual'):
     finished = true
     await setAgentLastRunAt(agentId, new Date().toISOString())
   } catch (error) {
-    // Bất kỳ throw nào chưa được bắt ở trên (callClaude lỗi mạng/429/500,
+    // Bất kỳ throw nào chưa được bắt ở trên (callAi lỗi mạng/429/500,
     // appendRunStep/finishRun lỗi Supabase, tool.run() ném lỗi, ...) đều rơi
     // vào đây — không được để run kẹt mãi ở status='running'/finished_at=null:
     // một pending action thật (nếu round đó vừa tạo trước khi lỗi) sẽ treo
