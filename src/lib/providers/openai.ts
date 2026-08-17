@@ -127,8 +127,16 @@ export const callOpenAi = async (params: AiCallParams): Promise<AiCallResult> =>
  * field phân loại "chat-capable" trên response — lọc bằng pattern loại trừ
  * tên model là cách khả thi duy nhất hiện tại (xem nghiên cứu 8/2026), CHƯA
  * verify với key thật, cần đối chiếu nếu danh sách hiện ra sai/thiếu.
+ *
+ * KHÔNG có `search-`/`similarity` trần trong pattern (dù model embedding cũ
+ * như `text-search-davinci-doc-001`/`text-similarity-*` cần bị loại) — hai
+ * từ đó khớp luôn cả `gpt-4o-search-preview`/`gpt-4o-mini-search-preview`
+ * (model chat thật, có tra cứu web), một false-positive phát hiện lúc review
+ * (Task 4). `davinci`/`curie`/`babbage` đã đủ bắt các model search/similarity
+ * cũ đó (tên đầy đủ luôn chứa một trong ba từ này), nên bỏ hẳn hai từ trần
+ * thay vì thu hẹp lại — không mất khả năng lọc, chỉ bớt false-positive.
  */
-const NON_CHAT_MODEL_PATTERN = /embedding|dall-e|whisper|tts|moderation|davinci|babbage|curie|^ada-|search-|similarity/i
+const NON_CHAT_MODEL_PATTERN = /embedding|dall-e|whisper|tts|moderation|davinci|babbage|curie|^ada-/i
 
 export const listOpenAiModels = async (apiKey: string): Promise<readonly string[]> => {
   const client = getClient(apiKey)
