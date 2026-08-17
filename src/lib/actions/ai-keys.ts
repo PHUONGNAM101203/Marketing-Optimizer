@@ -2,9 +2,9 @@
 
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
-import { encrypt } from '@/lib/crypto'
+import { decrypt, encrypt } from '@/lib/crypto'
 import { getSiteAiConnection } from '@/lib/data/site-ai-keys'
-import type { AiProvider } from '@/lib/providers/ai'
+import { listAvailableModels, type AiProvider } from '@/lib/providers/ai'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient, getCurrentUser } from '@/lib/supabase/server'
 
@@ -140,4 +140,73 @@ export async function disconnectSiteAiConfigAction(
 
   revalidatePath(`/${siteId}/settings`)
   return { error: null, success: true }
+}
+
+export interface ListModelsState {
+  readonly models: readonly string[]
+  readonly error: string | null
+}
+
+/**
+ * Nút "Tải danh sách model" khi CHƯA kết nối (hoặc đang gõ key mới để đổi
+ * key) gọi hàm NÀY — dùng thẳng key vừa gõ trên form, CHƯA lưu xuống DB. Chỉ
+ * cần đăng nhập, không cần kiểm `has_site_role`: hàm không đọc/ghi dữ liệu
+ * Site nào, chỉ gọi API bên ngoài bằng key client tự gửi lên rồi trả kết quả
+ * về đúng client đó — không phải đường lộ dữ liệu riêng tư của ai.
+ */
+export async function listAvailableModelsAction(provider: string, apiKey: string): Promise<ListModelsState> {
+  const user = await getCurrentUser()
+  if (!user) return { models: [], error: 'Phiên đăng nhập đã hết hạn.' }
+
+  if (!isAiProvider(provider)) return { models: [], error: 'Nhà cung cấp không hợp lệ.' }
+  const trimmedKey = apiKey.trim()
+  if (trimmedKey.length < 10) return { models: [], error: 'API Key trông không hợp lệ.' }
+
+  try {
+    const models = await listAvailableModels(provider, trimmedKey)
+    if (models.length === 0) return { models: [], error: 'Không tìm thấy model nào — kiểm tra lại API Key.' }
+    return { models, error: null }
+  } catch (error) {
+    return {
+      models: [],
+      error: `Không lấy được danh sách model: ${error instanceof Error ? error.message : String(error)}`,
+    }
+  }
+}
+
+/**
+ * Nút "Tải danh sách model" khi ĐÃ kết nối và không đổi key (field API Key
+ * để trống) gọi hàm NÀY thay vì hàm trên — không có key mới trên form để
+ * dùng, phải giải mã key ĐÃ LƯU. Vì đọc/ghi `site_ai_keys` của một Site cụ
+ * thể nên PHẢI kiểm `has_site_role`, khác hàm trên.
+ */
+export async function refreshSiteAiModelsAction(siteId: string): Promise<ListModelsState> {
+  const user = await getCurrentUser()
+  if (!user) return { models: [], error: 'Phiên đăng nhập đã hết hạn.' }
+
+  const supabase = await createClient()
+  const { data: isAdmin } = await supabase.rpc('has_site_role', {
+    target_site: siteId,
+    allowed: ['owner', 'admin'],
+  })
+  if (!isAdmin) {
+    return { models: [], error: 'Chỉ chủ sở hữu hoặc quản trị viên mới được làm mới danh sách model.' }
+  }
+
+  const admin = createAdminClient()
+  const { data } = await admin.from('site_ai_keys').select('provider, api_key_enc').eq('site_id', siteId).maybeSingle()
+  if (!data) return { models: [], error: 'Website chưa kết nối provider nào.' }
+
+  try {
+    const apiKey = decrypt(data.api_key_enc)
+    const models = await listAvailableModels(data.provider as AiProvider, apiKey)
+    await admin
+      .from('site_ai_keys')
+      .update({ available_models: [...models], models_fetched_at: new Date().toISOString() })
+      .eq('site_id', siteId)
+    revalidatePath(`/${siteId}/settings`)
+    return { models, error: null }
+  } catch (error) {
+    return { models: [], error: `Không làm mới được: ${error instanceof Error ? error.message : String(error)}` }
+  }
 }
