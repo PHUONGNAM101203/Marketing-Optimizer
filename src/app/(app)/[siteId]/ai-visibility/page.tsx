@@ -60,7 +60,8 @@ export default async function AiVisibilityPage({
       : [...pageCitability].sort((a, b) => a.overall - b.overall)[0]
 
   const trackedTexts = new Set(prompts.map((prompt) => prompt.text))
-  const suggestions = (run?.globalKeywordSuggestions ?? []).filter(
+  const suggestionSource = run?.globalKeywordSuggestions.source ?? 'template'
+  const suggestions = (run?.globalKeywordSuggestions.suggestions ?? []).filter(
     (suggestion) => !trackedTexts.has(suggestion.text),
   )
 
@@ -151,8 +152,32 @@ export default async function AiVisibilityPage({
           <SectionHead
             label="Gợi ý"
             title="Câu hỏi gợi ý theo chủ đề"
-            description={`AI sinh từ chủ đề site (lĩnh vực: ${run?.siteProfile?.category}) — câu hỏi/từ khoá được tìm kiếm nhiều nhất về chủ đề này trên toàn thế giới, không riêng site bạn. Chỉnh lại cho đúng giọng thương hiệu trước khi dùng.`}
+            description={
+              suggestionSource === 'ai'
+                ? `AI sinh từ chủ đề site (lĩnh vực: ${run?.siteProfile?.category}) — câu hỏi/từ khoá được tìm kiếm nhiều nhất về chủ đề này trên toàn thế giới, không riêng site bạn. Chỉnh lại cho đúng giọng thương hiệu trước khi dùng.`
+                : `Mẫu tạm thời, sinh từ khoá thật trích ra từ nội dung site (lĩnh vực: ${run?.siteProfile?.category}) — chưa phải 10 câu hỏi/từ khoá AI sinh theo đúng thiết kế.`
+            }
           />
+          {suggestionSource === 'template' ? (
+            <Callout
+              tone="signal"
+              icon={<Sparkles aria-hidden className="size-5 text-[var(--color-signal)]" />}
+              title="Đang hiện gợi ý mẫu, chưa phải AI thật"
+            >
+              <p>
+                Site chưa cấu hình AI provider nên đang hiện gợi ý mẫu (4 câu cố định) thay vì 10 câu
+                hỏi AI sinh theo đúng chủ đề sản phẩm. Vào{' '}
+                <Link href={`/${site.id}/settings`} className="font-medium text-[var(--color-signal)] hover:underline">
+                  Cài đặt
+                </Link>{' '}
+                kết nối một provider AI, rồi quét lại{' '}
+                <Link href={`/${site.id}/audit`} className="font-medium text-[var(--color-signal)] hover:underline">
+                  Kiểm tra SEO/GEO/AIO/AEO
+                </Link>{' '}
+                để có gợi ý thật.
+              </p>
+            </Callout>
+          ) : null}
           <div className="flex flex-col gap-2">
             {suggestions.map((suggestion) => (
               <Card key={suggestion.text} className="flex items-center justify-between gap-3 p-3.5">

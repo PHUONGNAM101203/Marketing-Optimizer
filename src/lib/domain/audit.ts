@@ -153,10 +153,15 @@ export interface AuditRun {
   readonly pageCitability: readonly PageCitabilityScore[]
   readonly siteProfile: SiteProfile | null
   readonly pagespeed: PageSpeedResult | null
-  /** 10 câu hỏi/từ khoá phổ biến TOÀN CẦU theo chủ đề site, sinh bởi AI —
-   * xem `lib/audit/global-suggestions.ts`. `null`/mảng rỗng cho audit chạy
-   * trước khi tính năng này tồn tại. */
-  readonly globalKeywordSuggestions: readonly { readonly text: string; readonly intent: PromptIntent }[]
+  /** 10 câu hỏi/từ khoá phổ biến TOÀN CẦU theo chủ đề site — xem
+   * `lib/audit/global-suggestions.ts`. `source: 'template'` khi site chưa
+   * cấu hình AI key (hoặc gọi AI lỗi) — UI PHẢI đọc field này để không hiện
+   * nhầm nội dung mẫu như thể AI sinh ra. Mảng rỗng + `source: 'template'`
+   * cho audit chạy trước khi tính năng này tồn tại. */
+  readonly globalKeywordSuggestions: {
+    readonly source: 'ai' | 'template'
+    readonly suggestions: readonly { readonly text: string; readonly intent: PromptIntent }[]
+  }
   readonly error: string | null
   readonly startedAt: string
   readonly completedAt: string | null

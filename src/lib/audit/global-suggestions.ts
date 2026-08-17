@@ -8,7 +8,20 @@ import type { SiteProfile } from '@/lib/domain/audit'
 const SUGGESTION_COUNT = 10
 
 const SYSTEM_PROMPT =
-  'Bạn là chuyên gia nghiên cứu từ khoá/SEO. Liệt kê đúng các câu hỏi/từ khoá NGƯỜI DÙNG THẬT hay tìm kiếm nhất về một chủ đề — dựa trên hiểu biết chung của bạn về hành vi tìm kiếm trên toàn thế giới, KHÔNG gắn với một website cụ thể nào. Trả lời DUY NHẤT một mảng JSON các chuỗi câu hỏi/từ khoá, không kèm giải thích, không kèm markdown code fence.'
+  'Bạn là chuyên gia nghiên cứu từ khoá/SEO. Liệt kê đúng các câu hỏi/từ khoá NGƯỜI DÙNG THẬT hay tìm kiếm nhất, bám sát các SẢN PHẨM/DỊCH VỤ CỤ THỂ được mô tả — không chỉ dừng ở tên ngành hàng chung chung. Dựa trên hiểu biết chung của bạn về hành vi tìm kiếm trên toàn thế giới, KHÔNG gắn với một website cụ thể nào (không nhắc tên thương hiệu trong câu hỏi). Trả lời DUY NHẤT một mảng JSON các chuỗi câu hỏi/từ khoá, không kèm giải thích, không kèm markdown code fence.'
+
+export interface GlobalKeywordSuggestions {
+  /** `'ai'` khi model thật sự sinh được — `'template'` khi rơi về
+   * `suggestPrompts()` (thiếu key, gọi lỗi, hoặc JSON trả về không hợp lệ).
+   * UI PHẢI đọc field này để không claim "AI sinh" cho nội dung template. */
+  readonly source: 'ai' | 'template'
+  readonly suggestions: readonly PromptSuggestion[]
+}
+
+const templateResult = (profile: SiteProfile): GlobalKeywordSuggestions => ({
+  source: 'template',
+  suggestions: suggestPrompts(profile),
+})
 
 /**
  * 10 câu hỏi/từ khoá phổ biến TOÀN CẦU về chủ đề site — dựa trên kiến thức
@@ -25,12 +38,11 @@ const SYSTEM_PROMPT =
 export const computeGlobalKeywordSuggestions = async (
   siteId: string,
   profile: SiteProfile,
-): Promise<readonly PromptSuggestion[]> => {
-  const templateFallback = suggestPrompts(profile)
-  if (!profile.category) return templateFallback
+): Promise<GlobalKeywordSuggestions> => {
+  if (!profile.category) return templateResult(profile)
 
   const aiConfig = await resolveAiConfig(siteId)
-  if (!aiConfig) return templateFallback
+  if (!aiConfig) return templateResult(profile)
 
   try {
     const result = await callAi({
@@ -44,7 +56,7 @@ export const computeGlobalKeywordSuggestions = async (
           content: [
             {
               type: 'text',
-              text: `Chủ đề: ${profile.category}. Mô tả: ${profile.description ?? '(không có)'}. Từ khoá đã biết: ${profile.topKeywords.join(', ') || '(không có)'}. Liệt kê ${SUGGESTION_COUNT} câu hỏi/từ khoá được tìm kiếm nhiều nhất về chủ đề này trên toàn thế giới.`,
+              text: `Ngành hàng: ${profile.category}. Mô tả sản phẩm/dịch vụ cụ thể của một site điển hình trong ngành này: ${profile.description ?? '(không có)'}. Từ khoá sản phẩm thật trích được: ${profile.topKeywords.join(', ') || '(không có)'}. Dựa vào các sản phẩm/dịch vụ CỤ THỂ ở trên (không dừng ở tên ngành hàng chung), liệt kê ${SUGGESTION_COUNT} câu hỏi/từ khoá người dùng thật hay tìm kiếm nhất trên toàn thế giới về đúng loại sản phẩm/dịch vụ này.`,
             },
           ],
         },
@@ -52,18 +64,18 @@ export const computeGlobalKeywordSuggestions = async (
     })
 
     const parsed = JSON.parse(extractText(result).trim()) as unknown
-    if (!Array.isArray(parsed)) return templateFallback
+    if (!Array.isArray(parsed)) return templateResult(profile)
 
     const suggestions = parsed
       .filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
       .slice(0, SUGGESTION_COUNT)
       .map((text): PromptSuggestion => ({ text: text.trim(), intent: 'informational' }))
 
-    return suggestions.length > 0 ? suggestions : templateFallback
+    return suggestions.length > 0 ? { source: 'ai', suggestions } : templateResult(profile)
   } catch {
     // Lỗi mạng, lỗi API, hoặc JSON.parse thất bại (model trả về không đúng
     // định dạng yêu cầu) — mọi trường hợp đều rơi về template, không log lỗi
     // ồn ào cho một tính năng tự bản chất đã có fallback graceful.
-    return templateFallback
+    return templateResult(profile)
   }
 }

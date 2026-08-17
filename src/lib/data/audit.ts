@@ -3,7 +3,7 @@ import 'server-only'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import type { AuditFinding, AuditRun, AuditRunStatus, PageSpeedResult, SiteProfile } from '@/lib/domain/audit'
-import type { PageCitabilityScore, PromptIntent } from '@/lib/domain/geo'
+import type { PageCitabilityScore } from '@/lib/domain/geo'
 import type { PageSignals } from '@/lib/audit/crawler'
 
 interface AuditRunRow {
@@ -40,6 +40,23 @@ interface AuditRunRow {
  */
 const STALE_RUNNING_THRESHOLD_MS = 6 * 60 * 1000
 
+/** Đọc `{source, suggestions}` mới, RƠI VỀ RỖNG (không phải throw) cho hình
+ * dạng CŨ (mảng phẳng, trước khi field `source` tồn tại) — chỉ vài row từ
+ * lúc phát triển tính năng này còn mang hình dạng cũ, không đáng để giữ code
+ * đọc-tương-thích-ngược lâu dài; audit chạy lại là ra đúng hình dạng mới. */
+const toGlobalKeywordSuggestions = (value: unknown): AuditRun['globalKeywordSuggestions'] => {
+  if (
+    value &&
+    typeof value === 'object' &&
+    !Array.isArray(value) &&
+    'suggestions' in value &&
+    Array.isArray((value as { suggestions: unknown }).suggestions)
+  ) {
+    return value as AuditRun['globalKeywordSuggestions']
+  }
+  return { source: 'template', suggestions: [] }
+}
+
 const toAuditRun = (row: AuditRunRow): AuditRun => {
   const isStaleRunning =
     row.status === 'running' &&
@@ -61,8 +78,7 @@ const toAuditRun = (row: AuditRunRow): AuditRun => {
     pageCitability: (row.page_citability as readonly PageCitabilityScore[] | null) ?? [],
     siteProfile: row.site_profile as SiteProfile | null,
     pagespeed: row.pagespeed as PageSpeedResult | null,
-    globalKeywordSuggestions:
-      (row.global_keyword_suggestions as readonly { readonly text: string; readonly intent: PromptIntent }[] | null) ?? [],
+    globalKeywordSuggestions: toGlobalKeywordSuggestions(row.global_keyword_suggestions),
     error: isStaleRunning
       ? 'Lượt quét trước bị gián đoạn giữa chừng (máy chủ khởi động lại hoặc gặp sự cố) — bấm "Quét tiếp" để chạy lại. Phần đã quét được ở các lượt trước đó (nếu có) không mất, lượt sau vẫn cộng dồn tiếp.'
       : row.error,
