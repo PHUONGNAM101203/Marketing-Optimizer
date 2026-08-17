@@ -16,9 +16,11 @@ export type AiContentPart =
   | {
       readonly type: 'tool-result'
       readonly toolUseId: string
-      // Gemini khớp lượt gọi tool BẰNG TÊN (không có id riêng như OpenAI/
-      // Anthropic's call_id/tool_use_id) — `name` tồn tại ở đây để
-      // `gemini.ts` không phải tra ngược lại tool-use part gốc để tìm tên.
+      // Gemini CÓ id gọi tool riêng (FunctionCall.id/FunctionResponse.id) và
+      // gemini.ts ưu tiên dùng khi có — nhưng Gemini không LUÔN trả về id đó
+      // (có trường hợp bỏ trống), lúc đó phải rơi về khớp bằng TÊN. `name` ở
+      // đây tồn tại cho đúng nhánh dự phòng này, để `gemini.ts` không phải
+      // tra ngược lại tool-use part gốc để tìm tên khi cần fallback.
       readonly name: string
       readonly content: string
     }
