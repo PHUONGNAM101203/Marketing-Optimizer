@@ -1,7 +1,7 @@
 'use server'
 
 import { revalidatePath } from 'next/cache'
-import { callClaude, extractText, DEFAULT_CLAUDE_MODEL } from '@/lib/providers/anthropic'
+import { callAi, extractText } from '@/lib/providers/ai'
 import {
   createPrompt,
   createPromptVersion,
@@ -11,7 +11,7 @@ import {
 } from '@/lib/data/prompts'
 import { resolveVariables, fillTemplate, VariableResolutionError } from '@/lib/prompts/resolve-variables'
 import { getSite } from '@/lib/data/sites'
-import { resolveClaudeApiKey } from '@/lib/data/site-ai-keys'
+import { resolveAiConfig } from '@/lib/data/site-ai-keys'
 import { getCurrentUser } from '@/lib/supabase/server'
 import { findUndeclaredVariables } from '@/lib/domain/prompt'
 import type { PromptCategory, PromptRun, PromptTemplate, PromptVariable } from '@/lib/domain/prompt'
@@ -113,9 +113,9 @@ export const testRunPromptAction = async (input: {
   const site = await getSite(input.siteId)
   if (!site) return { run: null, error: 'Không tìm thấy website' }
 
-  const apiKey = await resolveClaudeApiKey(site.id)
-  if (!apiKey) {
-    return { run: null, error: 'Chưa cấu hình Claude API Key cho website này. Vào Cài đặt để thêm.' }
+  const aiConfig = await resolveAiConfig(site.id)
+  if (!aiConfig) {
+    return { run: null, error: 'Chưa cấu hình AI Key cho website này. Vào Cài đặt để thêm.' }
   }
 
   // Client tự gửi cả promptId lẫn versionId — RLS chặn được ghi cross-tenant
@@ -151,22 +151,23 @@ export const testRunPromptAction = async (input: {
   // nhau.
   const filledTemplate = fillTemplate(input.userTemplate, resolvedVars)
 
-  const { message, latencyMs } = await callClaude({
-    apiKey,
+  const result = await callAi({
+    provider: aiConfig.provider,
+    apiKey: aiConfig.apiKey,
+    model: aiConfig.model,
     systemPrompt: input.systemPrompt,
-    messages: [{ role: 'user', content: filledTemplate }],
-    model: DEFAULT_CLAUDE_MODEL,
+    messages: [{ role: 'user', content: [{ type: 'text', text: filledTemplate }] }],
   })
 
   const run = await recordPromptRun({
     promptId: input.promptId,
     versionId: input.versionId,
     inputs: resolvedVars,
-    output: extractText(message),
-    model: message.model,
-    tokensIn: message.usage.input_tokens,
-    tokensOut: message.usage.output_tokens,
-    latencyMs,
+    output: extractText(result),
+    model: result.model,
+    tokensIn: result.tokensIn,
+    tokensOut: result.tokensOut,
+    latencyMs: result.latencyMs,
     ranBy: userId,
   })
 
