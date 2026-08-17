@@ -80,17 +80,14 @@ const useResolvedDonutColors = (): Readonly<Record<string, string>> => {
  * riêng của nó trước khi gọi) thay vì một hình dạng dữ liệu cụ thể — donut
  * không cần biết "likes/comments/shares" hay "views" là gì.
  */
-export function StatsDonut({
-  slices,
-  totalLabel,
-  emptyTitle,
-  emptyDescription,
-}: {
+export interface StatsDonutProps {
   readonly slices: readonly StatsDonutSlice[]
   readonly totalLabel: string
   readonly emptyTitle: string
   readonly emptyDescription: string
-}) {
+}
+
+export function StatsDonut({ slices, totalLabel, emptyTitle, emptyDescription }: StatsDonutProps) {
   const resolvedColors = useResolvedDonutColors()
   const fillFor = (token: string): string => resolvedColors[token] ?? `var(${token})`
 

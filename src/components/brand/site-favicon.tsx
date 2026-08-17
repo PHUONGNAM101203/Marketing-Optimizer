@@ -33,6 +33,7 @@ export function SiteFavicon({ domain, className }: SiteFaviconProps) {
       src={`https://www.google.com/s2/favicons?domain=${encodeURIComponent(domain)}&sz=64`}
       alt=""
       aria-hidden
+      loading="lazy"
       className={cn('rounded-[4px] ring-1 ring-[var(--color-rule)]', className)}
       onError={() => setFailed(true)}
     />

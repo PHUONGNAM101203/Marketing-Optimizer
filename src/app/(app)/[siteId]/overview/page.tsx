@@ -7,7 +7,7 @@ import { InlineLocked } from '@/components/connections/inline-locked'
 import { OverviewTabs } from '@/components/overview/overview-tabs'
 import { StatRow, StatTile } from '@/components/ui/stat-tile'
 import { Card, CardBody, CardHeader, SectionHead } from '@/components/ui/card'
-import { TrendChart, type TrendPoint } from '@/components/charts/trend-chart'
+import { TrendChart, type TrendPoint } from '@/components/charts/trend-chart-lazy'
 import { Button } from '@/components/ui/button'
 import {
   SeriesCell,

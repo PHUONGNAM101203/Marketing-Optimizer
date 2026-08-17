@@ -1,4 +1,4 @@
-import { StatsDonut } from '@/components/ui/stats-donut'
+import { StatsDonut } from '@/components/ui/stats-donut-lazy'
 import { STATS_DONUT_COLOR_TOKENS, type StatsDonutSlice } from '@/components/ui/stats-donut-tokens'
 
 /* Hallmark · component: video-stats-summary · theme: studied-DNA (Ink & Signal)

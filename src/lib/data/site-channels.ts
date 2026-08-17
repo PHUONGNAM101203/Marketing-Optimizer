@@ -1,5 +1,6 @@
 import 'server-only'
 
+import { unstable_cache } from 'next/cache'
 import { PROVIDERS, isProviderId, type ProviderId } from '@/lib/domain/providers'
 import { fetchMetaFollowerCount } from '@/lib/providers/meta-discovery'
 import { resolvePageAccessToken } from '@/lib/sync/access-token'
@@ -94,6 +95,50 @@ const splitConnectionsBySnapshot = (
 }
 
 /** Tóm tắt số liệu thật của TỪNG nền tảng — dùng cho lưới thẻ ở trang Kênh. */
+/** Số phút coi follower count còn "đủ mới" trước khi gọi lại Graph API thật
+ * — follower count là một con số dạng "hiển thị tham khảo", không phải chỉ
+ * số cần chính xác tới từng phút. Không cache thì `getChannelSummaries` gọi
+ * Meta Graph API SỐNG trên MỌI lần tải trang Overview/Channels (đã xác nhận
+ * qua điều tra hiệu năng 8/2026 là nguồn trễ tải trang lớn nhất) — cache 5
+ * phút cắt gần hết số lượt gọi đó mà vẫn đủ mới cho một con số hiển thị.
+ */
+const FOLLOWER_COUNT_REVALIDATE_SECONDS = 300
+
+interface MetaFollowerTarget {
+  readonly connectionId: string
+  readonly provider: 'facebook' | 'instagram'
+  readonly externalAccountId: string
+}
+
+/** Tách riêng để `unstable_cache` bọc ĐÚNG phần I/O bên ngoài (gọi Graph API
+ * thật) — không cache phần đọc `connections`/`metrics_daily` phía trên (đã đủ
+ * rẻ, và cache y nguyên response tới tận connection info sẽ làm connection
+ * mới thêm/xoá không phản ánh kịp). `targets` (không phải `siteId` suông)
+ * quyết định luôn cache key qua tham số hàm — connection đổi (thêm/xoá/đổi
+ * external_account_id) tự động ra cache key khác, không cần tự tay bump tag.
+ */
+const fetchMetaFollowerCounts = unstable_cache(
+  async (
+    siteId: string,
+    targets: readonly MetaFollowerTarget[],
+  ): Promise<readonly { readonly provider: 'facebook' | 'instagram'; readonly followerCount: number }[]> => {
+    const admin = createAdminClient()
+    const results = await Promise.all(
+      targets.map(async ({ connectionId, provider, externalAccountId }) => {
+        const tokenResult = await resolvePageAccessToken(admin, connectionId, siteId, provider)
+        if (!tokenResult.ok) return null
+        const followerCount = await fetchMetaFollowerCount(tokenResult.accessToken, externalAccountId)
+        return followerCount === null ? null : { provider, followerCount }
+      }),
+    )
+    return results.filter(
+      (result): result is { provider: 'facebook' | 'instagram'; followerCount: number } => result !== null,
+    )
+  },
+  ['meta-follower-counts'],
+  { revalidate: FOLLOWER_COUNT_REVALIDATE_SECONDS },
+)
+
 export const getChannelSummaries = async (
   siteId: string,
   range: { readonly start: string; readonly end: string },
@@ -191,36 +236,30 @@ export const getChannelSummaries = async (
   // reach/impressions, xem `facebook-metrics.ts`/`meta-metrics.ts`), số
   // người theo dõi là trạng thái NGAY LÚC gọi. Gọi thẳng Graph API cùng cách
   // trang chi tiết kênh đã làm (`getChannelDetail`, xem `fetchMetaFollowerCount`)
-  // thay vì đợi một lượt sync ghi lại — tối đa 2 lượt gọi (Facebook +
-  // Instagram, mỗi site chỉ có tối đa một connection mỗi loại trong thực tế
-  // dù code cộng dồn nếu có nhiều), không đáng kể so với chi phí trang chi
-  // tiết kênh đã chấp nhận. Lỗi ở đây KHÔNG được chặn cả trang Kênh — mỗi
-  // lượt tự nuốt lỗi (xem `fetchMetaFollowerCount`), thiếu follower count chỉ
-  // khiến thẻ thiếu một con số, không phải cả trang trắng.
+  // thay vì đợi một lượt sync ghi lại — cache qua `fetchMetaFollowerCounts`
+  // (5 phút, xem định nghĩa phía trên) thay vì gọi sống mỗi lần tải trang.
+  // Lỗi ở đây KHÔNG được chặn cả trang Kênh — mỗi lượt tự nuốt lỗi (xem
+  // `fetchMetaFollowerCount`), thiếu follower count chỉ khiến thẻ thiếu một
+  // con số, không phải cả trang trắng.
   const metaFollowerConnectionIds = (['facebook', 'instagram'] as const).flatMap(
     (provider) => connectionsByProvider.get(provider) ?? [],
   )
   if (metaFollowerConnectionIds.length > 0) {
-    const admin = createAdminClient()
     const connectionsById = new Map((connections ?? []).map((row) => [row.id, row]))
 
-    const followerResults = await Promise.all(
-      metaFollowerConnectionIds.map(async (connectionId) => {
+    const targets: readonly MetaFollowerTarget[] = metaFollowerConnectionIds
+      .map((connectionId): MetaFollowerTarget | null => {
         const provider = connectionIdToProvider.get(connectionId)
         const connectionRow = connectionsById.get(connectionId)
         if (provider !== 'facebook' && provider !== 'instagram') return null
         if (!connectionRow?.external_account_id) return null
+        return { connectionId, provider, externalAccountId: connectionRow.external_account_id }
+      })
+      .filter((target): target is MetaFollowerTarget => target !== null)
 
-        const tokenResult = await resolvePageAccessToken(admin, connectionId, siteId, provider)
-        if (!tokenResult.ok) return null
-
-        const followerCount = await fetchMetaFollowerCount(tokenResult.accessToken, connectionRow.external_account_id)
-        return followerCount === null ? null : { provider, followerCount }
-      }),
-    )
+    const followerResults = targets.length > 0 ? await fetchMetaFollowerCounts(siteId, targets) : []
 
     for (const result of followerResults) {
-      if (!result) continue
       const current = summaries.get(result.provider) as ChannelSummary
       summaries.set(result.provider, {
         ...current,
