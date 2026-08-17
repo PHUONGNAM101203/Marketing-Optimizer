@@ -124,7 +124,14 @@ export default async function AgentsPage({
         </Callout>
       ) : null}
 
-      <ApprovalQueue siteId={site.id} initialActions={awaitingApproval} agentIdByRunId={agentIdByRunId} />
+      {/* `key={site.id}` ép mount lại mỗi khi đổi site — `ApprovalQueue` chụp
+          `initialActions` một lần vào `useState` lúc mount (xem comment trong
+          component đó); không có key này, một điều hướng client-side thẳng từ
+          trang /agents của site này sang site khác (không xảy ra qua bất kỳ
+          đường điều hướng nào hiện có, nhưng rẻ để chặn trước) có thể tái dùng
+          cùng instance component và lộ danh sách chờ duyệt CŨ của site A dưới
+          giao diện site B. */}
+      <ApprovalQueue key={site.id} siteId={site.id} initialActions={awaitingApproval} agentIdByRunId={agentIdByRunId} />
 
       <section className="flex flex-col gap-4">
         <SectionHead label="Đội hình" title="Agent đã cấu hình" />
