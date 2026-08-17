@@ -156,7 +156,13 @@ export async function GET(request: NextRequest) {
 
     // Không await tuần tự từng agent — mỗi agent có thể mất nhiều lượt gọi
     // Claude, giữ cron chờ hết tất cả sẽ dễ chạm timeout của chính cron route.
-    after(() => runAgent(agent.id, 'schedule'))
+    after(() =>
+      runAgent(agent.id, 'schedule').catch((error) => {
+        console.error(
+          `Không chạy được agent ${agent.id}: ${error instanceof Error ? error.message : String(error)}`,
+        )
+      }),
+    )
     agentsScheduled += 1
   }
 
