@@ -269,6 +269,7 @@ export type Database = {
           api_key_enc: string
           created_at: string
           created_by: string | null
+          model: string
           provider: string
           site_id: string
           updated_at: string
@@ -277,6 +278,7 @@ export type Database = {
           api_key_enc: string
           created_at?: string
           created_by?: string | null
+          model?: string
           provider?: string
           site_id: string
           updated_at?: string
@@ -285,6 +287,7 @@ export type Database = {
           api_key_enc?: string
           created_at?: string
           created_by?: string | null
+          model?: string
           provider?: string
           site_id?: string
           updated_at?: string
