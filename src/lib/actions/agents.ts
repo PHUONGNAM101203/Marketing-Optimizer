@@ -4,7 +4,7 @@ import { after } from 'next/server'
 import { revalidatePath } from 'next/cache'
 import { createAgent, setAgentEnabled, decidePendingAction } from '@/lib/data/agents'
 import { runAgent } from '@/lib/agents/run-agent'
-import { getCurrentUser } from '@/lib/supabase/server'
+import { getCurrentUser, createClient } from '@/lib/supabase/server'
 import type { Agent, AgentRole, AgentSchedule, AgentTool } from '@/lib/domain/agent'
 
 const requireUserId = async (): Promise<string> => {
@@ -62,9 +62,27 @@ export const toggleAgentEnabledAction = async (siteId: string, agentId: string, 
  * nhất (vì `createRun` bên trong `runAgent` chỉ chạy sau khi response đã
  * trả) — chấp nhận được, cùng kiểu "eventually consistent" như mọi async
  * action khác trong app này.
+ *
+ * `runAgent` tự đọc mọi thứ qua admin client (không có phiên trong `after()`,
+ * xem comment ở `run-agent.ts`) nên RLS không chặn được gì ở đó — phải kiểm
+ * quyền owner/admin trên chính `site_id` thật của agent NGAY TẠI ĐÂY, trước
+ * khi giao việc cho `after()`. Đọc `agents` qua client phiên người dùng (có
+ * RLS `is_site_member`) trước, rồi mới kiểm role — không tin `agentId` do
+ * client gửi lên trỏ đúng site nào, phải tự tra ra `site_id` thật.
  */
 export const runAgentNowAction = async (siteId: string, agentId: string): Promise<void> => {
   await requireUserId()
+
+  const supabase = await createClient()
+  const { data: agent } = await supabase.from('agents').select('site_id').eq('id', agentId).maybeSingle()
+  if (!agent) throw new Error('Không tìm thấy agent.')
+
+  const { data: isAdmin } = await supabase.rpc('has_site_role', {
+    target_site: agent.site_id,
+    allowed: ['owner', 'admin'],
+  })
+  if (!isAdmin) throw new Error('Chỉ chủ sở hữu hoặc quản trị viên mới chạy được agent.')
+
   after(() => runAgent(agentId, 'manual'))
   revalidatePath(`/${siteId}/agents`)
 }
