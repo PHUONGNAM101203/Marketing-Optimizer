@@ -1,8 +1,8 @@
 import 'server-only'
 
-import { callAnthropic } from './anthropic'
-import { callOpenAi } from './openai'
-import { callGemini } from './gemini'
+import { callAnthropic, listAnthropicModels } from './anthropic'
+import { callOpenAi, listOpenAiModels } from './openai'
+import { callGemini, listGeminiModels } from './gemini'
 import type { AiCallParams, AiCallResult, AiContentPart, AiProvider } from './ai-types'
 
 export type { AiProvider, AiContentPart, AiMessage, AiToolDefinition, AiCallResult } from './ai-types'
@@ -32,3 +32,12 @@ export const extractText = (result: AiCallResult): string =>
     .filter((part): part is Extract<AiContentPart, { type: 'text' }> => part.type === 'text')
     .map((part) => part.text)
     .join('\n')
+
+/** Dùng bởi UI Cài đặt (nút "Tải danh sách model") và cron (làm mới cache) —
+ * không phải đường Prompt Studio/Agents dùng để CHẠY, chỉ để LIỆT KÊ model
+ * khả dụng. */
+export const listAvailableModels = async (provider: AiProvider, apiKey: string): Promise<readonly string[]> => {
+  if (provider === 'anthropic') return listAnthropicModels(apiKey)
+  if (provider === 'openai') return listOpenAiModels(apiKey)
+  return listGeminiModels(apiKey)
+}
