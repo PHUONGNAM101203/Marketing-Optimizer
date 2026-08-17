@@ -231,9 +231,24 @@ export const getRun = async (runId: string): Promise<AgentRun | null> => {
   return run ?? null
 }
 
+/** Trần số `agent_runs` gần nhất xét tới khi tìm hành động chờ duyệt — một
+ * hành động chờ duyệt CHỈ có thể sinh ra từ một run vừa mới dừng lại chờ
+ * người dùng quyết (xem bất biến an toàn ở `run-agent.ts`), nên run nào quá
+ * cũ gần như chắc chắn đã được quyết hoặc không còn ai quan tâm. Vài trăm run
+ * gần nhất là dư sức cho cả hàng đợi "chờ duyệt" thật lẫn lịch sử đã quyết mà
+ * `agents/page.tsx` còn hiển thị — tránh việc `.in('run_id', …)` phình theo
+ * toàn bộ lịch sử run của Site không giới hạn.
+ */
+const RECENT_RUNS_FOR_PENDING_ACTIONS = 300
+
 export const listPendingActionsForSite = async (siteId: string): Promise<readonly PendingAction[]> => {
   const supabase = await createClient()
-  const { data: runRows, error: runsError } = await supabase.from('agent_runs').select('id').eq('site_id', siteId)
+  const { data: runRows, error: runsError } = await supabase
+    .from('agent_runs')
+    .select('id')
+    .eq('site_id', siteId)
+    .order('started_at', { ascending: false })
+    .limit(RECENT_RUNS_FOR_PENDING_ACTIONS)
   if (runsError) throw new Error(`Không đọc được danh sách lượt chạy: ${runsError.message}`)
   const runIds = (runRows ?? []).map((r) => r.id)
   if (runIds.length === 0) return []
