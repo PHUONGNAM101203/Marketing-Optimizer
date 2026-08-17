@@ -273,27 +273,33 @@ export type Database = {
       site_ai_keys: {
         Row: {
           api_key_enc: string
+          available_models: Json
           created_at: string
           created_by: string | null
           model: string
+          models_fetched_at: string | null
           provider: string
           site_id: string
           updated_at: string
         }
         Insert: {
           api_key_enc: string
+          available_models?: Json
           created_at?: string
           created_by?: string | null
           model?: string
+          models_fetched_at?: string | null
           provider?: string
           site_id: string
           updated_at?: string
         }
         Update: {
           api_key_enc?: string
+          available_models?: Json
           created_at?: string
           created_by?: string | null
           model?: string
+          models_fetched_at?: string | null
           provider?: string
           site_id?: string
           updated_at?: string
