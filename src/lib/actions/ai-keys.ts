@@ -3,6 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import { encrypt } from '@/lib/crypto'
+import { siteAnthropicApiKeyConfigured } from '@/lib/data/site-ai-keys'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient, getCurrentUser } from '@/lib/supabase/server'
 
@@ -69,14 +70,9 @@ export async function saveSiteAiKeyAction(
   if (!apiKey) {
     // Trống + đã có key trước đó = không đổi gì, coi như thành công (không
     // báo lỗi "bắt buộc" cho một field mà UI hiển thị đã cấu hình).
-    const { data: existing } = await admin
-      .from('site_ai_keys')
-      .select('site_id')
-      .eq('site_id', siteId)
-      .eq('provider', 'anthropic')
-      .maybeSingle()
+    const alreadyConfigured = await siteAnthropicApiKeyConfigured(siteId)
 
-    if (!existing) {
+    if (!alreadyConfigured) {
       return { error: 'Claude API Key bắt buộc ở lần thiết lập đầu tiên.', success: false }
     }
 
