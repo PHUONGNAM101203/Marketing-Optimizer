@@ -12,9 +12,9 @@ import {
   type GtmExplore,
   type YoutubeExplore,
 } from '@/lib/providers/google-explore'
-import type { VideoTrendingResult } from '@/lib/providers/video-trending-types'
+import type { VideoSummary, VideoTrendingResult } from '@/lib/providers/video-trending-types'
 import type { ContentTrendingResult } from '@/lib/providers/content-trending-types'
-import { getTiktokVideoTrending } from '@/lib/data/video-trending'
+import { getTiktokVideoTrending, getTiktokVideoRangeStats } from '@/lib/data/video-trending'
 import { getContentTrending } from '@/lib/data/content-trending'
 import { fetchGoogleAdsCampaignMetrics } from '@/lib/providers/google-ads'
 import {
@@ -162,6 +162,13 @@ export type ChannelDetail =
       readonly avatarUrl: string | null
       readonly data: TiktokExplore
       readonly trending: VideoTrendingResult
+      /** Tăng trưởng views/likes/comments/shares TRONG khoảng ngày đang chọn,
+       * tính từ snapshot đã lưu (`video_metrics_daily`) — KHÁC `data.topVideos`
+       * (20 video gần nhất từ Display API, lọc theo ngày ĐĂNG chứ không phải
+       * "có hoạt động trong khoảng"). Dùng cho Dashboard tab (bảng xếp hạng +
+       * biểu đồ tổng quan tương tác); `data.topVideos` vẫn dùng riêng cho tab
+       * Tổng quan (duyệt video thô, không cần chính xác theo khoảng ngày). */
+      readonly rangeStats: readonly VideoSummary[]
     }
   | {
       readonly kind: 'facebook'
@@ -326,18 +333,21 @@ export const getChannelDetail = async (
       }
     }
     case 'tiktok': {
-      // `Promise.all` chứ không await nối tiếp: hai lượt đọc độc lập nhau,
+      // `Promise.all` chứ không await nối tiếp: ba lượt đọc độc lập nhau,
       // chạy song song thì TTFB của trang chi tiết kênh bằng lượt chậm hơn
-      // thay vì bằng tổng hai lượt.
-      const [data, trending] = await Promise.all([
+      // thay vì bằng tổng ba lượt.
+      const [data, trending, rangeStats] = await Promise.all([
         // Không truyền `externalAccountId` — Display API không có khái niệm
         // "chọn tài khoản", token đã gắn chết với đúng một tài khoản rồi.
         fetchTiktokContentExplore(tokenResult.accessToken, range),
         // Không truyền `range` — trending có 3 cửa sổ cố định riêng, độc lập
         // với khoảng ngày trang đang chọn (xem Task 4/5 trong plan này).
         getTiktokVideoTrending(connection.id),
+        // Đọc riêng từ snapshot đã lưu, không phải `data.topVideos` — xem
+        // docblock `rangeStats` trên `ChannelDetail`.
+        getTiktokVideoRangeStats(connection.id, range),
       ])
-      return { kind: 'tiktok', accountName, externalAccountId, avatarUrl, data, trending }
+      return { kind: 'tiktok', accountName, externalAccountId, avatarUrl, data, trending, rangeStats }
     }
     case 'instagram': {
       // `Promise.all` chứ không await nối tiếp: hai lượt đọc độc lập nhau,

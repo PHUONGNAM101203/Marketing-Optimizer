@@ -410,7 +410,7 @@ export function ChannelDetailBody({
               label: 'Dashboard',
               panel: (
                 <TiktokDashboard
-                  topVideosInRange={detail.data.topVideos}
+                  rangeStats={detail.rangeStats}
                   trending={detail.trending}
                   rangeLabel={DATE_RANGE_LABELS[preset]}
                 />

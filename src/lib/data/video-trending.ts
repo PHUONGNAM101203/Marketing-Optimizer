@@ -145,3 +145,75 @@ export const getTiktokVideoTrending = async (connectionId: string): Promise<Vide
 
   return { topAllTime, trendingFast, earliestSnapshotAt, latestSnapshotAt }
 }
+
+interface VideoRangeRow {
+  readonly external_video_id: string
+  readonly title: string | null
+  readonly cover_image_url: string | null
+  readonly end_date: string
+  readonly end_views: number
+  readonly end_likes: number
+  readonly end_comments: number
+  readonly end_shares: number
+  readonly baseline_date: string | null
+  readonly baseline_views: number | null
+  readonly baseline_likes: number | null
+  readonly baseline_comments: number | null
+  readonly baseline_shares: number | null
+}
+
+/** Trần trên số video trả về từ `getTiktokVideoRangeStats` — trang chỉ cần
+ * top 5 (`RANKING_LIMIT` ở `TiktokDashboard`), giữ dư một chút cùng quy ước
+ * `MAX_TOP_ALL_TIME`. */
+const MAX_RANGE_RESULTS = 50
+
+/**
+ * Số liệu "trong khoảng ngày đang chọn" cho TikTok, tính từ snapshot đã lưu
+ * (`video_metrics_daily`) thay vì lọc 20-video-gần-nhất từ Display API theo
+ * ngày đăng — xem docblock migration `get_video_range_snapshots` để hiểu lý
+ * do cách cũ trả rỗng cho video cũ vẫn còn hoạt động trong khoảng ngày chọn.
+ *
+ * `views`/`likes`/`comments`/`shares` trả về ở đây là TĂNG TRƯỞNG trong
+ * khoảng (end - baseline), KHÔNG PHẢI tổng cộng dồn như `topAllTime` — âm do
+ * TikTok tự điều chỉnh ngược số đếm bị kẹp về 0 (`Math.max`) thay vì hiện số
+ * âm gây khó hiểu. Video không có tăng trưởng views nào trong khoảng (bằng
+ * 0) bị loại khỏi kết quả — "video xem nhiều nhất trong khoảng ngày" mà
+ * tăng trưởng 0 thì không có ý nghĩa xếp hạng.
+ */
+export const getTiktokVideoRangeStats = async (
+  connectionId: string,
+  range: { readonly startDate: string; readonly endDate: string },
+): Promise<readonly VideoSummary[]> => {
+  const supabase = await createClient()
+  const { data, error } = await supabase.rpc('get_video_range_snapshots', {
+    p_connection_id: connectionId,
+    p_range_start: range.startDate,
+    p_range_end: range.endDate,
+  })
+
+  // Không throw — cùng lý do `getTiktokVideoTrending`: một phần lỗi không
+  // được sập cả trang chi tiết kênh, log để phân biệt "lỗi thật" với "chưa
+  // có dữ liệu" (hai trạng thái giống hệt nhau nếu không log).
+  if (error) {
+    console.error(`Không đọc được số liệu TikTok trong khoảng ngày (connection ${connectionId}): ${error.message}`)
+    return []
+  }
+
+  const rows = (data ?? []) as readonly VideoRangeRow[]
+
+  return rows
+    .map(
+      (row): VideoSummary => ({
+        externalVideoId: row.external_video_id,
+        title: row.title ?? '(không có chú thích)',
+        thumbnailUrl: row.cover_image_url,
+        views: Math.max(0, row.end_views - (row.baseline_views ?? 0)),
+        likes: Math.max(0, row.end_likes - (row.baseline_likes ?? 0)),
+        comments: Math.max(0, row.end_comments - (row.baseline_comments ?? 0)),
+        shares: Math.max(0, row.end_shares - (row.baseline_shares ?? 0)),
+      }),
+    )
+    .filter((summary) => summary.views > 0)
+    .sort((a, b) => b.views - a.views)
+    .slice(0, MAX_RANGE_RESULTS)
+}

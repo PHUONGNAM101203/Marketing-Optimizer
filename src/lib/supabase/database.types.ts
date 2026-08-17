@@ -761,6 +761,28 @@ export type Database = {
           cutoff2_score: number | null
         }[]
       }
+      get_video_range_snapshots: {
+        Args: {
+          p_connection_id: string
+          p_range_start: string
+          p_range_end: string
+        }
+        Returns: {
+          external_video_id: string
+          title: string | null
+          cover_image_url: string | null
+          end_date: string
+          end_views: number
+          end_likes: number
+          end_comments: number
+          end_shares: number
+          baseline_date: string | null
+          baseline_views: number | null
+          baseline_likes: number | null
+          baseline_comments: number | null
+          baseline_shares: number | null
+        }[]
+      }
       get_video_trending_snapshots: {
         Args: {
           p_connection_id: string

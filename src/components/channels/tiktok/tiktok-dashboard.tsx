@@ -2,41 +2,43 @@ import { SectionHead } from '@/components/ui/card'
 import { VideoRankingList, type VideoRankingItem } from '@/components/channels/video/video-ranking-list'
 import { VideoTrendingWidget } from '@/components/channels/video/video-trending-widget'
 import { VideoStatsSummary } from '@/components/channels/video/video-stats-summary'
-import type { TiktokVideoCardData } from './tiktok-video-grid'
-import type { VideoTrendingResult } from '@/lib/providers/video-trending-types'
+import type { VideoSummary, VideoTrendingResult } from '@/lib/providers/video-trending-types'
 
 const RANKING_LIMIT = 5
 
 /* Hallmark · component: tiktok-dashboard · theme: studied-DNA (Ink & Signal)
  *
- * Bốn widget độc lập, không có widget nào tự fetch gì thêm — `topVideosInRange`
+ * Bốn widget độc lập, không có widget nào tự fetch gì thêm — `rangeStats`
  * và `trending` đều đã có sẵn trên `detail` trước khi trang này render (xem
  * getChannelDetail's `case 'tiktok'`), tab chỉ là chế độ hiển thị khác đi.
  *
- * `rankedAllTime` (nguồn `video_metrics_daily` snapshot) CHƯA có
- * `createdAt`/`permalinkUrl` — bảng đó chưa lưu link gốc, khác
- * `rankedInRange` (nguồn Display API live, đã có `shareUrl`/`createdAt` sẵn)
- * — `VideoDetailDialog` tự ẩn nút link khi `permalinkUrl` null, không phải
- * lỗi hiển thị.
+ * `rangeStats` đọc từ snapshot đã lưu (`video_metrics_daily`), KHÔNG PHẢI
+ * `detail.data.topVideos` (Display API live, 20 video gần nhất lọc theo NGÀY
+ * ĐĂNG) — cách cũ trả rỗng cho mọi video cũ hơn 20-video-gần-nhất dù video đó
+ * vẫn còn hoạt động trong khoảng ngày chọn (xem docblock `rangeStats` trên
+ * `ChannelDetail`). Vì vậy cả `rankedInRange` lẫn `rankedAllTime` đều thiếu
+ * `createdAt`/`permalinkUrl` — bảng snapshot chưa lưu link gốc —
+ * `VideoDetailDialog` tự ẩn nút link khi `permalinkUrl` null, không phải lỗi
+ * hiển thị.
  */
 export function TiktokDashboard({
-  topVideosInRange,
+  rangeStats,
   trending,
   rangeLabel,
 }: {
-  readonly topVideosInRange: readonly TiktokVideoCardData[]
+  readonly rangeStats: readonly VideoSummary[]
   readonly trending: VideoTrendingResult
   readonly rangeLabel: string
 }) {
-  const rankedInRange: VideoRankingItem[] = topVideosInRange.slice(0, RANKING_LIMIT).map((video) => ({
+  const rankedInRange: VideoRankingItem[] = rangeStats.slice(0, RANKING_LIMIT).map((video) => ({
     title: video.title,
-    thumbnailUrl: video.coverImageUrl,
+    thumbnailUrl: video.thumbnailUrl,
     views: video.views,
     likes: video.likes,
     comments: video.comments,
     shares: video.shares,
-    createdAt: video.createdAt,
-    permalinkUrl: video.shareUrl,
+    createdAt: null,
+    permalinkUrl: null,
   }))
   const rankedAllTime: VideoRankingItem[] = trending.topAllTime.slice(0, RANKING_LIMIT).map((video) => ({
     title: video.title,
@@ -75,7 +77,13 @@ export function TiktokDashboard({
 
       <section className="flex flex-col gap-3">
         <SectionHead label="Tổng quan tương tác" title={`Thống kê — ${rangeLabel}`} />
-        <VideoStatsSummary videos={topVideosInRange} />
+        <VideoStatsSummary
+          videos={rangeStats.map((video) => ({
+            likes: video.likes,
+            comments: video.comments,
+            shares: video.shares ?? 0,
+          }))}
+        />
       </section>
     </div>
   )

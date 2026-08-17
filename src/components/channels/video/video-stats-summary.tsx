@@ -1,10 +1,12 @@
-import { Card } from '@/components/ui/card'
-import { formatNumber } from '@/lib/format'
+import { STATS_DONUT_COLOR_TOKENS, StatsDonut, type StatsDonutSlice } from '@/components/ui/stats-donut'
 
 /* Hallmark · component: video-stats-summary · theme: studied-DNA (Ink & Signal)
  *
- * Dùng chung cho TikTok/YouTube (chuyển từ `tiktok-stats-summary.tsx` cũ,
- * chỉ đổi tên + tổng quát hoá kiểu tham số — logic giữ nguyên).
+ * Dùng chung cho TikTok/YouTube — donut giống hệt `MetaStatsSummary`
+ * (Facebook/Instagram), cả hai đều vẽ qua `StatsDonut` dùng chung (xem
+ * `src/components/ui/stats-donut.tsx`), thay cho 3 ô lưới cũ. Khác Meta:
+ * TikTok/YouTube luôn có field `shares` dạng số (không `null` như Instagram
+ * media), nên luôn hiện đủ 3 lát — không cần cờ `showShares`.
  */
 export function VideoStatsSummary({
   videos,
@@ -20,27 +22,18 @@ export function VideoStatsSummary({
     { likes: 0, comments: 0, shares: 0 },
   )
 
-  return (
-    <div className="grid grid-cols-3 gap-3">
-      <SummaryTile label="Tổng lượt thích" value={totals.likes} />
-      <SummaryTile label="Tổng bình luận" value={totals.comments} />
-      <SummaryTile label="Tổng chia sẻ" value={totals.shares} />
-    </div>
-  )
-}
+  const slices: readonly StatsDonutSlice[] = [
+    { key: 'likes', label: 'Lượt thích', value: totals.likes, colorToken: STATS_DONUT_COLOR_TOKENS[0] },
+    { key: 'comments', label: 'Bình luận', value: totals.comments, colorToken: STATS_DONUT_COLOR_TOKENS[1] },
+    { key: 'shares', label: 'Chia sẻ', value: totals.shares, colorToken: STATS_DONUT_COLOR_TOKENS[2] },
+  ]
 
-function SummaryTile({ label, value }: { readonly label: string; readonly value: number }) {
   return (
-    <Card className="flex flex-col gap-1 p-4">
-      <p className="text-[length:var(--text-2xs)] tracking-[var(--tracking-label)] text-[var(--color-ink-3)] uppercase">
-        {label}
-      </p>
-      <p
-        data-numeric
-        className="text-[length:var(--text-2xl)] leading-[var(--leading-tight)] font-semibold tracking-[var(--tracking-tight)] text-[var(--color-ink)]"
-      >
-        {formatNumber(value)}
-      </p>
-    </Card>
+    <StatsDonut
+      slices={slices}
+      totalLabel="tổng tương tác"
+      emptyTitle="Chưa có tương tác"
+      emptyDescription="Chưa có đủ dữ liệu trong khoảng ngày này để vẽ biểu đồ."
+    />
   )
 }
