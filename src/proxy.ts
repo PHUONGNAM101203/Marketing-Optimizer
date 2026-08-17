@@ -10,7 +10,28 @@ import { NextResponse, type NextRequest } from 'next/server'
  * trước khi trang render.
  */
 
-const PUBLIC_PREFIXES = ['/sign-in', '/sign-up', '/auth', '/_next', '/favicon', '/privacy', '/terms']
+/**
+ * `/api/cron` PHẢI ở đây: Vercel Cron gọi route này server-to-server, không
+ * kèm cookie phiên đăng nhập nào — thiếu ngoại lệ này thì `user` luôn `null`,
+ * proxy redirect thẳng sang `/sign-in` TRƯỚC KHI request chạm tới code kiểm
+ * tra `CRON_SECRET` trong route handler, khiến cron "chạy" (Vercel thấy
+ * response 307, không phải lỗi) nhưng không đồng bộ được gì — đúng bug thật
+ * đã xảy ra (`/api/cron/sync-all` không cập nhật `last_synced_at` của bất kỳ
+ * connection nào suốt nhiều ngày, xác nhận qua Vercel Observability: 0 lượt
+ * gọi trong khung giờ lịch chạy). Route tự xác thực bằng header
+ * `Authorization: Bearer $CRON_SECRET` (xem route handler), không cần —
+ * và không thể có — phiên Supabase.
+ */
+const PUBLIC_PREFIXES = [
+  '/sign-in',
+  '/sign-up',
+  '/auth',
+  '/_next',
+  '/favicon',
+  '/privacy',
+  '/terms',
+  '/api/cron',
+]
 
 export async function proxy(request: NextRequest) {
   let response = NextResponse.next({ request })
