@@ -113,3 +113,19 @@ export const callAnthropic = async (params: AiCallParams): Promise<AiCallResult>
     model: message.model,
   }
 }
+
+/**
+ * Danh sách model THẬT mà API Key này gọi được — dùng cho dropdown chọn
+ * model ở UI Cài đặt, KHÔNG hardcode danh sách. Anthropic trả về model MỚI
+ * NHẤT trước (`client.models.list()` tự phân trang qua async iteration,
+ * không cần vòng lặp cursor thủ công) — giữ nguyên thứ tự đó cho dropdown
+ * (model mới nhất lên đầu), không sắp lại theo alphabet.
+ */
+export const listAnthropicModels = async (apiKey: string): Promise<readonly string[]> => {
+  const client = getClient(apiKey)
+  const ids: string[] = []
+  for await (const model of client.models.list()) {
+    ids.push(model.id)
+  }
+  return ids
+}
