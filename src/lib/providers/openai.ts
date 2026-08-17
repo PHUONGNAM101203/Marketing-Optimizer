@@ -119,3 +119,24 @@ export const callOpenAi = async (params: AiCallParams): Promise<AiCallResult> =>
     model: response.model,
   }
 }
+
+/**
+ * `client.models.list()` trả về MỌI model API Key gọi được — trộn chung
+ * model chat/agentic với embedding, dall-e (ảnh), whisper/tts (âm thanh),
+ * moderation, và các model cũ (davinci/babbage/curie/ada). OpenAI KHÔNG có
+ * field phân loại "chat-capable" trên response — lọc bằng pattern loại trừ
+ * tên model là cách khả thi duy nhất hiện tại (xem nghiên cứu 8/2026), CHƯA
+ * verify với key thật, cần đối chiếu nếu danh sách hiện ra sai/thiếu.
+ */
+const NON_CHAT_MODEL_PATTERN = /embedding|dall-e|whisper|tts|moderation|davinci|babbage|curie|^ada-|search-|similarity/i
+
+export const listOpenAiModels = async (apiKey: string): Promise<readonly string[]> => {
+  const client = getClient(apiKey)
+  const ids: string[] = []
+  for await (const model of client.models.list()) {
+    if (!NON_CHAT_MODEL_PATTERN.test(model.id)) ids.push(model.id)
+  }
+  // OpenAI không công bố thứ tự trả về (khác Anthropic) — sắp alphabet cho
+  // dropdown ổn định, dễ tìm.
+  return ids.sort()
+}
