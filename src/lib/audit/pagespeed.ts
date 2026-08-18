@@ -30,9 +30,12 @@ import type { PageSpeedResult, PageSpeedStrategy, PageSpeedStrategyResult } from
 const PSI_ENDPOINT = 'https://www.googleapis.com/pagespeedonline/v5/runPagespeed'
 // Chạy SONG SONG với crawl (tới 240s, xem `actions/audit.ts::performAuditScan`)
 // từ 17/8/2026 — không còn tranh chấp thời gian với phần crawl/PSI tuần tự
-// như trước, nên nới rộng từ 45s lên 90s cho các trang nặng/Lighthouse chậm,
-// vẫn nằm gọn trong ngân sách 240s.
-const PSI_TIMEOUT_MS = 90_000
+// như trước. Nới từ 45s lên 90s rồi 120s (site rất nặng đo được thật, 8/2026:
+// handdn.com desktop mất ~30s CHẠY RIÊNG LẺ nhưng vẫn timeout khi chạy đồng
+// thời với crawl 1182 trang — Node đơn luồng, JSON.parse ~1MB response PSI
+// cạnh tranh CPU với việc parse HTML của crawl, không phải lỗi mạng). Vẫn
+// nằm gọn trong ngân sách 240s của crawl.
+const PSI_TIMEOUT_MS = 120_000
 
 /** `null` khi biến môi trường chưa được đặt — dùng để quyết định có gọi PSI
  * hay không (không âm thầm gọi thiếu key rồi nuốt lỗi). */
