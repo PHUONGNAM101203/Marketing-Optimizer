@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import type { ReactNode } from 'react'
 import { ChevronLeft } from 'lucide-react'
 import { ChannelAvatar } from '@/components/channels/channel-avatar'
 import { ExternalChannelLink } from '@/components/connections/external-channel-link'
@@ -32,11 +33,13 @@ export function MetaChannelHeader({
   detail,
   connected,
   dateRangeLabel,
+  channelSwitcher,
 }: {
   readonly siteId: string
   readonly detail: Extract<ChannelDetail, { readonly kind: 'facebook' | 'instagram' }>
   readonly connected: boolean
   readonly dateRangeLabel: string
+  readonly channelSwitcher?: ReactNode
 }) {
   const stats = [
     { label: 'Người theo dõi', value: detail.followerCount },
@@ -78,12 +81,15 @@ export function MetaChannelHeader({
           <p className="text-[length:var(--text-sm)] text-[var(--color-ink-3)]">{dateRangeLabel}</p>
         </div>
 
-        <ExternalChannelLink
-          provider={detail.kind}
-          externalAccountId={detail.externalAccountId}
-          variant="secondary"
-          size="md"
-        />
+        <div className="flex flex-col items-end gap-2">
+          {channelSwitcher}
+          <ExternalChannelLink
+            provider={detail.kind}
+            externalAccountId={detail.externalAccountId}
+            variant="secondary"
+            size="md"
+          />
+        </div>
       </div>
     </div>
   )

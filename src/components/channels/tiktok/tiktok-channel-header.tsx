@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import type { ReactNode } from 'react'
 import { ChevronLeft } from 'lucide-react'
 import { ChannelAvatar } from '@/components/channels/channel-avatar'
 import { ExternalChannelLink } from '@/components/connections/external-channel-link'
@@ -22,12 +23,14 @@ export function TiktokChannelHeader({
   dailySeries,
   connected,
   dateRangeLabel,
+  channelSwitcher,
 }: {
   readonly siteId: string
   readonly detail: Extract<ChannelDetail, { readonly kind: 'tiktok' }>
   readonly dailySeries: readonly ChannelDailyPoint[]
   readonly connected: boolean
   readonly dateRangeLabel: string
+  readonly channelSwitcher?: ReactNode
 }) {
   const latest = dailySeries.length > 0 ? dailySeries[dailySeries.length - 1] : null
   const latestExtra = latest?.extra ?? {}
@@ -67,12 +70,15 @@ export function TiktokChannelHeader({
           <p className="text-[length:var(--text-sm)] text-[var(--color-ink-3)]">{dateRangeLabel}</p>
         </div>
 
-        <ExternalChannelLink
-          provider="tiktok"
-          externalAccountId={detail.externalAccountId}
-          variant="secondary"
-          size="md"
-        />
+        <div className="flex flex-col items-end gap-2">
+          {channelSwitcher}
+          <ExternalChannelLink
+            provider="tiktok"
+            externalAccountId={detail.externalAccountId}
+            variant="secondary"
+            size="md"
+          />
+        </div>
       </div>
     </div>
   )

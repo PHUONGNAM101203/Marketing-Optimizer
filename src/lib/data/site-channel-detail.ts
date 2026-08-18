@@ -68,6 +68,7 @@ export interface MerchantCenterExplore {
 export type ChannelDetail =
   | {
       readonly kind: 'ga4'
+      readonly connectionId: string
       readonly accountName: string
       readonly externalAccountId: string
       /** Ảnh đại diện kênh — lưu một lần lúc kết nối (`connections.avatar_url`),
@@ -78,6 +79,7 @@ export type ChannelDetail =
     }
   | {
       readonly kind: 'gsc'
+      readonly connectionId: string
       readonly accountName: string
       readonly externalAccountId: string
       /** Ảnh đại diện kênh — lưu một lần lúc kết nối (`connections.avatar_url`),
@@ -88,6 +90,7 @@ export type ChannelDetail =
     }
   | {
       readonly kind: 'gtm'
+      readonly connectionId: string
       readonly accountName: string
       readonly externalAccountId: string
       /** Ảnh đại diện kênh — lưu một lần lúc kết nối (`connections.avatar_url`),
@@ -98,6 +101,7 @@ export type ChannelDetail =
     }
   | {
       readonly kind: 'youtube'
+      readonly connectionId: string
       readonly accountName: string
       readonly externalAccountId: string
       /** Ảnh đại diện kênh — lưu một lần lúc kết nối (`connections.avatar_url`),
@@ -109,6 +113,7 @@ export type ChannelDetail =
     }
   | {
       readonly kind: 'google-ads'
+      readonly connectionId: string
       readonly accountName: string
       readonly externalAccountId: string
       /** Ảnh đại diện kênh — lưu một lần lúc kết nối (`connections.avatar_url`),
@@ -119,6 +124,7 @@ export type ChannelDetail =
     }
   | {
       readonly kind: 'merchant-center'
+      readonly connectionId: string
       readonly accountName: string
       readonly externalAccountId: string
       /** Ảnh đại diện kênh — lưu một lần lúc kết nối (`connections.avatar_url`),
@@ -129,6 +135,7 @@ export type ChannelDetail =
     }
   | {
       readonly kind: 'meta-ads'
+      readonly connectionId: string
       readonly accountName: string
       readonly externalAccountId: string
       /** Ảnh đại diện kênh — lưu một lần lúc kết nối (`connections.avatar_url`),
@@ -139,6 +146,7 @@ export type ChannelDetail =
     }
   | {
       readonly kind: 'instagram'
+      readonly connectionId: string
       readonly accountName: string
       readonly externalAccountId: string
       /** Ảnh đại diện kênh — lưu một lần lúc kết nối (`connections.avatar_url`),
@@ -154,6 +162,7 @@ export type ChannelDetail =
     }
   | {
       readonly kind: 'tiktok'
+      readonly connectionId: string
       readonly accountName: string
       readonly externalAccountId: string
       /** Ảnh đại diện kênh — lưu một lần lúc kết nối (`connections.avatar_url`),
@@ -172,6 +181,7 @@ export type ChannelDetail =
     }
   | {
       readonly kind: 'facebook'
+      readonly connectionId: string
       readonly accountName: string
       readonly externalAccountId: string
       /** Ảnh đại diện kênh — lưu một lần lúc kết nối (`connections.avatar_url`),
@@ -215,20 +225,67 @@ const groupCampaignRows = (
     .sort((a, b) => b.costMicros - a.costMicros)
 }
 
+/** Danh sách nhẹ mọi connection của một provider trên Site — nguồn dữ liệu
+ * cho `ChannelSwitcher` (dropdown đổi kênh). Sắp theo `connected_at` tăng dần
+ * để kênh kết nối ĐẦU TIÊN luôn đứng đầu, khớp quy ước "mặc định = kênh đầu
+ * tiên" của `getChannelDetail` khi không truyền `connectionId`. */
+export interface ChannelConnectionOption {
+  readonly id: string
+  readonly accountName: string
+  readonly avatarUrl: string | null
+  readonly externalAccountId: string
+}
+
+export const listChannelConnections = async (
+  siteId: string,
+  provider: ProviderId,
+): Promise<readonly ChannelConnectionOption[]> => {
+  const supabase = await createClient()
+  const { data } = await supabase
+    .from('connections')
+    .select('id, account_name, avatar_url, external_account_id')
+    .eq('site_id', siteId)
+    .eq('provider', provider)
+    .order('connected_at', { ascending: true })
+
+  return (data ?? []).map((row) => ({
+    id: row.id,
+    accountName: row.account_name,
+    avatarUrl: row.avatar_url,
+    externalAccountId: row.external_account_id,
+  }))
+}
+
 export const getChannelDetail = async (
   siteId: string,
   provider: ProviderId,
   range: { readonly startDate: string; readonly endDate: string },
   productFilter?: ProductApprovalStatus,
+  connectionId?: string,
 ): Promise<ChannelDetail | null> => {
   const supabase = await createClient()
-  const { data: connection } = await supabase
-    .from('connections')
-    .select('id, external_account_id, account_name, avatar_url')
-    .eq('site_id', siteId)
-    .eq('provider', provider)
-    .limit(1)
-    .maybeSingle()
+  // Có `connectionId` (từ `?connection=` trên URL) → dùng đúng connection đó,
+  // nhưng vẫn buộc khớp `site_id`+`provider` — chặn việc sửa tay URL để đọc
+  // connection của site/provider khác qua id đoán được. Không có/không khớp
+  // (id lạ, đã bị xoá…) → rơi về connection kết nối ĐẦU TIÊN thay vì hàng bất
+  // kỳ như code cũ (`.limit(1)` không `order`) — coi như không có param, ổn
+  // định và dễ đoán hơn.
+  const baseConnectionSelect = () =>
+    supabase
+      .from('connections')
+      .select('id, external_account_id, account_name, avatar_url')
+      .eq('site_id', siteId)
+      .eq('provider', provider)
+
+  const defaultConnectionQuery = () =>
+    baseConnectionSelect().order('connected_at', { ascending: true }).limit(1).maybeSingle()
+
+  const { data: connection } = connectionId
+    ? await (async () => {
+        const byId = await baseConnectionSelect().eq('id', connectionId).maybeSingle()
+        return byId.data ? byId : defaultConnectionQuery()
+      })()
+    : await defaultConnectionQuery()
 
   if (!connection) return null
   if (!isProviderId(provider)) return { kind: 'unsupported' }
@@ -244,6 +301,7 @@ export const getChannelDetail = async (
       : await resolveAccessToken(admin, connection.id, siteId, provider)
   if (!tokenResult.ok) return { kind: 'unsupported' }
 
+  const resolvedConnectionId = connection.id
   const accountName = connection.account_name
   const externalAccountId = connection.external_account_id
   const avatarUrl = connection.avatar_url
@@ -252,6 +310,7 @@ export const getChannelDetail = async (
     case 'ga4':
       return {
         kind: 'ga4',
+        connectionId: resolvedConnectionId,
         accountName,
         externalAccountId,
         avatarUrl,
@@ -260,6 +319,7 @@ export const getChannelDetail = async (
     case 'gsc':
       return {
         kind: 'gsc',
+        connectionId: resolvedConnectionId,
         accountName,
         externalAccountId,
         avatarUrl,
@@ -268,6 +328,7 @@ export const getChannelDetail = async (
     case 'gtm':
       return {
         kind: 'gtm',
+        connectionId: resolvedConnectionId,
         accountName,
         externalAccountId,
         avatarUrl,
@@ -283,7 +344,7 @@ export const getChannelDetail = async (
         // với khoảng ngày trang đang chọn (xem Task 4/6 trong plan này).
         getYoutubeVideoTrending(tokenResult.accessToken, connection.external_account_id),
       ])
-      return { kind: 'youtube', accountName, externalAccountId, avatarUrl, data, trending }
+      return { kind: 'youtube', connectionId: resolvedConnectionId, accountName, externalAccountId, avatarUrl, data, trending }
     }
     case 'merchant-center': {
       const { products, truncated } = await fetchMerchantCenterProducts(
@@ -293,6 +354,7 @@ export const getChannelDetail = async (
       )
       return {
         kind: 'merchant-center',
+        connectionId: resolvedConnectionId,
         accountName,
         externalAccountId,
         avatarUrl,
@@ -312,6 +374,7 @@ export const getChannelDetail = async (
 
       return {
         kind: 'google-ads',
+        connectionId: resolvedConnectionId,
         accountName,
         externalAccountId,
         avatarUrl,
@@ -326,6 +389,7 @@ export const getChannelDetail = async (
       )
       return {
         kind: 'meta-ads',
+        connectionId: resolvedConnectionId,
         accountName,
         externalAccountId,
         avatarUrl,
@@ -347,7 +411,7 @@ export const getChannelDetail = async (
         // docblock `rangeStats` trên `ChannelDetail`.
         getTiktokVideoRangeStats(connection.id, range),
       ])
-      return { kind: 'tiktok', accountName, externalAccountId, avatarUrl, data, trending, rangeStats }
+      return { kind: 'tiktok', connectionId: resolvedConnectionId, accountName, externalAccountId, avatarUrl, data, trending, rangeStats }
     }
     case 'instagram': {
       // `Promise.all` chứ không await nối tiếp: hai lượt đọc độc lập nhau,
@@ -361,7 +425,7 @@ export const getChannelDetail = async (
         getContentTrending(connection.id, 'instagram'),
         fetchMetaFollowerCount(tokenResult.accessToken, connection.external_account_id),
       ])
-      return { kind: 'instagram', accountName, externalAccountId, avatarUrl, data, trending, followerCount }
+      return { kind: 'instagram', connectionId: resolvedConnectionId, accountName, externalAccountId, avatarUrl, data, trending, followerCount }
     }
     case 'facebook': {
       const [data, trending, followerCount] = await Promise.all([
@@ -369,7 +433,7 @@ export const getChannelDetail = async (
         getContentTrending(connection.id, 'facebook'),
         fetchMetaFollowerCount(tokenResult.accessToken, connection.external_account_id),
       ])
-      return { kind: 'facebook', accountName, externalAccountId, avatarUrl, data, trending, followerCount }
+      return { kind: 'facebook', connectionId: resolvedConnectionId, accountName, externalAccountId, avatarUrl, data, trending, followerCount }
     }
     default:
       return { kind: 'unsupported' }

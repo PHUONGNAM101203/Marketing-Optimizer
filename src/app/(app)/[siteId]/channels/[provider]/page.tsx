@@ -11,8 +11,9 @@ import { ChannelDetailBody } from '@/components/channels/channel-detail-body'
 import { ExternalChannelLink } from '@/components/connections/external-channel-link'
 import { TiktokChannelHeader } from '@/components/channels/tiktok/tiktok-channel-header'
 import { MetaChannelHeader } from '@/components/channels/meta/meta-channel-header'
+import { ChannelSwitcher } from '@/components/channels/channel-switcher'
 import { getSite } from '@/lib/data/sites'
-import { getChannelDetail } from '@/lib/data/site-channel-detail'
+import { getChannelDetail, listChannelConnections } from '@/lib/data/site-channel-detail'
 import { getChannelDailySeries, getChannelSummaries } from '@/lib/data/site-channels'
 import { parseCustomRangeParams, parseRangeParam } from '@/lib/domain/date-range-param'
 import { resolveDateRange } from '@/mock/dates'
@@ -47,10 +48,18 @@ export default async function ChannelDetailPage({
     readonly to?: string
     readonly status?: string
     readonly page?: string
+    readonly connection?: string
   }>
 }) {
   const { siteId, provider } = await params
-  const { range: rangeParam, from, to, status: statusParam, page: pageParam } = await searchParams
+  const {
+    range: rangeParam,
+    from,
+    to,
+    status: statusParam,
+    page: pageParam,
+    connection: connectionParam,
+  } = await searchParams
   const site = await getSite(siteId)
   if (!site || !isProviderId(provider)) notFound()
 
@@ -63,17 +72,36 @@ export default async function ChannelDetailPage({
   const productFilter = statusParam && isProductStatusFilter(statusParam) ? statusParam : undefined
   const page = Math.max(1, Number(pageParam) || 1)
 
-  const [summaries, detail, dailySeries] = await Promise.all([
+  const [summaries, connections] = await Promise.all([
     getChannelSummaries(site.id, range),
+    listChannelConnections(site.id, provider),
+  ])
+  const summary = summaries.get(provider)
+
+  // `?connection=` chỉ đáng tin khi đúng là một trong các connection THẬT của
+  // provider này — id lạ/đã bị xoá thì coi như không có param, để
+  // `getChannelDetail`/`getChannelDailySeries` tự rơi về kênh kết nối đầu
+  // tiên (xem `site-channel-detail.ts`).
+  const validatedConnectionId = connections.some((option) => option.id === connectionParam)
+    ? connectionParam
+    : undefined
+
+  const [detail, dailySeries] = await Promise.all([
     getChannelDetail(
       site.id,
       provider,
       { startDate: range.start, endDate: range.end },
       productFilter,
+      validatedConnectionId,
     ),
-    getChannelDailySeries(site.id, provider, { start: range.start, end: range.end }),
+    getChannelDailySeries(site.id, provider, { start: range.start, end: range.end }, validatedConnectionId),
   ])
-  const summary = summaries.get(provider)
+
+  const activeConnectionId = detail && detail.kind !== 'unsupported' ? detail.connectionId : connections[0]?.id
+  const channelSwitcher =
+    connections.length > 1 && activeConnectionId ? (
+      <ChannelSwitcher provider={provider} connections={connections} activeConnectionId={activeConnectionId} />
+    ) : null
 
   return (
     <PageShell>
@@ -84,6 +112,7 @@ export default async function ChannelDetailPage({
           dailySeries={dailySeries}
           connected={summary?.connected ?? false}
           dateRangeLabel={formatDateRange(range.start, range.end)}
+          channelSwitcher={channelSwitcher}
         />
       ) : (provider === 'facebook' || provider === 'instagram') &&
         detail &&
@@ -93,6 +122,7 @@ export default async function ChannelDetailPage({
           detail={detail}
           connected={summary?.connected ?? false}
           dateRangeLabel={formatDateRange(range.start, range.end)}
+          channelSwitcher={channelSwitcher}
         />
       ) : (
         <div>
@@ -118,12 +148,15 @@ export default async function ChannelDetailPage({
             }
             action={
               detail && detail.kind !== 'unsupported' ? (
-                <ExternalChannelLink
-                  provider={provider}
-                  externalAccountId={detail.externalAccountId}
-                  variant="secondary"
-                  size="md"
-                />
+                <div className="flex items-center gap-2">
+                  {channelSwitcher}
+                  <ExternalChannelLink
+                    provider={provider}
+                    externalAccountId={detail.externalAccountId}
+                    variant="secondary"
+                    size="md"
+                  />
+                </div>
               ) : null
             }
             meta={

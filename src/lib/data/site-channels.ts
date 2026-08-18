@@ -342,22 +342,30 @@ const DAILY_METRICS_COLUMNS =
   'connection_id, date, sessions, users, conversions, clicks, impressions, cost_micros, extra'
 
 /** Chuỗi ngày thật của MỘT nền tảng — dùng vẽ biểu đồ xu hướng ở trang chi
- * tiết kênh. Gộp nhiều connection cùng provider (vd. hai property GA4) vào
- * chung một điểm mỗi ngày thay vì vẽ N đường trùng ý nghĩa. */
+ * tiết kênh. Có `connectionId` (kênh đang chọn trên `ChannelSwitcher`) → chỉ
+ * lấy đúng connection đó, khớp với phần còn lại của trang chi tiết kênh
+ * (`getChannelDetail` cũng đã scope theo đúng connection này). Không truyền
+ * → gộp MỌI connection cùng provider (vd. hai property GA4) vào chung một
+ * điểm mỗi ngày — hành vi cũ, vẫn dùng khi trang chưa biết chọn kênh nào. */
 export const getChannelDailySeries = async (
   siteId: string,
   provider: ProviderId,
   range: { readonly start: string; readonly end: string },
+  connectionId?: string,
 ): Promise<readonly ChannelDailyPoint[]> => {
   const supabase = await createClient()
 
-  const { data: connections } = await supabase
-    .from('connections')
-    .select('id')
-    .eq('site_id', siteId)
-    .eq('provider', provider)
-
-  const connectionIds = (connections ?? []).map((row) => row.id)
+  let connectionIds: readonly string[]
+  if (connectionId) {
+    connectionIds = [connectionId]
+  } else {
+    const { data: connections } = await supabase
+      .from('connections')
+      .select('id')
+      .eq('site_id', siteId)
+      .eq('provider', provider)
+    connectionIds = (connections ?? []).map((row) => row.id)
+  }
   if (connectionIds.length === 0) return []
 
   const upperBound = SNAPSHOT_PROVIDERS.has(provider)

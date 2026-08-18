@@ -222,6 +222,19 @@ export function ConnectPanel({
                           </span>
                         </label>
                       ) : null}
+                      {family.id === 'tiktok' && linked.length > 0 ? (
+                        // TikTok không có tham số ép chọn lại tài khoản (khác
+                        // Google `select_account`) — nếu trình duyệt còn đăng
+                        // nhập TikTok.com từ lần trước, bấm "Thêm tài khoản"
+                        // rất có thể tự dùng lại ĐÚNG tài khoản cũ thay vì cho
+                        // chọn tài khoản khác. App không có cách nào can thiệp
+                        // vào phiên đăng nhập của TikTok.com.
+                        <p className="mb-2 text-[length:var(--text-xs)] text-[var(--color-ink-3)]">
+                          Muốn thêm một kênh TikTok khác? Đăng xuất TikTok.com ở
+                          tab khác trước khi bấm, nếu không sẽ tự nối lại đúng
+                          kênh cũ.
+                        </p>
+                      ) : null}
                       <Button
                         type="submit"
                         variant={linked.length > 0 ? 'secondary' : 'primary'}
