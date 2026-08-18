@@ -10,6 +10,33 @@ import { resolveAiConfig } from '@/lib/data/site-ai-keys'
  * prompt, vì dặn suông đã KHÔNG đủ hiệu lực trên thực tế. */
 const stripCodeFence = (text: string): string => text.trim().replace(/^```(?:json)?\n?/i, '').replace(/```$/, '').trim()
 
+/** Không SDK nào trong 3 provider (`anthropic`/`openai`/`gemini.ts`) tự đặt
+ * timeout — xác nhận thật, 8/2026: đây chính là nguyên nhân audit_runs kẹt ở
+ * `status:'running'` mãi mãi cho site nhiều trang (vd. handdn.com, 1182
+ * trang) mà PSI-crash-fix trước đó KHÔNG chạm tới. `performAuditScan` chỉ bắt
+ * đầu gọi AI (3 lượt qua hàm này) SAU KHI crawl xong (tới `CRAWL_DEADLINE_MS`
+ * = tới 240s), nên một lượt AI treo lâu ăn hết phần ngân sách thời gian còn
+ * lại của route (`maxDuration`) — bị Vercel GIẾT CỨNG giữa chừng, không kịp
+ * chạy tới catch của `callAiForJson` hay `performAuditScan` để ghi `error`
+ * vào DB. Race với timeout ở ĐÂY (một chỗ, thay vì sửa riêng từng SDK) để
+ * luôn có cơ hội rơi về `templateFallback` và ghi xong audit run. */
+const AI_JSON_TIMEOUT_MS = 45_000
+
+const withTimeout = <T>(promise: Promise<T>, timeoutMs: number): Promise<T> =>
+  new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(`AI call timed out after ${timeoutMs}ms`)), timeoutMs)
+    promise.then(
+      (value) => {
+        clearTimeout(timer)
+        resolve(value)
+      },
+      (error: unknown) => {
+        clearTimeout(timer)
+        reject(error instanceof Error ? error : new Error(String(error)))
+      },
+    )
+  })
+
 export interface AiJsonResult<T> {
   /** `'ai'` khi model thật sự sinh được và qua được `validate` — `'template'`
    * khi thiếu key AI, gọi lỗi, hoặc JSON trả về không hợp lệ/không đạt
@@ -37,13 +64,16 @@ export const callAiForJson = async <T>(
   if (!aiConfig) return { source: 'template', data: templateFallback }
 
   try {
-    const result = await callAi({
-      provider: aiConfig.provider,
-      apiKey: aiConfig.apiKey,
-      model: aiConfig.model,
-      systemPrompt: params.systemPrompt,
-      messages: [{ role: 'user', content: [{ type: 'text', text: params.userText }] }],
-    })
+    const result = await withTimeout(
+      callAi({
+        provider: aiConfig.provider,
+        apiKey: aiConfig.apiKey,
+        model: aiConfig.model,
+        systemPrompt: params.systemPrompt,
+        messages: [{ role: 'user', content: [{ type: 'text', text: params.userText }] }],
+      }),
+      AI_JSON_TIMEOUT_MS,
+    )
 
     const rawText = stripCodeFence(extractText(result))
     let parsed: unknown

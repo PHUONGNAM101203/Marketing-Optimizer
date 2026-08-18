@@ -14,6 +14,14 @@ import { formatRelativeTime } from '@/lib/format'
 
 export const metadata = { title: 'Kiểm tra SEO/GEO/AIO/AEO' }
 
+// `runSiteAuditAction` (Server Action gọi từ trang này) chạy `performAuditScan`
+// trong `after()` — quét thật (crawl tới `CRAWL_DEADLINE_MS`) + PSI + gợi ý AI
+// có thể mất tới vài phút cho site nhiều trang (xác nhận thật: handdn.com
+// 1182 trang mất ~238s, 8/2026). Không khai báo `maxDuration` thì Next.js áp
+// giới hạn MẶC ĐỊNH của Vercel cho route này — không đủ. Khai theo đúng trần
+// Fluid Compute trên Hobby (xem `api/cron/sync-all/route.ts`, cùng lý do).
+export const maxDuration = 300
+
 export default async function AuditPage({
   params,
 }: {

@@ -39,7 +39,15 @@ const MAX_PAGES = 5000
 const CONCURRENCY = 20
 const PAGE_TIMEOUT_MS = 10_000
 const MAX_CHILD_SITEMAPS = 50
-const CRAWL_DEADLINE_MS = 240_000
+// Từng là 240_000. Hạ xuống 200s (8/2026) sau khi xác nhận thật crash lặp lại
+// cho site nhiều trang (handdn.com, 1182 trang): route audit khai
+// `maxDuration = 300` (xem `[siteId]/audit/page.tsx`), nhưng PSI + 3 lượt gọi
+// AI gợi ý (từ khoá/prompt mẫu/agent) chỉ bắt đầu SAU KHI crawl xong — hết
+// đúng ngân sách 240s cho crawl không còn đủ dư cho phần còn lại (AI đã bọc
+// timeout 45s riêng, xem `ai-json.ts`), route bị nền tảng giết cứng giữa
+// chừng trước khi kịp ghi lỗi vào DB. 200s + tối đa 45s AI = 245s, còn dư ~55s
+// cho phần overhead của chính request/DB write.
+const CRAWL_DEADLINE_MS = 200_000
 // Liệt kê sitemap chỉ gọi tới `MAX_CHILD_SITEMAPS` request (nhiều nhất vài
 // chục), khác hẳn quét hàng nghìn trang — có thể "hào phóng" hơn: timeout
 // dài hơn và concurrency thấp hơn hẳn `CONCURRENCY`, vì site chậm dễ bị
