@@ -2,9 +2,9 @@
 
 import { redirect } from 'next/navigation'
 import { revalidatePath } from 'next/cache'
-import { headers } from 'next/headers'
 import { z } from 'zod'
 import { createClient } from '@/lib/supabase/server'
+import { getAppOrigin } from '@/lib/http/origin'
 
 /**
  * Server action cho đăng nhập / đăng ký.
@@ -91,7 +91,7 @@ export async function signUp(
   if (!parsed.success) return { error: firstIssue(parsed.error) }
 
   const supabase = await createClient()
-  const origin = (await headers()).get('origin') ?? ''
+  const origin = await getAppOrigin()
 
   const { error } = await supabase.auth.signUp({
     email: parsed.data.email,
