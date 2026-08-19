@@ -304,6 +304,16 @@ const fetchValuesReport = async (
   range: { readonly start: string; readonly end: string },
 ): Promise<KlaviyoValuesOutcome> => {
   const groupKey = `${resource}_id`
+  // Klaviyo BẮT BUỘC group theo cả `{resource}_id` LẪN `{resource}_message_id`
+  // cùng lúc — xác nhận qua docs query_campaign_values/query_flow_values
+  // (8/2026: "The following group by attributes are required: campaign_id,
+  // campaign_message_id" / "...flow_message_id, flow_id"). Một campaign/flow
+  // có thể có nhiều message (A/B test variant), Klaviyo từ chối group chỉ
+  // theo ID cha — gặp lỗi 400 thật khi mới thêm report này ("Grouping by
+  // campaign_message_id is required"). Hệ quả: response trả NHIỀU dòng cho
+  // CÙNG một campaign/flow khi có >1 message — phải cộng dồn lại bên dưới,
+  // không lấy đè dòng cuối lên dòng đầu.
+  const messageGroupKey = `${resource}_message_id`
   const response = await fetch(`${API_BASE}/${resource}-values-reports`, {
     method: 'POST',
     headers: { ...authHeaders(apiKey), 'content-type': 'application/vnd.api+json' },
@@ -314,7 +324,7 @@ const fetchValuesReport = async (
           statistics: STATISTICS,
           timeframe: { start: range.start, end: range.end },
           conversion_metric_id: conversionMetricId,
-          group_by: [groupKey],
+          group_by: [groupKey, messageGroupKey],
         },
       },
     }),
@@ -338,16 +348,30 @@ const fetchValuesReport = async (
         }
       }
     }
-    const rows = (data.data?.attributes?.results ?? [])
-      .filter((row) => Boolean(row.groupings?.[groupKey]))
-      .map((row) => ({
-        groupId: row.groupings?.[groupKey] as string,
-        opens: row.statistics?.opens ?? 0,
-        clicks: row.statistics?.clicks ?? 0,
-        conversions: row.statistics?.conversions ?? 0,
-        conversionValueMicros: Math.round((row.statistics?.conversion_value ?? 0) * 1_000_000),
-        recipients: row.statistics?.recipients ?? 0,
-      }))
+    // Cộng dồn theo `{resource}_id` — mỗi message/variant của cùng một
+    // campaign/flow ra một dòng riêng ở API, nhưng UI hiện MỘT dòng/campaign
+    // (giống bản trước khi group theo message_id trở thành bắt buộc).
+    const aggregated = new Map<string, { opens: number; clicks: number; conversions: number; conversionValueMicros: number; recipients: number }>()
+    for (const row of data.data?.attributes?.results ?? []) {
+      const id = row.groupings?.[groupKey]
+      if (!id) continue
+      const existing = aggregated.get(id) ?? {
+        opens: 0,
+        clicks: 0,
+        conversions: 0,
+        conversionValueMicros: 0,
+        recipients: 0,
+      }
+      aggregated.set(id, {
+        opens: existing.opens + (row.statistics?.opens ?? 0),
+        clicks: existing.clicks + (row.statistics?.clicks ?? 0),
+        conversions: existing.conversions + (row.statistics?.conversions ?? 0),
+        conversionValueMicros:
+          existing.conversionValueMicros + Math.round((row.statistics?.conversion_value ?? 0) * 1_000_000),
+        recipients: existing.recipients + (row.statistics?.recipients ?? 0),
+      })
+    }
+    const rows = [...aggregated.entries()].map(([groupId, stats]) => ({ groupId, ...stats }))
     return { rows, error: null }
   } catch (error) {
     const message = `Trả về 200 nhưng JSON không đọc được: ${error instanceof Error ? error.message : String(error)}`
