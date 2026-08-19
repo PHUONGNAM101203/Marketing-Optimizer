@@ -92,6 +92,24 @@ export interface AgentSchedule {
   readonly dayOfWeek: number | null
 }
 
+/** 0 = Chủ nhật .. 6 = Thứ Bảy, khớp `AgentSchedule.dayOfWeek` và
+ * `Date.getUTCDay()`. */
+export const WEEKDAY_SHORT_LABELS: readonly string[] = ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7']
+
+/** Nhãn đầy đủ cho một lịch chạy — vd. "Hằng tuần · T2 · 8:00". Cron
+ * (`api/cron/sync-hourly/route.ts`) honor đúng `hourOfDay`/`dayOfWeek` theo
+ * múi giờ Site, nên hiện giờ/thứ ở đây phản ánh đúng hành vi thật. */
+export const formatAgentSchedule = (schedule: AgentSchedule): string => {
+  const cadenceLabel = CADENCE_LABELS[schedule.cadence]
+  if (schedule.cadence === 'hourly') return cadenceLabel
+
+  const hourLabel = `${schedule.hourOfDay}:00`
+  if (schedule.cadence === 'weekly' && schedule.dayOfWeek !== null) {
+    return `${cadenceLabel} · ${WEEKDAY_SHORT_LABELS[schedule.dayOfWeek]} · ${hourLabel}`
+  }
+  return `${cadenceLabel} · ${hourLabel}`
+}
+
 export const CADENCE_LABELS: Readonly<Record<AgentSchedule['cadence'], string>> = {
   hourly: 'Mỗi giờ',
   daily: 'Hằng ngày',

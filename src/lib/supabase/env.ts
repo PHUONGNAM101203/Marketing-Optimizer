@@ -95,9 +95,10 @@ export const cryptoEnv = () => {
 }
 
 /**
- * Bí mật cho route cron `/api/cron/sync-all`. Vercel tự gửi kèm giá trị này
- * trong header Authorization cho request phát sinh từ lịch cron thật — so
- * khớp để chặn ai đó gọi thẳng route từ bên ngoài.
+ * Bí mật DÙNG CHUNG cho cả hai route cron `/api/cron/sync-hourly` và
+ * `/api/cron/sync-daily`. Vercel tự gửi kèm giá trị này trong header
+ * Authorization cho request phát sinh từ lịch cron thật — so khớp để chặn ai
+ * đó gọi thẳng route từ bên ngoài.
  */
 const cronSchema = z.object({
   CRON_SECRET: z.string().min(16, 'CRON_SECRET nên dài ít nhất 16 ký tự'),

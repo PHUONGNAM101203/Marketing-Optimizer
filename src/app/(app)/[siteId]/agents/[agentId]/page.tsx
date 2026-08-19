@@ -10,8 +10,8 @@ import { getAgent, listRunsForAgent } from '@/lib/data/agents'
 import { runAgentNowAction, toggleAgentEnabledAction } from '@/lib/actions/agents'
 import {
   AGENT_ROLE_LABELS,
-  CADENCE_LABELS,
   RUN_STATUS_LABELS,
+  formatAgentSchedule,
   isWriteTool,
   type AgentRun,
   type AgentRunStatus,
@@ -96,12 +96,8 @@ export default async function AgentDetailPage({
                 {agent.enabled ? 'Đang bật' : 'Đã tắt'}
               </Badge>
               {agent.schedule ? (
-                // Không hiện `hourOfDay` — cron dùng chung của app chỉ chạy 1
-                // lần/ngày ở giờ cố định và không đọc trường này cho bất kỳ
-                // nhịp nào, hiện "· 7:00" sẽ ngụ ý sai một giờ chạy không có
-                // thật (xem cùng comment ở `agents/page.tsx`).
                 <Badge tone="neutral" icon={<Clock aria-hidden className="size-3" />}>
-                  {CADENCE_LABELS[agent.schedule.cadence]}
+                  {formatAgentSchedule(agent.schedule)}
                 </Badge>
               ) : null}
             </div>

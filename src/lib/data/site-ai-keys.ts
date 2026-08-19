@@ -86,7 +86,8 @@ export const resolveAiConfig = async (siteId: string): Promise<SiteAiConfig | nu
  * Cron gọi hàm NÀY một lần, KHÔNG tự lặp qua site_ai_keys — làm mới cache
  * `available_models` cho MỌI Site đang kết nối provider nào đó. Chạy SONG
  * SONG (`Promise.allSettled`), khác vòng lặp đồng bộ connection tuần tự
- * trong `sync-all/route.ts` — vòng đó cố tình tuần tự để tránh chạm rate
+ * trong `cron/sync-daily/route.ts` (nơi hàm này được gọi) — vòng đó cố tình
+ * tuần tự để tránh chạm rate
  * limit DÙNG CHUNG của Google, còn ở đây mỗi Site gọi một provider/key khác
  * nhau, không có rate limit dùng chung nào để tránh. Lỗi ở một Site không
  * chặn các Site khác.

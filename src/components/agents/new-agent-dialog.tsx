@@ -93,13 +93,10 @@ export function NewAgentDialog({
     const role = String(formData.get('role') ?? 'seo-analyst') as AgentRole
     const promptId = String(formData.get('promptId') ?? '')
     const cadence = String(formData.get('cadence') ?? 'daily') as AgentSchedule['cadence']
-    // Cron (`api/cron/sync-all/route.ts`) chỉ chạy MỘT lần/ngày ở giờ cố định
-    // (`vercel.json`) và `isDue` không hề đọc `hourOfDay` cho bất kỳ nhịp nào
-    // — để người dùng chọn giờ ở đây là hứa hẹn một hành vi hệ thống không
-    // làm. Gán cứng, không còn ô nhập trong form (xem fieldset "Lịch chạy"
-    // bên dưới); vẫn giữ field này trong `AgentSchedule` vì domain type không
-    // đổi trong đợt sửa lỗi này.
-    const hourOfDay = 7
+    // Cron `api/cron/sync-hourly/route.ts` chạy mỗi giờ và honor đúng
+    // `hourOfDay` (theo múi giờ Site) cho mọi nhịp — khác bản cũ chỉ có 1
+    // cron/ngày nên phải gán cứng giờ và giấu ô nhập.
+    const hourOfDay = Math.min(23, Math.max(0, Number(formData.get('hourOfDay') ?? 7)))
     const dayOfWeek = cadence === 'weekly' ? Number(formData.get('dayOfWeek') ?? 1) : null
 
     const selectedTools: AgentTool[] = [...READ_TOOL_NAMES, ...WRITE_TOOL_NAMES]
@@ -206,31 +203,37 @@ export function NewAgentDialog({
             </label>
 
             {scheduled ? (
-              <div className="grid grid-cols-2 gap-2">
-                {/* 'hourly' bỏ khỏi lựa chọn: cron dùng chung của app
-                    (`api/cron/sync-all/route.ts`) chỉ chạy 1 lần/ngày, không
-                    có đường nào honor nhịp giờ — chọn được mà không bao giờ
-                    chạy là hứa suông. Không lọc ngay tại CADENCE_LABELS vì
-                    domain type/label vẫn hợp lệ cho dữ liệu cũ đã lỡ lưu
-                    'hourly' trước đợt sửa này. */}
-                <select name="cadence" defaultValue="daily" aria-label="Nhịp chạy" className={inputClass}>
-                  {Object.entries(CADENCE_LABELS)
-                    .filter(([value]) => value !== 'hourly')
-                    .map(([value, label]) => (
+              <div className="flex flex-col gap-1.5">
+                <div className="grid grid-cols-3 gap-2">
+                  <select name="cadence" defaultValue="daily" aria-label="Nhịp chạy" className={inputClass}>
+                    {Object.entries(CADENCE_LABELS).map(([value, label]) => (
                       <option key={value} value={value}>
                         {label}
                       </option>
                     ))}
-                </select>
-                <input
-                  type="number"
-                  name="dayOfWeek"
-                  min={0}
-                  max={6}
-                  defaultValue={1}
-                  aria-label="Thứ trong tuần (0 = Chủ nhật) — chỉ dùng khi nhịp hằng tuần"
-                  className={inputClass}
-                />
+                  </select>
+                  <input
+                    type="number"
+                    name="hourOfDay"
+                    min={0}
+                    max={23}
+                    defaultValue={7}
+                    aria-label="Giờ chạy trong ngày theo múi giờ site — bỏ qua khi nhịp là 'Mỗi giờ'"
+                    className={inputClass}
+                  />
+                  <input
+                    type="number"
+                    name="dayOfWeek"
+                    min={0}
+                    max={6}
+                    defaultValue={1}
+                    aria-label="Thứ trong tuần (0 = Chủ nhật) — chỉ dùng khi nhịp hằng tuần"
+                    className={inputClass}
+                  />
+                </div>
+                <p className="text-[length:var(--text-2xs)] text-[var(--color-ink-3)]">
+                  Giờ tính theo múi giờ của site. &quot;Mỗi giờ&quot; bỏ qua ô giờ/thứ.
+                </p>
               </div>
             ) : null}
           </fieldset>

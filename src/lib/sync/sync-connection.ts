@@ -135,8 +135,9 @@ export async function syncConnection(connectionId: string): Promise<SyncResult> 
       .eq('id', connectionId)
 
     // SAU khi đã đánh dấu `connected`, và chạy qua `after()` — bước này có thể
-    // tốn tới 50 lượt gọi TikTok tuần tự, trong khi chỉ cron `sync-all` mới có
-    // `maxDuration = 300`; 5 lối gọi còn lại (OAuth callback, resync thủ công,
+    // tốn tới 50 lượt gọi TikTok tuần tự, trong khi chỉ cron `sync-hourly`
+    // (nơi TikTok/Facebook/Instagram được đồng bộ, xem `cron-providers.ts`)
+    // mới có `maxDuration = 300`; 5 lối gọi còn lại (OAuth callback, resync thủ công,
     // resync-site, action Google/Meta Ads) dùng timeout mặc định. Đặt ở đây thì
     // snapshot chậm hay lỗi cũng không làm connection kẹt ở trạng thái cũ, và
     // không cộng thêm mili-giây nào vào response.
