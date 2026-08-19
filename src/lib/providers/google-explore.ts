@@ -34,12 +34,17 @@ interface Ga4RunReportResponse {
   }[]
 }
 
+/** Gọi từ cả trang Khám phá (limit người dùng chọn được, 10-1000) lẫn trang
+ * chi tiết kênh GA4 (luôn cố định — trang đó chưa có UI đổi số hàng). */
+const DEFAULT_CHANNEL_DETAIL_ROW_LIMIT = 10
+
 const runGa4Report = async (
   accessToken: string,
   property: string,
   params: { readonly startDate: string; readonly endDate: string },
   dimension: string,
   metric: string,
+  limit: number,
 ): Promise<readonly { readonly label: string; readonly value: number }[]> => {
   const response = await fetch(
     `https://analyticsdata.googleapis.com/v1beta/${property}:runReport`,
@@ -51,7 +56,7 @@ const runGa4Report = async (
         dimensions: [{ name: dimension }],
         metrics: [{ name: metric }],
         orderBys: [{ metric: { metricName: metric }, desc: true }],
-        limit: 10,
+        limit,
       }),
     },
   )
@@ -66,15 +71,20 @@ const runGa4Report = async (
     }))
 }
 
+/** `limit` — GA4 Data API cho `limit` tới hàng chục nghìn dòng một lượt gọi,
+ * nên chuyển thẳng số người dùng chọn ở trang Khám phá (10-1000), không cần
+ * kẹp lại. Mặc định `DEFAULT_CHANNEL_DETAIL_ROW_LIMIT` cho lượt gọi từ trang
+ * chi tiết kênh (chưa có UI chọn số hàng ở đó). */
 export const fetchGa4Explore = async (
   accessToken: string,
   property: string,
   range: { readonly startDate: string; readonly endDate: string },
+  limit: number = DEFAULT_CHANNEL_DETAIL_ROW_LIMIT,
 ): Promise<Ga4Explore> => {
   const [pages, channels, devices] = await Promise.all([
-    runGa4Report(accessToken, property, range, 'pagePath', 'screenPageViews'),
-    runGa4Report(accessToken, property, range, 'sessionDefaultChannelGroup', 'sessions'),
-    runGa4Report(accessToken, property, range, 'deviceCategory', 'sessions'),
+    runGa4Report(accessToken, property, range, 'pagePath', 'screenPageViews', limit),
+    runGa4Report(accessToken, property, range, 'sessionDefaultChannelGroup', 'sessions', limit),
+    runGa4Report(accessToken, property, range, 'deviceCategory', 'sessions', limit),
   ])
 
   return {
@@ -116,6 +126,7 @@ const runGscQuery = async (
   siteUrl: string,
   params: { readonly startDate: string; readonly endDate: string },
   dimension: string,
+  rowLimit: number,
 ): Promise<readonly GscQueryRow[]> => {
   const response = await fetch(
     `https://www.googleapis.com/webmasters/v3/sites/${encodeURIComponent(siteUrl)}/searchAnalytics/query`,
@@ -126,7 +137,7 @@ const runGscQuery = async (
         startDate: params.startDate,
         endDate: params.endDate,
         dimensions: [dimension],
-        rowLimit: 10,
+        rowLimit,
       }),
     },
   )
@@ -136,16 +147,20 @@ const runGscQuery = async (
   return data.rows ?? []
 }
 
+/** `rowLimit` — Search Console API cho `rowLimit` tới 25.000, thoải mái
+ * chuyển thẳng lựa chọn 10-1000 của trang Khám phá. Mặc định
+ * `DEFAULT_CHANNEL_DETAIL_ROW_LIMIT` cho trang chi tiết kênh. */
 export const fetchGscExplore = async (
   accessToken: string,
   siteUrl: string,
   range: { readonly startDate: string; readonly endDate: string },
+  rowLimit: number = DEFAULT_CHANNEL_DETAIL_ROW_LIMIT,
 ): Promise<GscExplore> => {
   const [queries, pages, countries, devices] = await Promise.all([
-    runGscQuery(accessToken, siteUrl, range, 'query'),
-    runGscQuery(accessToken, siteUrl, range, 'page'),
-    runGscQuery(accessToken, siteUrl, range, 'country'),
-    runGscQuery(accessToken, siteUrl, range, 'device'),
+    runGscQuery(accessToken, siteUrl, range, 'query', rowLimit),
+    runGscQuery(accessToken, siteUrl, range, 'page', rowLimit),
+    runGscQuery(accessToken, siteUrl, range, 'country', rowLimit),
+    runGscQuery(accessToken, siteUrl, range, 'device', rowLimit),
   ])
 
   return {
@@ -274,10 +289,16 @@ export interface YoutubeExplore {
  * cho loại báo cáo video, bỏ nó khỏi mảng này khi có log lỗi thật để xác nhận. */
 const VIDEO_METRICS = ['views', 'likes', 'comments', 'shares'] as const
 
+/** `maxResults` — chuyển thẳng lựa chọn của trang Khám phá, KHÔNG kẹp lại:
+ * YouTube Analytics API chưa từng thấy tài liệu nào ghi trần cụ thể thấp hơn
+ * cho kiểu báo cáo này; nếu Google từ chối một `maxResults` quá lớn, nhánh
+ * `!reportResponse.ok` bên dưới đã bắt và trả `fetchError` rõ ràng cho người
+ * dùng thấy — không cần đoán trước một trần "an toàn" tuỳ tiện. */
 export const fetchYoutubeExplore = async (
   accessToken: string,
   channelId: string,
   range: { readonly startDate: string; readonly endDate: string },
+  maxResults: number = DEFAULT_CHANNEL_DETAIL_ROW_LIMIT,
 ): Promise<YoutubeExplore> => {
   const reportUrl = new URL('https://youtubeanalytics.googleapis.com/v2/reports')
   reportUrl.searchParams.set('ids', `channel==${channelId}`)
@@ -286,7 +307,7 @@ export const fetchYoutubeExplore = async (
   reportUrl.searchParams.set('dimensions', 'video')
   reportUrl.searchParams.set('metrics', VIDEO_METRICS.join(','))
   reportUrl.searchParams.set('sort', '-views')
-  reportUrl.searchParams.set('maxResults', '10')
+  reportUrl.searchParams.set('maxResults', String(maxResults))
 
   const reportResponse = await fetch(reportUrl.toString(), { headers: authHeader(accessToken) })
   if (!reportResponse.ok) {

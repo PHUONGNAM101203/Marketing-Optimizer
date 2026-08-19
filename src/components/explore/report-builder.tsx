@@ -80,11 +80,17 @@ export interface ReportBuilderProps {
   readonly currency: string
 }
 
+// Số hàng chọn được ở trang cha (10-1000, xem `explore-row-limit.ts`) là số
+// hàng LẤY VỀ — hiển thị vẫn phân trang cố định 50 hàng/trang, không đổ hết
+// 1000 hàng xuống một bảng dài vô tận.
+const PAGE_SIZE = 50
+
 export function ReportBuilder({ rows, groups, currency }: ReportBuilderProps) {
   const [selectedMetrics, setSelectedMetrics] =
     useState<readonly MetricKey[]>(DEFAULT_METRICS)
   const [activeGroups, setActiveGroups] = useState<readonly string[]>(groups)
   const [sortBy, setSortBy] = useState<MetricKey>('costMicros')
+  const [page, setPage] = useState(1)
 
   const visibleColumns = COLUMNS.filter((column) =>
     selectedMetrics.includes(column.key),
@@ -98,6 +104,14 @@ export function ReportBuilder({ rows, groups, currency }: ReportBuilderProps) {
         .sort((a, b) => (b[sortBy] ?? -Infinity) - (a[sortBy] ?? -Infinity)),
     [rows, activeGroups, sortBy],
   )
+
+  // Kẹp lại thay vì reset bằng `useEffect` — đổi bộ lọc/sắp xếp làm tập kết
+  // quả ngắn đi có thể khiến trang đang xem vượt quá tổng số trang mới; kẹp
+  // về trang cuối còn hợp lệ, giống hệt cách `currentPage` ở phần Merchant
+  // Center (`channel-detail-body.tsx`) tự xử lý cùng tình huống.
+  const totalPages = Math.max(1, Math.ceil(visibleRows.length / PAGE_SIZE))
+  const currentPage = Math.min(page, totalPages)
+  const pagedRows = visibleRows.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE)
 
   const toggle = <T,>(list: readonly T[], value: T): readonly T[] =>
     list.includes(value)
@@ -191,7 +205,7 @@ export function ReportBuilder({ rows, groups, currency }: ReportBuilderProps) {
                 </TR>
               </THead>
               <TBody>
-                {visibleRows.map((row) => (
+                {pagedRows.map((row) => (
                   <TR key={row.key}>
                     <TD className="max-w-[20rem]">
                       <span className="block truncate" title={row.dimension}>
@@ -221,12 +235,38 @@ export function ReportBuilder({ rows, groups, currency }: ReportBuilderProps) {
         )}
       </Card>
 
-      <p className="text-[length:var(--text-xs)] text-[var(--color-ink-3)]">
-        <Badge tone="outline">{visibleRows.length} dòng</Badge>{' '}
-        <span className="ml-2">
-          Bấm vào tiêu đề cột số để đổi cột sắp xếp.
-        </span>
-      </p>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <p className="text-[length:var(--text-xs)] text-[var(--color-ink-3)]">
+          <Badge tone="outline">{visibleRows.length} dòng</Badge>{' '}
+          <span className="ml-2">
+            Bấm vào tiêu đề cột số để đổi cột sắp xếp.
+          </span>
+        </p>
+
+        {totalPages > 1 ? (
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setPage((current) => Math.max(1, current - 1))}
+              disabled={currentPage === 1}
+              className="rounded-[var(--radius-sm)] border border-[var(--color-rule-strong)] px-2.5 py-1 text-[length:var(--text-xs)] font-medium text-[var(--color-ink-2)] transition-colors duration-[var(--dur-fast)] ease-[var(--ease-out)] hover:text-[var(--color-ink)] disabled:pointer-events-none disabled:opacity-40"
+            >
+              Trước
+            </button>
+            <span className="text-[length:var(--text-xs)] text-[var(--color-ink-3)]">
+              Trang {currentPage}/{totalPages}
+            </span>
+            <button
+              type="button"
+              onClick={() => setPage((current) => Math.min(totalPages, current + 1))}
+              disabled={currentPage === totalPages}
+              className="rounded-[var(--radius-sm)] border border-[var(--color-rule-strong)] px-2.5 py-1 text-[length:var(--text-xs)] font-medium text-[var(--color-ink-2)] transition-colors duration-[var(--dur-fast)] ease-[var(--ease-out)] hover:text-[var(--color-ink)] disabled:pointer-events-none disabled:opacity-40"
+            >
+              Sau
+            </button>
+          </div>
+        ) : null}
+      </div>
     </div>
   )
 }
