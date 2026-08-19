@@ -5,7 +5,10 @@ import { getSite } from '@/lib/data/sites'
 import { getSiteOAuthCredentials } from '@/lib/data/site-oauth-apps'
 import { isProviderFamily } from '@/lib/domain/providers'
 import { OAUTH_ADAPTERS } from '@/lib/providers'
-import { discoverMerchantCenterAccounts } from '@/lib/providers/google-discovery'
+import {
+  discoverMerchantCenterAccounts,
+  listAllGooglePendingCandidates,
+} from '@/lib/providers/google-discovery'
 import { syncConnection } from '@/lib/sync/sync-connection'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient, getCurrentUser } from '@/lib/supabase/server'
@@ -161,11 +164,46 @@ export async function GET(
     }
 
     const accounts = await adapter.listAccounts(tokens.accessToken, site.domain)
+    const admin = createAdminClient()
 
-    if (accounts.length === 0) return failure('no-accounts', siteId)
+    if (accounts.length === 0) {
+      // Lọc cứng theo domain không khớp gì — trước khi báo lỗi hẳn, thử lấy
+      // TOÀN BỘ ứng viên (không lọc domain) để người dùng tự chọn, thay vì
+      // bắt cấp quyền lại từ đầu với hy vọng lần sau khớp. Chỉ family
+      // 'google' có luồng chọn tay này (xem `pending_google_connections`) —
+      // youtube/meta/tiktok không có khái niệm "nhiều ứng viên GA4-kiểu" để
+      // chọn.
+      const candidates =
+        family === 'google' ? await listAllGooglePendingCandidates(tokens.accessToken) : []
+
+      if (candidates.length === 0) return failure('no-accounts', siteId)
+
+      // Dọn ứng viên cũ của Site này trước — mỗi lượt cấp quyền mới thay thế
+      // hoàn toàn, không cộng dồn ứng viên từ nhiều lượt thử khác nhau.
+      await admin.from('pending_google_connections').delete().eq('site_id', siteId)
+      await admin.from('pending_google_connections').insert(
+        candidates.map((candidate) => ({
+          site_id: siteId,
+          provider: candidate.provider,
+          external_account_id: candidate.externalAccountId,
+          account_name: candidate.accountName,
+          detail: candidate.detail,
+          access_token_enc: encrypt(tokens.accessToken),
+          refresh_token_enc: tokens.refreshToken ? encrypt(tokens.refreshToken) : null,
+          expires_at: tokens.expiresAt,
+          scopes: adapter.scopes as string[],
+          created_by: user.id,
+        })),
+      )
+
+      const target = new URL(`/${siteId}/connections`, request.nextUrl.origin)
+      target.searchParams.set('oauth_pending', String(candidates.length))
+      const response = NextResponse.redirect(target)
+      response.cookies.delete(OAUTH_STATE_COOKIE)
+      return response
+    }
 
     const supabase = await createClient()
-    const admin = createAdminClient()
     let connected = 0
 
     for (const account of accounts) {

@@ -9,6 +9,7 @@ import { ConnectPanel } from '@/components/connections/connect-panel'
 import { GoogleAdsPicker } from '@/components/connections/google-ads-picker'
 import { MetaAdsPicker } from '@/components/connections/meta-ads-picker'
 import { GtmPicker } from '@/components/connections/gtm-picker'
+import { PendingGoogleConnectionsPicker } from '@/components/connections/pending-google-connections-picker'
 import { ExternalChannelLink } from '@/components/connections/external-channel-link'
 import { RefreshConnectionButton } from '@/components/connections/refresh-connection-button'
 import { DisconnectConnectionButton } from '@/components/connections/disconnect-connection-button'
@@ -48,7 +49,7 @@ const OAUTH_ERROR_LABELS: Readonly<Record<string, string>> = {
   invalid_state: 'Phiên kết nối đã hết hạn hoặc không hợp lệ. Vui lòng thử lại.',
   'missing-code': 'Google không trả về mã xác thực. Vui lòng thử lại.',
   'no-accounts':
-    'Cấp quyền thành công, nhưng không thấy tài sản nào (GA4, Search Console, Tag Manager, YouTube, Merchant Center) khớp với domain này trong tài khoản Google đó. Với Merchant Center: kiểm tra (1) đã bật đúng "Content API for Shopping" trong Google Cloud — KHÔNG phải "Merchant API" mới, và (2) tài khoản Merchant Center đã khai báo đúng Website URL trùng domain này chưa (Cài đặt doanh nghiệp → Thông tin doanh nghiệp trong merchants.google.com).',
+    'Cấp quyền thành công, nhưng tài khoản Google đó không có tài sản nào (GA4, Search Console, Tag Manager, YouTube, Merchant Center) cả — đã kiểm tra toàn bộ, không chỉ riêng cái khớp domain này. Có thể bạn đã chọn nhầm tài khoản Google lúc cấp quyền (nếu trình duyệt có sẵn nhiều tài khoản, màn hình chọn tài khoản sẽ hiện lại — chọn đúng tài khoản quản lý website này). Với Merchant Center: kiểm tra (1) đã bật đúng "Content API for Shopping" trong Google Cloud — KHÔNG phải "Merchant API" mới, và (2) tài khoản Merchant Center đã khai báo đúng Website URL trùng domain này chưa (Cài đặt doanh nghiệp → Thông tin doanh nghiệp trong merchants.google.com).',
   forbidden: 'Chỉ chủ sở hữu hoặc quản trị viên của website mới được thêm kết nối.',
   'family-not-ready': 'Nhà cung cấp này chưa mở kết nối thật.',
   'app-not-configured':
@@ -68,11 +69,12 @@ export default async function ConnectionsPage({
   readonly searchParams: Promise<{
     readonly oauth_connected?: string
     readonly oauth_error?: string
+    readonly oauth_pending?: string
     readonly count?: string
   }>
 }) {
   const { siteId } = await params
-  const { oauth_connected, oauth_error, count } = await searchParams
+  const { oauth_connected, oauth_error, oauth_pending, count } = await searchParams
   const site = await getSite(siteId)
   if (!site) notFound()
 
@@ -111,6 +113,17 @@ export default async function ConnectionsPage({
             Tài khoản Merchant Center khớp domain website này đã tự kết nối — xem ở danh
             sách bên dưới. Không thấy gì nghĩa là tài khoản Merchant Center bạn dùng chưa
             khai báo đúng website này trong phần Cài đặt doanh nghiệp.
+          </p>
+        </Callout>
+      ) : oauth_pending ? (
+        <Callout
+          tone="caution"
+          icon={<CircleCheck aria-hidden className="size-5 text-[var(--color-caution)]" />}
+          title="Không tự khớp được domain nào"
+        >
+          <p>
+            Cấp quyền thành công. Chọn đúng tài sản muốn kết nối ở khối bên dưới —{' '}
+            {oauth_pending} lựa chọn tìm thấy trên tài khoản Google đó.
           </p>
         </Callout>
       ) : connectedFamilyLabel ? (
@@ -183,6 +196,7 @@ export default async function ConnectionsPage({
         hasPageSpeedApiKey={hasPageSpeedApiKey}
       />
 
+      <PendingGoogleConnectionsPicker siteId={site.id} />
       <GtmPicker siteId={site.id} />
       <GoogleAdsPicker siteId={site.id} />
       <MetaAdsPicker siteId={site.id} />

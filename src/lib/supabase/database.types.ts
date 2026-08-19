@@ -191,6 +191,59 @@ export type Database = {
           },
         ]
       }
+      pending_google_connections: {
+        Row: {
+          access_token_enc: string
+          account_name: string
+          created_at: string
+          created_by: string | null
+          detail: string | null
+          expires_at: string | null
+          external_account_id: string
+          id: string
+          provider: string
+          refresh_token_enc: string | null
+          scopes: string[]
+          site_id: string
+        }
+        Insert: {
+          access_token_enc: string
+          account_name: string
+          created_at?: string
+          created_by?: string | null
+          detail?: string | null
+          expires_at?: string | null
+          external_account_id: string
+          id?: string
+          provider: string
+          refresh_token_enc?: string | null
+          scopes?: string[]
+          site_id: string
+        }
+        Update: {
+          access_token_enc?: string
+          account_name?: string
+          created_at?: string
+          created_by?: string | null
+          detail?: string | null
+          expires_at?: string | null
+          external_account_id?: string
+          id?: string
+          provider?: string
+          refresh_token_enc?: string | null
+          scopes?: string[]
+          site_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pending_google_connections_site_id_fkey"
+            columns: ["site_id"]
+            isOneToOne: false
+            referencedRelation: "sites"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       metrics_daily: {
         Row: {
           clicks: number

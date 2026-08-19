@@ -3,6 +3,17 @@ import 'server-only'
 import { normalizeHostname } from '@/lib/domain/hostname'
 import type { DiscoveredAccount } from './types'
 
+/** Ứng viên chưa lọc domain — dùng khi lọc cứng của `discoverGoogleAccounts`
+ * trả rỗng (xem migration `pending_google_connections`). Chỉ 3 sản phẩm
+ * người dùng có thể tự phân biệt qua tên/URL hiển thị (GA4/GSC/GTM) — Ads và
+ * Merchant Center có luồng nâng quyền riêng, không cần bước chọn tay này. */
+export interface PendingGoogleCandidate {
+  readonly provider: 'ga4' | 'gsc' | 'gtm'
+  readonly externalAccountId: string
+  readonly accountName: string
+  readonly detail: string | null
+}
+
 /**
  * Dò tài sản Google thật sự gắn với website của Site đang kết nối.
  *
@@ -120,6 +131,41 @@ const listGa4Properties = async (
     }))
 }
 
+/** TOÀN BỘ property GA4 tài khoản này thấy được, KHÔNG lọc domain — dùng khi
+ * lọc cứng ở trên trả về rỗng. Kèm `detail` là hostname data stream thật của
+ * từng property (hoặc cảnh báo khi property chưa có luồng web nào), để người
+ * dùng CHỌN ĐÚNG thay vì đoán qua tên hiển thị (tên property là nhãn tự do,
+ * không được Google xác minh khớp domain). */
+const listAllGa4PropertiesWithDetail = async (
+  accessToken: string,
+): Promise<PendingGoogleCandidate[]> => {
+  const response = await fetch(GA4_ACCOUNT_SUMMARIES_ENDPOINT, {
+    headers: authHeader(accessToken),
+  })
+  if (!response.ok) return []
+
+  const data = (await response.json()) as { accountSummaries?: readonly Ga4AccountSummary[] }
+
+  const candidates = (data.accountSummaries ?? []).flatMap((account) =>
+    (account.propertySummaries ?? []).filter(
+      (property): property is Required<Ga4PropertySummary> =>
+        Boolean(property.property) && Boolean(property.displayName),
+    ),
+  )
+
+  return Promise.all(
+    candidates.map(async (property) => {
+      const hostnames = await ga4PropertyHostnames(accessToken, property.property)
+      return {
+        provider: 'ga4' as const,
+        externalAccountId: property.property,
+        accountName: property.displayName,
+        detail: hostnames.length > 0 ? `Luồng web: ${hostnames.join(', ')}` : 'Chưa có luồng web nào',
+      }
+    }),
+  )
+}
+
 // ─── Search Console ─────────────────────────────────────────────────────────
 
 interface SearchConsoleSiteEntry {
@@ -159,6 +205,27 @@ const listSearchConsoleSites = async (
       provider: 'gsc' as const,
       externalAccountId: site.siteUrl as string,
       accountName: site.siteUrl as string,
+    }))
+}
+
+/** TOÀN BỘ site Search Console tài khoản này thấy được, KHÔNG lọc domain —
+ * dùng khi lọc cứng ở trên trả về rỗng. `siteUrl` tự thân đã là domain nên
+ * không cần cột `detail` riêng như GA4. */
+const listAllSearchConsoleSites = async (accessToken: string): Promise<PendingGoogleCandidate[]> => {
+  const response = await fetch(SEARCH_CONSOLE_SITES_ENDPOINT, {
+    headers: authHeader(accessToken),
+  })
+  if (!response.ok) return []
+
+  const data = (await response.json()) as { siteEntry?: readonly SearchConsoleSiteEntry[] }
+
+  return (data.siteEntry ?? [])
+    .filter((site) => Boolean(site.siteUrl) && site.permissionLevel !== 'siteUnverifiedUser')
+    .map((site) => ({
+      provider: 'gsc' as const,
+      externalAccountId: site.siteUrl as string,
+      accountName: site.siteUrl as string,
+      detail: null,
     }))
 }
 
@@ -340,6 +407,35 @@ export const discoverGoogleAccounts = async (
   ])
 
   return [...ga4, ...gsc, ...gtm, ...merchantCenter]
+}
+
+/**
+ * Dùng khi `discoverGoogleAccounts` (lọc cứng theo domain) trả về rỗng —
+ * KHÔNG lọc domain, gộp toàn bộ GA4/GSC/GTM tài khoản này thấy được để
+ * người dùng tự chọn (xem migration `pending_google_connections`). Bỏ
+ * Google Ads (không có domain qua API, đã có luồng nâng quyền + picker
+ * riêng ở `GoogleAdsPicker`) và Merchant Center (cũng có luồng nâng quyền
+ * riêng, tự dò domain lại sau khi có thêm scope Content API).
+ */
+export const listAllGooglePendingCandidates = async (
+  accessToken: string,
+): Promise<readonly PendingGoogleCandidate[]> => {
+  const [ga4, gsc, gtm] = await Promise.all([
+    listAllGa4PropertiesWithDetail(accessToken),
+    listAllSearchConsoleSites(accessToken),
+    listAllGtmContainers(accessToken),
+  ])
+
+  return [
+    ...ga4,
+    ...gsc,
+    ...gtm.map((container) => ({
+      provider: 'gtm' as const,
+      externalAccountId: container.externalAccountId,
+      accountName: container.accountName,
+      detail: null,
+    })),
+  ]
 }
 
 /** YouTube giờ là family OAuth riêng (`providers/youtube.ts`) — tài khoản
