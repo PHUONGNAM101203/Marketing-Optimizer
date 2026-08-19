@@ -19,6 +19,7 @@ import { Ga4OverviewPanel } from '@/components/channels/ga4/ga4-overview-panel'
 import { GscOverviewPanel } from '@/components/channels/gsc/gsc-overview-panel'
 import { MerchantPerformancePanel } from '@/components/channels/merchant/merchant-performance-panel'
 import { KlaviyoDashboard } from '@/components/channels/klaviyo/klaviyo-dashboard'
+import { KlaviyoAudiencePanel } from '@/components/channels/klaviyo/klaviyo-audience-panel'
 import { TiktokVideoGrid } from '@/components/channels/tiktok/tiktok-video-grid'
 import { TiktokDashboard } from '@/components/channels/tiktok/tiktok-dashboard'
 import { YoutubeDashboard } from '@/components/channels/youtube/youtube-dashboard'
@@ -483,17 +484,44 @@ export function ChannelDetailBody({
 
     case 'klaviyo':
       return (
-        <KlaviyoDashboard
-          campaigns={detail.campaigns}
-          flows={detail.flows}
-          campaignPerformance={detail.campaignPerformance}
-          flowPerformance={detail.flowPerformance}
-          performanceError={detail.performanceError}
-          profileCount={detail.profileCount}
-          profileCountTruncated={detail.profileCountTruncated}
-          segments={detail.segments}
-          lists={detail.lists}
-          currency={currency}
+        <UrlTabs
+          ariaLabel="Chế độ xem"
+          tabs={[
+            {
+              id: 'overview',
+              label: 'Tổng quan',
+              panel: (
+                <KlaviyoDashboard
+                  campaigns={detail.campaigns}
+                  campaignsTruncated={detail.campaignsTruncated}
+                  flows={detail.flows}
+                  flowsTruncated={detail.flowsTruncated}
+                  campaignPerformance={detail.campaignPerformance}
+                  flowPerformance={detail.flowPerformance}
+                  performanceError={detail.performanceError}
+                  profileCount={detail.profileCount}
+                  profileCountTruncated={detail.profileCountTruncated}
+                  currency={currency}
+                />
+              ),
+            },
+            {
+              id: 'audience',
+              label: 'Đối tượng',
+              panel: (
+                <KlaviyoAudiencePanel
+                  segments={detail.segments}
+                  segmentsTruncated={detail.segmentsTruncated}
+                  lists={detail.lists}
+                  listsTruncated={detail.listsTruncated}
+                  forms={detail.forms}
+                  formsTruncated={detail.formsTruncated}
+                  metrics={detail.metrics}
+                  metricsTruncated={detail.metricsTruncated}
+                />
+              ),
+            },
+          ]}
         />
       )
 

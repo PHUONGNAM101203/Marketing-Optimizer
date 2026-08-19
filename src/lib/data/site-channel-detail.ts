@@ -43,12 +43,16 @@ import {
   countKlaviyoProfiles,
   fetchKlaviyoCampaigns,
   fetchKlaviyoFlows,
+  fetchKlaviyoForms,
   fetchKlaviyoLists,
+  fetchKlaviyoMetrics,
   fetchKlaviyoPerformance,
   fetchKlaviyoSegments,
   type KlaviyoCampaign,
   type KlaviyoFlow,
+  type KlaviyoForm,
   type KlaviyoList,
+  type KlaviyoMetric,
   type KlaviyoSegment,
   type KlaviyoValuesRow,
 } from '@/lib/providers/klaviyo'
@@ -234,17 +238,29 @@ export type ChannelDetail =
       readonly externalAccountId: string
       readonly avatarUrl: string | null
       readonly campaigns: readonly KlaviyoCampaign[]
+      readonly campaignsTruncated: boolean
       readonly flows: readonly KlaviyoFlow[]
+      readonly flowsTruncated: boolean
       /** `null` khi không resolve được conversion metric (key thiếu quyền
        * `metrics:read`, hoặc tài khoản chưa có metric nào) — report khi đó
        * cũng `null`, không phải mảng rỗng giả vờ "không có gì". */
       readonly campaignPerformance: readonly KlaviyoValuesRow[] | null
       readonly flowPerformance: readonly KlaviyoValuesRow[] | null
       readonly performanceError: string | null
+      /** `null` khi lượt gọi profiles thất bại ngay trang đầu — KHÁC 0 khách
+       * hàng thật, xem `KlaviyoProfileCount.error`. */
       readonly profileCount: number | null
       readonly profileCountTruncated: boolean
       readonly segments: readonly KlaviyoSegment[]
+      readonly segmentsTruncated: boolean
       readonly lists: readonly KlaviyoList[]
+      readonly listsTruncated: boolean
+      readonly forms: readonly KlaviyoForm[]
+      readonly formsTruncated: boolean
+      /** Toàn bộ loại sự kiện (metric) tài khoản đang ghi nhận — vd. "Placed
+       * Order", "Opened Email"… xem `fetchKlaviyoMetrics`. */
+      readonly metrics: readonly KlaviyoMetric[]
+      readonly metricsTruncated: boolean
     }
   | { readonly kind: 'unsupported' }
 
@@ -445,12 +461,14 @@ export const getChannelDetail = async (
       }
     }
     case 'klaviyo': {
-      const [campaigns, flows, profiles, segments, lists, performance] = await Promise.all([
+      const [campaigns, flows, profiles, segments, lists, forms, metrics, performance] = await Promise.all([
         fetchKlaviyoCampaigns(tokenResult.accessToken),
         fetchKlaviyoFlows(tokenResult.accessToken),
         countKlaviyoProfiles(tokenResult.accessToken),
         fetchKlaviyoSegments(tokenResult.accessToken),
         fetchKlaviyoLists(tokenResult.accessToken),
+        fetchKlaviyoForms(tokenResult.accessToken),
+        fetchKlaviyoMetrics(tokenResult.accessToken),
         fetchKlaviyoPerformance(tokenResult.accessToken, range),
       ])
       return {
@@ -459,15 +477,23 @@ export const getChannelDetail = async (
         accountName,
         externalAccountId,
         avatarUrl,
-        campaigns,
-        flows,
+        campaigns: campaigns.items,
+        campaignsTruncated: campaigns.truncated,
+        flows: flows.items,
+        flowsTruncated: flows.truncated,
         campaignPerformance: performance.campaignPerformance,
         flowPerformance: performance.flowPerformance,
         performanceError: performance.error,
-        profileCount: profiles.count,
+        profileCount: profiles.error ? null : profiles.count,
         profileCountTruncated: profiles.truncated,
-        segments,
-        lists,
+        segments: segments.items,
+        segmentsTruncated: segments.truncated,
+        lists: lists.items,
+        listsTruncated: lists.truncated,
+        forms: forms.items,
+        formsTruncated: forms.truncated,
+        metrics: metrics.items,
+        metricsTruncated: metrics.truncated,
       }
     }
     case 'google-ads': {

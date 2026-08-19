@@ -5,10 +5,12 @@ import { unstable_cache } from 'next/cache'
 /**
  * Klaviyo API.
  *
- * CHƯA ai chạy thử với tài khoản Klaviyo thật — hình dạng request/response
- * dưới đây bám theo tài liệu chính thức developers.klaviyo.com (xác nhận
- * qua nghiên cứu 8/2026), cần verify khi có key thật, giống `google-ads.ts`/
- * `meta-metrics.ts` trước đây.
+ * CHƯA ai chạy thử với tài khoản Klaviyo thật cho các endpoint MỚI thêm ở
+ * lượt sửa này (forms, metrics, phân trang segments/lists/forms) — hình
+ * dạng request/response bám theo tài liệu chính thức developers.klaviyo.com,
+ * cần verify khi có key thật, giống `google-ads.ts`/`meta-metrics.ts` trước
+ * đây. Campaigns/flows/segments/lists/profiles GỐC đã chạy thật (8/2026,
+ * tài khoản "Handdn") — 52 campaign, 17 flow, 500+ khách hàng.
  *
  * KHÁC 10 provider còn lại ở HAI điểm:
  *   1. Xác thực bằng private API key dán trực tiếp, không OAuth — một key
@@ -18,8 +20,11 @@ import { unstable_cache } from 'next/cache'
  *      liệu HIỆU SUẤT thật: opens/clicks/revenue) có rate limit RẤT chặt —
  *      1 request/giây, 2/phút, 225/NGÀY, khác hẳn hàng trăm/giây của
  *      GA4/GSC. Vì vậy các hàm report ở đây BẮT BUỘC phải cache ở tầng gọi
- *      (`unstable_cache`, xem `site-channel-detail.ts`) — gọi trực tiếp mỗi
- *      lần tải trang như GA4/GSC sẽ cạn hạn mức chỉ sau vài chục lượt xem.
+ *      (`unstable_cache`, xem `fetchKlaviyoPerformance` bên dưới) — gọi
+ *      trực tiếp mỗi lần tải trang như GA4/GSC sẽ cạn hạn mức chỉ sau vài
+ *      chục lượt xem. Các endpoint LIST (campaigns/flows/segments/lists/
+ *      forms/metrics/profiles) KHÔNG thuộc Reporting API, hạn mức bình
+ *      thường như GA4/GSC — không cần cache.
  */
 
 const API_BASE = 'https://a.klaviyo.com/api'
@@ -76,6 +81,64 @@ export const verifyKlaviyoApiKey = async (apiKey: string): Promise<KlaviyoVerify
   }
 }
 
+// ─── Helper phân trang dùng chung (JSON:API cursor) ───────────────────────
+
+interface JsonApiRow {
+  readonly id: string
+  readonly attributes?: Readonly<Record<string, unknown>>
+}
+
+export interface PaginatedOutcome<T> {
+  readonly items: readonly T[]
+  /** true nếu còn trang chưa đọc (chạm `maxPages`) — số trên là MỘT PHẦN,
+   * không phải toàn bộ. Không bao giờ âm thầm cắt bớt mà không báo. */
+  readonly truncated: boolean
+  /** Chỉ khác `null` khi TRANG ĐẦU thất bại (0 kết quả đọc được) — trang
+   * sau lỗi chỉ dừng phân trang sớm, không coi là lỗi cứng vì đã có dữ
+   * liệu một phần rồi. Đây là điểm khác với bug cũ: trước đây lỗi HTTP bị
+   * nuốt hoàn toàn (`if (!response.ok) return null`, không log, không báo
+   * lý do) khiến không ai biết VÌ SAO một lượt gọi thất bại. */
+  readonly error: string | null
+}
+
+const MAX_LIST_PAGES = 10
+
+const fetchPaginated = async <T>(
+  apiKey: string,
+  buildUrl: (cursor: string | undefined) => URL,
+  mapRow: (row: JsonApiRow) => T,
+  context: string,
+): Promise<PaginatedOutcome<T>> => {
+  const items: T[] = []
+  let cursor: string | undefined
+  let pages = 0
+  let error: string | null = null
+
+  do {
+    const url = buildUrl(cursor)
+    const response = await fetch(url.toString(), { headers: authHeaders(apiKey) })
+    if (!response.ok) {
+      const bodyText = await response.text().catch(() => '')
+      const message = `HTTP ${response.status}: ${bodyText.slice(0, 300)}`
+      console.error(`Klaviyo ${context} lỗi (trang ${pages + 1}): ${message}`)
+      if (pages === 0) error = message
+      break
+    }
+
+    const data = (await response.json()) as {
+      readonly data?: readonly JsonApiRow[]
+      readonly links?: { readonly next?: string | null }
+    }
+    items.push(...(data.data ?? []).map(mapRow))
+    pages += 1
+
+    const nextLink = data.links?.next
+    cursor = nextLink ? (new URL(nextLink).searchParams.get('page[cursor]') ?? undefined) : undefined
+  } while (cursor && pages < MAX_LIST_PAGES)
+
+  return { items, truncated: Boolean(cursor), error }
+}
+
 // ─── Campaigns ───────────────────────────────────────────────────────────
 
 export interface KlaviyoCampaign {
@@ -86,41 +149,42 @@ export interface KlaviyoCampaign {
   readonly sendTime: string | null
 }
 
-const fetchCampaignsByChannel = async (
+const fetchCampaignsByChannel = (
   apiKey: string,
   channel: 'email' | 'sms',
-): Promise<readonly KlaviyoCampaign[]> => {
-  const url = new URL(`${API_BASE}/campaigns`)
-  url.searchParams.set('filter', `equals(messages.channel,'${channel}')`)
-  url.searchParams.set('page[size]', '50')
+): Promise<PaginatedOutcome<KlaviyoCampaign>> =>
+  fetchPaginated(
+    apiKey,
+    (cursor) => {
+      const url = new URL(`${API_BASE}/campaigns`)
+      url.searchParams.set('filter', `equals(messages.channel,'${channel}')`)
+      url.searchParams.set('page[size]', '50')
+      if (cursor) url.searchParams.set('page[cursor]', cursor)
+      return url
+    },
+    (row) => ({
+      id: row.id,
+      name: (row.attributes?.name as string | undefined) ?? row.id,
+      channel,
+      status: (row.attributes?.status as string | undefined) ?? 'unknown',
+      sendTime: (row.attributes?.send_time as string | undefined) ?? null,
+    }),
+    `campaigns (${channel})`,
+  )
 
-  const response = await fetch(url.toString(), { headers: authHeaders(apiKey) })
-  if (!response.ok) {
-    console.error(`Klaviyo campaigns (${channel}) lỗi: HTTP ${response.status}`)
-    return []
-  }
-
-  const data = (await response.json()) as {
-    readonly data?: readonly {
-      readonly id: string
-      readonly attributes?: { readonly name?: string; readonly status?: string; readonly send_time?: string }
-    }[]
-  }
-  return (data.data ?? []).map((row) => ({
-    id: row.id,
-    name: row.attributes?.name ?? row.id,
-    channel,
-    status: row.attributes?.status ?? 'unknown',
-    sendTime: row.attributes?.send_time ?? null,
-  }))
-}
-
-export const fetchKlaviyoCampaigns = async (apiKey: string): Promise<readonly KlaviyoCampaign[]> => {
+/** Trước đây chỉ đọc MỘT trang (page[size]=50, không theo `links.next`) —
+ * tài khoản có đúng 52 campaign email là đã vượt cap, 2 campaign cuối bị
+ * cắt lặng lẽ. Giờ theo cursor tới khi hết trang hoặc chạm `MAX_LIST_PAGES`. */
+export const fetchKlaviyoCampaigns = async (apiKey: string): Promise<PaginatedOutcome<KlaviyoCampaign>> => {
   const [email, sms] = await Promise.all([
     fetchCampaignsByChannel(apiKey, 'email'),
     fetchCampaignsByChannel(apiKey, 'sms'),
   ])
-  return [...email, ...sms]
+  return {
+    items: [...email.items, ...sms.items],
+    truncated: email.truncated || sms.truncated,
+    error: email.error ?? sms.error,
+  }
 }
 
 // ─── Flows ───────────────────────────────────────────────────────────────
@@ -132,47 +196,74 @@ export interface KlaviyoFlow {
   readonly triggerType: string | null
 }
 
-export const fetchKlaviyoFlows = async (apiKey: string): Promise<readonly KlaviyoFlow[]> => {
-  const url = new URL(`${API_BASE}/flows`)
-  url.searchParams.set('page[size]', '50')
+export const fetchKlaviyoFlows = (apiKey: string): Promise<PaginatedOutcome<KlaviyoFlow>> =>
+  fetchPaginated(
+    apiKey,
+    (cursor) => {
+      const url = new URL(`${API_BASE}/flows`)
+      url.searchParams.set('page[size]', '50')
+      if (cursor) url.searchParams.set('page[cursor]', cursor)
+      return url
+    },
+    (row) => ({
+      id: row.id,
+      name: (row.attributes?.name as string | undefined) ?? row.id,
+      status: (row.attributes?.status as string | undefined) ?? 'unknown',
+      triggerType: (row.attributes?.trigger_type as string | undefined) ?? null,
+    }),
+    'flows',
+  )
 
-  const response = await fetch(url.toString(), { headers: authHeaders(apiKey) })
-  if (!response.ok) {
-    console.error(`Klaviyo flows lỗi: HTTP ${response.status}`)
-    return []
-  }
+// ─── Metric hội tụ (bắt buộc cho report doanh thu) + danh sách metric ─────
 
-  const data = (await response.json()) as {
-    readonly data?: readonly {
-      readonly id: string
-      readonly attributes?: { readonly name?: string; readonly status?: string; readonly trigger_type?: string }
-    }[]
-  }
-  return (data.data ?? []).map((row) => ({
-    id: row.id,
-    name: row.attributes?.name ?? row.id,
-    status: row.attributes?.status ?? 'unknown',
-    triggerType: row.attributes?.trigger_type ?? null,
-  }))
+export interface KlaviyoMetric {
+  readonly id: string
+  readonly name: string
 }
 
-// ─── Metric hội tụ (bắt buộc cho report doanh thu) ─────────────────────────
+/** Toàn bộ metric (loại sự kiện) tài khoản Klaviyo này đang ghi nhận — vd.
+ * "Placed Order", "Opened Email", "Clicked Email", "Subscribed to List"…
+ * Tự sinh từ mọi tích hợp (Shopify, chính Klaviyo, API riêng…), không phải
+ * cấu hình tay. Hiện ra để người dùng thấy TOÀN BỘ dữ liệu Klaviyo đang có,
+ * và để chẩn đoán khi report doanh thu lỗi (xem `resolveConversionMetricId`). */
+export const fetchKlaviyoMetrics = (apiKey: string): Promise<PaginatedOutcome<KlaviyoMetric>> =>
+  fetchPaginated(
+    apiKey,
+    (cursor) => {
+      const url = new URL(`${API_BASE}/metrics`)
+      url.searchParams.set('page[size]', '100')
+      if (cursor) url.searchParams.set('page[cursor]', cursor)
+      return url
+    },
+    (row) => ({ id: row.id, name: (row.attributes?.name as string | undefined) ?? row.id }),
+    'metrics',
+  )
+
+export type ConversionMetricOutcome =
+  | { readonly ok: true; readonly metricId: string }
+  | { readonly ok: false; readonly error: string }
 
 /** "Placed Order" là tên sự kiện chuẩn Klaviyo dùng cho đơn hàng — hầu hết
  * tích hợp ecommerce (Shopify/WooCommerce…) đều sinh event này. Site không
  * phải ecommerce hợp lệ sẽ không có — rơi về metric đầu tiên tìm được thay
  * vì báo lỗi, report khi đó vẫn chạy được, chỉ là "conversions" theo nghĩa
- * event đó thay vì đơn hàng. */
-export const resolveConversionMetricId = async (apiKey: string): Promise<string | null> => {
-  const response = await fetch(`${API_BASE}/metrics?page[size]=100`, { headers: authHeaders(apiKey) })
-  if (!response.ok) return null
-
-  const data = (await response.json()) as {
-    readonly data?: readonly { readonly id: string; readonly attributes?: { readonly name?: string } }[]
+ * event đó thay vì đơn hàng.
+ *
+ * TRƯỚC ĐÂY hàm này trả `null` im lặng khi gọi `/metrics` thất bại
+ * (`if (!response.ok) return null`, không log, không có lý do) — người
+ * dùng chỉ thấy "Không tìm được metric nào" dù nguyên nhân thật có thể là
+ * key thiếu quyền `metrics:read`, key hết hạn, hay lỗi tạm thời phía
+ * Klaviyo. Giờ trả về lý do THẬT (HTTP status + body) để chẩn đoán được. */
+export const resolveConversionMetricId = async (apiKey: string): Promise<ConversionMetricOutcome> => {
+  const metrics = await fetchKlaviyoMetrics(apiKey)
+  if (metrics.error) {
+    return { ok: false, error: `Không đọc được danh sách metric: ${metrics.error}` }
   }
-  const metrics = data.data ?? []
-  const placedOrder = metrics.find((metric) => metric.attributes?.name === 'Placed Order')
-  return placedOrder?.id ?? metrics[0]?.id ?? null
+  if (metrics.items.length === 0) {
+    return { ok: false, error: 'Tài khoản Klaviyo này chưa ghi nhận metric/sự kiện nào.' }
+  }
+  const placedOrder = metrics.items.find((metric) => metric.name === 'Placed Order')
+  return { ok: true, metricId: (placedOrder ?? metrics.items[0]).id }
 }
 
 // ─── Reports (hiệu suất thật) ───────────────────────────────────────────
@@ -276,12 +367,18 @@ export interface KlaviyoProfileCount {
    * ở `google-merchant.ts` — không âm thầm hiện thiếu. Klaviyo không trả
    * tổng số trực tiếp ở endpoint danh sách, phải đếm qua phân trang. */
   readonly truncated: boolean
+  /** Chỉ khác `null` khi TRANG ĐẦU thất bại — trước đây lỗi trang đầu vẫn
+   * trả `count: 0`, hiện thành "0 khách hàng" giả trong lúc thật ra là lỗi
+   * đọc API. Nơi gọi phải map `error ? null : count`, không phải hiện
+   * thẳng `count`. */
+  readonly error: string | null
 }
 
 export const countKlaviyoProfiles = async (apiKey: string, maxPages = 5): Promise<KlaviyoProfileCount> => {
   let count = 0
   let cursor: string | undefined
   let pages = 0
+  let error: string | null = null
 
   do {
     const url = new URL(`${API_BASE}/profiles`)
@@ -289,7 +386,13 @@ export const countKlaviyoProfiles = async (apiKey: string, maxPages = 5): Promis
     if (cursor) url.searchParams.set('page[cursor]', cursor)
 
     const response = await fetch(url.toString(), { headers: authHeaders(apiKey) })
-    if (!response.ok) break
+    if (!response.ok) {
+      const bodyText = await response.text().catch(() => '')
+      const message = `HTTP ${response.status}: ${bodyText.slice(0, 300)}`
+      console.error(`Klaviyo profiles lỗi (trang ${pages + 1}): ${message}`)
+      if (pages === 0) error = message
+      break
+    }
 
     const data = (await response.json()) as {
       readonly data?: readonly unknown[]
@@ -302,7 +405,7 @@ export const countKlaviyoProfiles = async (apiKey: string, maxPages = 5): Promis
     cursor = nextLink ? (new URL(nextLink).searchParams.get('page[cursor]') ?? undefined) : undefined
   } while (cursor && pages < maxPages)
 
-  return { count, truncated: Boolean(cursor) }
+  return { count, truncated: Boolean(cursor), error }
 }
 
 // ─── Segments & Lists ────────────────────────────────────────────────────
@@ -313,37 +416,67 @@ export interface KlaviyoSegment {
   readonly isActive: boolean
 }
 
-export const fetchKlaviyoSegments = async (apiKey: string): Promise<readonly KlaviyoSegment[]> => {
-  const response = await fetch(`${API_BASE}/segments?page[size]=10`, { headers: authHeaders(apiKey) })
-  if (!response.ok) return []
-
-  const data = (await response.json()) as {
-    readonly data?: readonly {
-      readonly id: string
-      readonly attributes?: { readonly name?: string; readonly is_active?: boolean }
-    }[]
-  }
-  return (data.data ?? []).map((row) => ({
-    id: row.id,
-    name: row.attributes?.name ?? row.id,
-    isActive: row.attributes?.is_active ?? false,
-  }))
-}
+export const fetchKlaviyoSegments = (apiKey: string): Promise<PaginatedOutcome<KlaviyoSegment>> =>
+  fetchPaginated(
+    apiKey,
+    (cursor) => {
+      const url = new URL(`${API_BASE}/segments`)
+      url.searchParams.set('page[size]', '50')
+      if (cursor) url.searchParams.set('page[cursor]', cursor)
+      return url
+    },
+    (row) => ({
+      id: row.id,
+      name: (row.attributes?.name as string | undefined) ?? row.id,
+      isActive: (row.attributes?.is_active as boolean | undefined) ?? false,
+    }),
+    'segments',
+  )
 
 export interface KlaviyoList {
   readonly id: string
   readonly name: string
 }
 
-export const fetchKlaviyoLists = async (apiKey: string): Promise<readonly KlaviyoList[]> => {
-  const response = await fetch(`${API_BASE}/lists?page[size]=10`, { headers: authHeaders(apiKey) })
-  if (!response.ok) return []
+export const fetchKlaviyoLists = (apiKey: string): Promise<PaginatedOutcome<KlaviyoList>> =>
+  fetchPaginated(
+    apiKey,
+    (cursor) => {
+      const url = new URL(`${API_BASE}/lists`)
+      url.searchParams.set('page[size]', '50')
+      if (cursor) url.searchParams.set('page[cursor]', cursor)
+      return url
+    },
+    (row) => ({ id: row.id, name: (row.attributes?.name as string | undefined) ?? row.id }),
+    'lists',
+  )
 
-  const data = (await response.json()) as {
-    readonly data?: readonly { readonly id: string; readonly attributes?: { readonly name?: string } }[]
-  }
-  return (data.data ?? []).map((row) => ({ id: row.id, name: row.attributes?.name ?? row.id }))
+// ─── Forms (biểu mẫu đăng ký) ──────────────────────────────────────────────
+
+export interface KlaviyoForm {
+  readonly id: string
+  readonly name: string
+  readonly status: string
+  readonly formType: string | null
 }
+
+export const fetchKlaviyoForms = (apiKey: string): Promise<PaginatedOutcome<KlaviyoForm>> =>
+  fetchPaginated(
+    apiKey,
+    (cursor) => {
+      const url = new URL(`${API_BASE}/forms`)
+      url.searchParams.set('page[size]', '50')
+      if (cursor) url.searchParams.set('page[cursor]', cursor)
+      return url
+    },
+    (row) => ({
+      id: row.id,
+      name: (row.attributes?.name as string | undefined) ?? row.id,
+      status: (row.attributes?.status as string | undefined) ?? 'unknown',
+      formType: (row.attributes?.form_type as string | undefined) ?? null,
+    }),
+    'forms',
+  )
 
 // ─── Hiệu suất, ĐÃ CACHE (dùng chung cho channel-detail lẫn Khám phá/Tổng quan) ──
 
@@ -371,19 +504,15 @@ export const fetchKlaviyoPerformance = unstable_cache(
     apiKey: string,
     range: { readonly startDate: string; readonly endDate: string },
   ): Promise<KlaviyoPerformanceOutcome> => {
-    const conversionMetricId = await resolveConversionMetricId(apiKey)
-    if (!conversionMetricId) {
-      return {
-        campaignPerformance: null,
-        flowPerformance: null,
-        error: 'Không tìm được metric nào trong tài khoản Klaviyo này để tính chuyển đổi.',
-      }
+    const metricResult = await resolveConversionMetricId(apiKey)
+    if (!metricResult.ok) {
+      return { campaignPerformance: null, flowPerformance: null, error: metricResult.error }
     }
 
     const reportRange = { start: range.startDate, end: range.endDate }
     const [campaigns, flows] = await Promise.all([
-      fetchCampaignValuesReport(apiKey, conversionMetricId, reportRange),
-      fetchFlowValuesReport(apiKey, conversionMetricId, reportRange),
+      fetchCampaignValuesReport(apiKey, metricResult.metricId, reportRange),
+      fetchFlowValuesReport(apiKey, metricResult.metricId, reportRange),
     ])
 
     const error = campaigns.error ?? flows.error

@@ -155,7 +155,7 @@ export const getExploreSource = async (
 
         source.klaviyo = {
           items: [
-            ...campaigns.map((campaign) => {
+            ...campaigns.items.map((campaign) => {
               const stats = campaignPerformanceById.get(campaign.id)
               return {
                 id: campaign.id,
@@ -168,7 +168,7 @@ export const getExploreSource = async (
                 revenueMicros: stats?.conversionValueMicros ?? 0,
               }
             }),
-            ...flows.map((flow) => {
+            ...flows.items.map((flow) => {
               const stats = flowPerformanceById.get(flow.id)
               return {
                 id: flow.id,
