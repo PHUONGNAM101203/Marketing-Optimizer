@@ -70,5 +70,12 @@ export const externalAccountUrl = (
     // khác hẳn Instagram Business Account ID/TikTok open_id ở trên.
     case 'facebook':
       return `https://facebook.com/${externalAccountId}`
+
+    // Account ID Klaviyo không tra ra được URL vào ĐÚNG tài khoản đó (Klaviyo
+    // web app tự chọn tài khoản theo phiên đăng nhập hiện tại của trình
+    // duyệt, không nhận account ID qua tham số URL) — về trang campaigns
+    // chung, cùng cách `google-ads` xử lý ở trên thay vì đoán một URL sai.
+    case 'klaviyo':
+      return 'https://www.klaviyo.com/campaigns'
   }
 }

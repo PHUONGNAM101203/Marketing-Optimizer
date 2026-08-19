@@ -1,6 +1,7 @@
 import {
   BarChart3,
   Camera,
+  Mail,
   Music2,
   Newspaper,
   Play,
@@ -38,6 +39,7 @@ const PROVIDER_ICON: Readonly<Record<ProviderId, LucideIcon>> = {
   instagram: Camera,
   tiktok: Music2,
   facebook: Newspaper,
+  klaviyo: Mail,
 }
 
 export interface ProviderMarkProps {

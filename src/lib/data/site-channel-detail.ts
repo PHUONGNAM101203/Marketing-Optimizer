@@ -38,7 +38,23 @@ import {
 import { fetchMetaFollowerCount } from '@/lib/providers/meta-discovery'
 import { fetchTiktokContentExplore, type TiktokExplore } from '@/lib/providers/tiktok'
 import { getGoogleAdsDeveloperToken } from './site-oauth-apps'
-import { resolveAccessToken, resolvePageAccessToken } from '@/lib/sync/access-token'
+import { resolveAccessToken, resolveKlaviyoApiKey, resolvePageAccessToken } from '@/lib/sync/access-token'
+import {
+  countKlaviyoProfiles,
+  fetchCampaignValuesReport,
+  fetchFlowValuesReport,
+  fetchKlaviyoCampaigns,
+  fetchKlaviyoFlows,
+  fetchKlaviyoLists,
+  fetchKlaviyoSegments,
+  resolveConversionMetricId,
+  type KlaviyoCampaign,
+  type KlaviyoFlow,
+  type KlaviyoList,
+  type KlaviyoSegment,
+  type KlaviyoValuesRow,
+} from '@/lib/providers/klaviyo'
+import { unstable_cache } from 'next/cache'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
 
@@ -214,6 +230,25 @@ export type ChannelDetail =
        * hoặc field vắng mặt), KHÁC 0 người theo dõi thật. */
       readonly followerCount: number | null
     }
+  | {
+      readonly kind: 'klaviyo'
+      readonly connectionId: string
+      readonly accountName: string
+      readonly externalAccountId: string
+      readonly avatarUrl: string | null
+      readonly campaigns: readonly KlaviyoCampaign[]
+      readonly flows: readonly KlaviyoFlow[]
+      /** `null` khi không resolve được conversion metric (key thiếu quyền
+       * `metrics:read`, hoặc tài khoản chưa có metric nào) — report khi đó
+       * cũng `null`, không phải mảng rỗng giả vờ "không có gì". */
+      readonly campaignPerformance: readonly KlaviyoValuesRow[] | null
+      readonly flowPerformance: readonly KlaviyoValuesRow[] | null
+      readonly performanceError: string | null
+      readonly profileCount: number | null
+      readonly profileCountTruncated: boolean
+      readonly segments: readonly KlaviyoSegment[]
+      readonly lists: readonly KlaviyoList[]
+    }
   | { readonly kind: 'unsupported' }
 
 interface CampaignMetricRow {
@@ -275,6 +310,50 @@ export const listChannelConnections = async (
   }))
 }
 
+/** Reporting API của Klaviyo giới hạn 225 request/NGÀY (so với hàng trăm/giây
+ * của GA4/GSC) — gọi trực tiếp mỗi lần tải trang chi tiết kênh như các
+ * provider khác sẽ cạn hạn mức chỉ sau vài chục lượt xem. Cache 6 giờ (tối
+ * đa 4 lượt gọi thật/ngày mỗi report dù có bao nhiêu người xem trang) —
+ * chấp nhận số liệu có thể trễ tới 6 giờ, đổi lấy việc KHÔNG BAO GIỜ cạn hạn
+ * mức trong điều kiện dùng thực tế. `apiKey` nằm trong tham số hàm nên đổi
+ * key (kết nối lại) tự ra cache key khác, không cần tự tay bump tag. */
+const KLAVIYO_REPORT_REVALIDATE_SECONDS = 6 * 60 * 60
+
+const fetchKlaviyoPerformance = unstable_cache(
+  async (
+    apiKey: string,
+    range: { readonly startDate: string; readonly endDate: string },
+  ): Promise<{
+    readonly campaignPerformance: readonly KlaviyoValuesRow[] | null
+    readonly flowPerformance: readonly KlaviyoValuesRow[] | null
+    readonly error: string | null
+  }> => {
+    const conversionMetricId = await resolveConversionMetricId(apiKey)
+    if (!conversionMetricId) {
+      return {
+        campaignPerformance: null,
+        flowPerformance: null,
+        error: 'Không tìm được metric nào trong tài khoản Klaviyo này để tính chuyển đổi.',
+      }
+    }
+
+    const reportRange = { start: range.startDate, end: range.endDate }
+    const [campaigns, flows] = await Promise.all([
+      fetchCampaignValuesReport(apiKey, conversionMetricId, reportRange),
+      fetchFlowValuesReport(apiKey, conversionMetricId, reportRange),
+    ])
+
+    const error = campaigns.error ?? flows.error
+    return {
+      campaignPerformance: campaigns.error ? null : campaigns.rows,
+      flowPerformance: flows.error ? null : flows.rows,
+      error,
+    }
+  },
+  ['klaviyo-performance'],
+  { revalidate: KLAVIYO_REPORT_REVALIDATE_SECONDS },
+)
+
 export const getChannelDetail = async (
   siteId: string,
   provider: ProviderId,
@@ -317,7 +396,9 @@ export const getChannelDetail = async (
   const tokenResult =
     provider === 'facebook' || provider === 'instagram'
       ? await resolvePageAccessToken(admin, connection.id, siteId, provider)
-      : await resolveAccessToken(admin, connection.id, siteId, provider)
+      : provider === 'klaviyo'
+        ? await resolveKlaviyoApiKey(admin, connection.id)
+        : await resolveAccessToken(admin, connection.id, siteId, provider)
   if (!tokenResult.ok) return { kind: 'unsupported' }
 
   const resolvedConnectionId = connection.id
@@ -408,6 +489,32 @@ export const getChannelDetail = async (
         performance: performanceOutcome.rows,
         performanceTruncated: performanceOutcome.truncated,
         performanceError: performanceOutcome.error,
+      }
+    }
+    case 'klaviyo': {
+      const [campaigns, flows, profiles, segments, lists, performance] = await Promise.all([
+        fetchKlaviyoCampaigns(tokenResult.accessToken),
+        fetchKlaviyoFlows(tokenResult.accessToken),
+        countKlaviyoProfiles(tokenResult.accessToken),
+        fetchKlaviyoSegments(tokenResult.accessToken),
+        fetchKlaviyoLists(tokenResult.accessToken),
+        fetchKlaviyoPerformance(tokenResult.accessToken, range),
+      ])
+      return {
+        kind: 'klaviyo',
+        connectionId: resolvedConnectionId,
+        accountName,
+        externalAccountId,
+        avatarUrl,
+        campaigns,
+        flows,
+        campaignPerformance: performance.campaignPerformance,
+        flowPerformance: performance.flowPerformance,
+        performanceError: performance.error,
+        profileCount: profiles.count,
+        profileCountTruncated: profiles.truncated,
+        segments,
+        lists,
       }
     }
     case 'google-ads': {

@@ -22,6 +22,11 @@ export const channelChartMetric = (provider: ProviderId): ChannelChartMetric | n
   switch (provider) {
     case 'gtm':
     case 'merchant-center':
+    // Klaviyo không có `MetricsAdapter` ghi vào `metrics_daily` (rate limit
+    // Reporting API quá chặt để đồng bộ hằng ngày mỗi connection, xem
+    // header comment `providers/klaviyo.ts`) — trang chi tiết kênh của nó tự
+    // vẽ dashboard riêng (`KlaviyoDashboard`), không qua `ChannelTrendCard`.
+    case 'klaviyo':
       return null
     case 'google-ads':
     case 'meta-ads':

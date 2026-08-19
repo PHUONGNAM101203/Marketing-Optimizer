@@ -17,14 +17,30 @@ export const PROVIDERS = [
   'instagram',
   'tiktok',
   'facebook',
+  'klaviyo',
 ] as const
 
 export type ProviderId = (typeof PROVIDERS)[number]
 
-export type ProviderFamily = 'google' | 'youtube' | 'meta' | 'tiktok'
+// `klaviyo` là family CỦA RIÊNG NÓ — không OAuth, không thuộc Google/YouTube/
+// Meta/TikTok. Cố tình KHÔNG thêm vào `PROVIDER_FAMILIES` bên dưới (mảng đó
+// chỉ phục vụ luồng OAuth `/api/oauth/[family]/...`) và KHÔNG thêm vào các
+// switch 'google'|'youtube'|'meta'|'tiktok' viết tay ở overview/explore
+// (`familyMembers`/`familySource` — cả hai tự khai literal union riêng,
+// không tham chiếu `ProviderFamily`, nên thêm giá trị này không đụng gì tới
+// chúng). Klaviyo có trang chi tiết kênh riêng, không có tab Tổng quan/Khám
+// phá theo family — việc đó để lại cho một lượt sau nếu cần.
+export type ProviderFamily = 'google' | 'youtube' | 'meta' | 'tiktok' | 'klaviyo'
 
 /** Nhóm chức năng — dùng để gom thẻ ở trang Connections. */
-export type ProviderCategory = 'ads' | 'analytics' | 'search' | 'social' | 'tooling' | 'commerce'
+export type ProviderCategory =
+  | 'ads'
+  | 'analytics'
+  | 'search'
+  | 'social'
+  | 'tooling'
+  | 'commerce'
+  | 'marketing-automation'
 
 /**
  * Khả năng của nền tảng. Quyết định UI render gì.
@@ -159,6 +175,22 @@ export const PROVIDER_META: Readonly<Record<ProviderId, ProviderMeta>> = {
     category: 'social',
     capabilities: ['content', 'traffic'],
     colorToken: '--color-series-9',
+  },
+  klaviyo: {
+    id: 'klaviyo',
+    label: 'Klaviyo',
+    shortLabel: 'Klaviyo',
+    family: 'klaviyo',
+    category: 'marketing-automation',
+    // 'content' — campaign/flow là thực thể nội dung (giống video/bài đăng);
+    // 'conversions' — revenue/conversion gắn theo từng campaign/flow là số
+    // liệu cốt lõi Klaviyo báo cáo (Reporting API), không phải suy diễn.
+    capabilities: ['content', 'conversions'],
+    // Dùng chung slot với Instagram — chart Klaviyo (nếu có, xem
+    // `klaviyo-dashboard.tsx`) không bao giờ xuất hiện CÙNG Instagram trên
+    // một biểu đồ so sánh chéo, giống cách GTM/Merchant Center/TikTok đã
+    // chia sẻ `--color-series-8` phía trên.
+    colorToken: '--color-series-7',
   },
 } as const
 

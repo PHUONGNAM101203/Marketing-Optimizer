@@ -90,6 +90,7 @@ const SEED_BASE: Readonly<Record<ProviderId, number>> = {
   instagram: 17_007,
   gtm: 18_008,
   'merchant-center': 19_009,
+  klaviyo: 20_010,
 }
 
 export const entitiesOf = (

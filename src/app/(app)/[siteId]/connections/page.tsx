@@ -10,6 +10,7 @@ import { GoogleAdsPicker } from '@/components/connections/google-ads-picker'
 import { MetaAdsPicker } from '@/components/connections/meta-ads-picker'
 import { GtmPicker } from '@/components/connections/gtm-picker'
 import { PendingGoogleConnectionsPicker } from '@/components/connections/pending-google-connections-picker'
+import { KlaviyoConnectCard } from '@/components/connections/klaviyo-connect-card'
 import { ExternalChannelLink } from '@/components/connections/external-channel-link'
 import { RefreshConnectionButton } from '@/components/connections/refresh-connection-button'
 import { DisconnectConnectionButton } from '@/components/connections/disconnect-connection-button'
@@ -208,6 +209,11 @@ export default async function ConnectionsPage({
       <GtmPicker siteId={site.id} />
       <GoogleAdsPicker siteId={site.id} />
       <MetaAdsPicker siteId={site.id} />
+      {/* Không đi qua `ConnectPanel` — Klaviyo không thuộc OAuth family nào,
+          xác thực bằng private API key dán trực tiếp. Ẩn khi đã kết nối,
+          giống các picker OAuth ở trên tự ẩn theo trạng thái riêng của
+          chúng — connection đã có sẽ hiện ở lưới "Đã kết nối" bên dưới. */}
+      {!summary.byProvider.has('klaviyo') ? <KlaviyoConnectCard siteId={site.id} /> : null}
 
       {summary.all.length > 0 ? (
         <section className="flex flex-col gap-4">

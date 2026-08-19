@@ -112,3 +112,26 @@ export async function resolvePageAccessToken(
   if (!pageAccessToken) return { ok: false, error: 'no-page-token' }
   return { ok: true, accessToken: pageAccessToken }
 }
+
+/**
+ * Key Klaviyo — KHÔNG dùng `resolveAccessToken` ở trên, cố tình tách riêng.
+ * `resolveAccessToken` coi `!expires_at` là "đã hết hạn" (dòng 45) rồi đòi
+ * `refresh_token_enc` (dòng 48) — đúng với MỌI provider OAuth khác (token
+ * luôn có hạn, luôn refresh được), nhưng SAI với Klaviyo: private API key
+ * không hết hạn và không có refresh token theo thiết kế (xem
+ * `verifyKlaviyoApiKey` trong `providers/klaviyo.ts`). Gọi nhầm hàm kia sẽ
+ * luôn trả lỗi `expired-no-refresh` dù key vẫn còn dùng được.
+ */
+export async function resolveKlaviyoApiKey(
+  admin: SupabaseClient<Database>,
+  connectionId: string,
+): Promise<AccessTokenResult> {
+  const { data: secret } = await admin
+    .from('connection_secrets')
+    .select('access_token_enc')
+    .eq('connection_id', connectionId)
+    .maybeSingle()
+
+  if (!secret) return { ok: false, error: 'no-secret' }
+  return { ok: true, accessToken: decrypt(secret.access_token_enc) }
+}

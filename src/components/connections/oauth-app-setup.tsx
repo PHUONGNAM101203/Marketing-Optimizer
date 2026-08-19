@@ -58,6 +58,11 @@ const GUIDE_STEPS: Readonly<Record<ProviderFamily, readonly string[]>> = {
     'App mới tạo ở chế độ Sandbox — test được ngay với tối đa 10 tài khoản TikTok tự khai trong mục Sandbox, không cần duyệt. Muốn dùng với tài khoản TikTok bất kỳ phải nộp App Review (mô tả use case, có thể cần video demo) rồi bật "Live".',
     'Vào mục "URL properties" của app, khai đủ Privacy Policy URL và Terms of Service URL hợp lệ — thiếu một trong hai TikTok từ chối App Review ngay từ vòng đầu. Dùng đúng https://marketing-optimizer-zeta.vercel.app/privacy và https://marketing-optimizer-zeta.vercel.app/terms (đã có sẵn trong app này).',
   ],
+  // Klaviyo không dùng OAuth (private API key dán trực tiếp — xem
+  // `KlaviyoConnectCard`) nên component này KHÔNG BAO GIỜ render với
+  // `family="klaviyo"` trong thực tế. Chỉ tồn tại để thoả kiểu
+  // `Record<ProviderFamily, ...>` — `ProviderFamily` giờ có 5 giá trị.
+  klaviyo: [],
 }
 
 const FAMILY_LABELS: Readonly<Record<ProviderFamily, string>> = {
@@ -65,6 +70,7 @@ const FAMILY_LABELS: Readonly<Record<ProviderFamily, string>> = {
   youtube: 'YouTube',
   meta: 'Meta',
   tiktok: 'TikTok',
+  klaviyo: 'Klaviyo',
 }
 
 const CONSOLE_LINKS: Readonly<Record<ProviderFamily, string>> = {
@@ -72,6 +78,7 @@ const CONSOLE_LINKS: Readonly<Record<ProviderFamily, string>> = {
   youtube: 'https://console.cloud.google.com/apis/credentials',
   meta: 'https://developers.facebook.com/apps',
   tiktok: 'https://developers.tiktok.com/apps',
+  klaviyo: 'https://www.klaviyo.com/settings/account/api-keys',
 }
 
 export interface OAuthAppSetupProps {

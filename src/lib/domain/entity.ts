@@ -80,4 +80,5 @@ export const PRIMARY_ENTITY_KIND: Readonly<Record<ProviderId, EntityKind>> = {
   // chính giờ là VIDEO (khớp `fetchTiktokContentExplore`), giống YouTube.
   tiktok: 'video',
   facebook: 'post',
+  klaviyo: 'campaign',
 }

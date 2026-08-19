@@ -18,6 +18,7 @@ import { UrlTabs } from '@/components/ui/tabs'
 import { Ga4OverviewPanel } from '@/components/channels/ga4/ga4-overview-panel'
 import { GscOverviewPanel } from '@/components/channels/gsc/gsc-overview-panel'
 import { MerchantPerformancePanel } from '@/components/channels/merchant/merchant-performance-panel'
+import { KlaviyoDashboard } from '@/components/channels/klaviyo/klaviyo-dashboard'
 import { TiktokVideoGrid } from '@/components/channels/tiktok/tiktok-video-grid'
 import { TiktokDashboard } from '@/components/channels/tiktok/tiktok-dashboard'
 import { YoutubeDashboard } from '@/components/channels/youtube/youtube-dashboard'
@@ -479,6 +480,22 @@ export function ChannelDetailBody({
         />
       )
     }
+
+    case 'klaviyo':
+      return (
+        <KlaviyoDashboard
+          campaigns={detail.campaigns}
+          flows={detail.flows}
+          campaignPerformance={detail.campaignPerformance}
+          flowPerformance={detail.flowPerformance}
+          performanceError={detail.performanceError}
+          profileCount={detail.profileCount}
+          profileCountTruncated={detail.profileCountTruncated}
+          segments={detail.segments}
+          lists={detail.lists}
+          currency={currency}
+        />
+      )
 
     case 'tiktok': {
       // Follower-theo-lần-đồng-bộ trước đây nằm ở tab Tổng quan — bỏ theo
