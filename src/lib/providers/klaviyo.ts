@@ -141,17 +141,19 @@ const fetchPaginated = async <T>(
 
 // ─── Campaigns ───────────────────────────────────────────────────────────
 
+export type KlaviyoCampaignChannel = 'email' | 'sms' | 'mobile_push'
+
 export interface KlaviyoCampaign {
   readonly id: string
   readonly name: string
-  readonly channel: 'email' | 'sms'
+  readonly channel: KlaviyoCampaignChannel
   readonly status: string
   readonly sendTime: string | null
 }
 
 const fetchCampaignsByChannel = (
   apiKey: string,
-  channel: 'email' | 'sms',
+  channel: KlaviyoCampaignChannel,
 ): Promise<PaginatedOutcome<KlaviyoCampaign>> =>
   fetchPaginated(
     apiKey,
@@ -174,16 +176,19 @@ const fetchCampaignsByChannel = (
 
 /** Trước đây chỉ đọc MỘT trang (page[size]=50, không theo `links.next`) —
  * tài khoản có đúng 52 campaign email là đã vượt cap, 2 campaign cuối bị
- * cắt lặng lẽ. Giờ theo cursor tới khi hết trang hoặc chạm `MAX_LIST_PAGES`. */
+ * cắt lặng lẽ. Giờ theo cursor tới khi hết trang hoặc chạm `MAX_LIST_PAGES`.
+ * Trước đây cũng chỉ gọi email + sms — API còn hỗ trợ kênh `mobile_push`
+ * (xem docs Get Campaigns), thêm vào để không bỏ sót loại campaign nào. */
 export const fetchKlaviyoCampaigns = async (apiKey: string): Promise<PaginatedOutcome<KlaviyoCampaign>> => {
-  const [email, sms] = await Promise.all([
+  const [email, sms, mobilePush] = await Promise.all([
     fetchCampaignsByChannel(apiKey, 'email'),
     fetchCampaignsByChannel(apiKey, 'sms'),
+    fetchCampaignsByChannel(apiKey, 'mobile_push'),
   ])
   return {
-    items: [...email.items, ...sms.items],
-    truncated: email.truncated || sms.truncated,
-    error: email.error ?? sms.error,
+    items: [...email.items, ...sms.items, ...mobilePush.items],
+    truncated: email.truncated || sms.truncated || mobilePush.truncated,
+    error: email.error ?? sms.error ?? mobilePush.error,
   }
 }
 
@@ -225,13 +230,18 @@ export interface KlaviyoMetric {
  * "Placed Order", "Opened Email", "Clicked Email", "Subscribed to List"…
  * Tự sinh từ mọi tích hợp (Shopify, chính Klaviyo, API riêng…), không phải
  * cấu hình tay. Hiện ra để người dùng thấy TOÀN BỘ dữ liệu Klaviyo đang có,
- * và để chẩn đoán khi report doanh thu lỗi (xem `resolveConversionMetricId`). */
+ * và để chẩn đoán khi report doanh thu lỗi (xem `resolveConversionMetricId`).
+ *
+ * KHÔNG set `page[size]` — endpoint `/metrics` không hỗ trợ tham số này
+ * (xác nhận qua docs chính thức developers.klaviyo.com/en/reference/get_metrics,
+ * 8/2026: "Returns a maximum of 200 results per page", cố định, chỉ nhận
+ * `page[cursor]`). Set nó gây lỗi 400 "'page_size' is not a valid field" —
+ * đúng lỗi thực tế gặp phải khi mới thêm hàm này. */
 export const fetchKlaviyoMetrics = (apiKey: string): Promise<PaginatedOutcome<KlaviyoMetric>> =>
   fetchPaginated(
     apiKey,
     (cursor) => {
       const url = new URL(`${API_BASE}/metrics`)
-      url.searchParams.set('page[size]', '100')
       if (cursor) url.searchParams.set('page[cursor]', cursor)
       return url
     },
@@ -416,12 +426,17 @@ export interface KlaviyoSegment {
   readonly isActive: boolean
 }
 
+/** `page[size]` max THẬT SỰ của endpoint này là 10 (xác nhận qua docs
+ * get_segments, 8/2026: "Default: 10. Min: 1. Max: 10.") — set cao hơn sẽ
+ * lỗi 400 giống bug `fetchKlaviyoMetrics` gặp phải. Bù lại bằng cursor
+ * pagination (`fetchPaginated`) đọc nhiều trang thay vì một trang 10 dòng
+ * như bản đầu. */
 export const fetchKlaviyoSegments = (apiKey: string): Promise<PaginatedOutcome<KlaviyoSegment>> =>
   fetchPaginated(
     apiKey,
     (cursor) => {
       const url = new URL(`${API_BASE}/segments`)
-      url.searchParams.set('page[size]', '50')
+      url.searchParams.set('page[size]', '10')
       if (cursor) url.searchParams.set('page[cursor]', cursor)
       return url
     },
@@ -438,12 +453,14 @@ export interface KlaviyoList {
   readonly name: string
 }
 
+/** Max thật sự 10, cùng lý do `fetchKlaviyoSegments` ở trên (docs get_lists:
+ * "Default: 10. Min: 1. Max: 10."). */
 export const fetchKlaviyoLists = (apiKey: string): Promise<PaginatedOutcome<KlaviyoList>> =>
   fetchPaginated(
     apiKey,
     (cursor) => {
       const url = new URL(`${API_BASE}/lists`)
-      url.searchParams.set('page[size]', '50')
+      url.searchParams.set('page[size]', '10')
       if (cursor) url.searchParams.set('page[cursor]', cursor)
       return url
     },
@@ -453,11 +470,13 @@ export const fetchKlaviyoLists = (apiKey: string): Promise<PaginatedOutcome<Klav
 
 // ─── Forms (biểu mẫu đăng ký) ──────────────────────────────────────────────
 
+/** `status` chỉ có hai giá trị thật ('draft'/'live') — resource form KHÔNG
+ * có field `form_type` (xác nhận qua docs get_forms, 8/2026: attributes chỉ
+ * gồm name/status/ab_test/created_at/updated_at). `page[size]` max 100. */
 export interface KlaviyoForm {
   readonly id: string
   readonly name: string
-  readonly status: string
-  readonly formType: string | null
+  readonly status: 'draft' | 'live' | 'unknown'
 }
 
 export const fetchKlaviyoForms = (apiKey: string): Promise<PaginatedOutcome<KlaviyoForm>> =>
@@ -469,12 +488,14 @@ export const fetchKlaviyoForms = (apiKey: string): Promise<PaginatedOutcome<Klav
       if (cursor) url.searchParams.set('page[cursor]', cursor)
       return url
     },
-    (row) => ({
-      id: row.id,
-      name: (row.attributes?.name as string | undefined) ?? row.id,
-      status: (row.attributes?.status as string | undefined) ?? 'unknown',
-      formType: (row.attributes?.form_type as string | undefined) ?? null,
-    }),
+    (row) => {
+      const status = row.attributes?.status as string | undefined
+      return {
+        id: row.id,
+        name: (row.attributes?.name as string | undefined) ?? row.id,
+        status: status === 'draft' || status === 'live' ? status : 'unknown',
+      }
+    },
     'forms',
   )
 

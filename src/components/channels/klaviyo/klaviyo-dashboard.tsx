@@ -1,10 +1,18 @@
+import { ExternalLink } from 'lucide-react'
 import { StatRow, StatTile } from '@/components/ui/stat-tile'
 import { Card, SectionHead } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Callout, EmptyState } from '@/components/ui/feedback'
 import { TBody, TD, TH, THead, TR, Table, TableScroller } from '@/components/ui/table'
 import { formatCompact, formatCurrencyCompact } from '@/lib/format'
+import { KLAVIYO_PROFILES_URL, klaviyoResourceUrl } from '@/lib/domain/klaviyo-web-links'
 import type { KlaviyoCampaign, KlaviyoFlow, KlaviyoValuesRow } from '@/lib/providers/klaviyo'
+
+const CAMPAIGN_CHANNEL_LABELS: Readonly<Record<KlaviyoCampaign['channel'], string>> = {
+  email: 'Email',
+  sms: 'SMS',
+  mobile_push: 'Push',
+}
 
 /* Hallmark · component: klaviyo-dashboard · theme: studied-DNA (Ink & Signal)
  *
@@ -54,7 +62,20 @@ export function KlaviyoDashboard({
           value={profileCount === null ? '—' : `${formatCompact(profileCount)}${profileCountTruncated ? '+' : ''}`}
           metric="users"
           deltaPct={null}
-          footnote={profileCountTruncated ? 'Danh sách lớn hơn số đọc được — số trên chỉ là một phần.' : undefined}
+          footnote={
+            <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
+              {profileCountTruncated ? <span>Danh sách lớn hơn số đọc được — số trên chỉ là một phần.</span> : null}
+              <a
+                href={KLAVIYO_PROFILES_URL}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-1 text-[var(--color-accent)] hover:underline"
+              >
+                <ExternalLink aria-hidden className="size-3" />
+                Xem trong Klaviyo
+              </a>
+            </span>
+          }
         />
         <StatTile label="Campaign" value={formatCompact(campaigns.length)} metric="conversions" deltaPct={null} />
         <StatTile label="Flow" value={formatCompact(flows.length)} metric="conversions" deltaPct={null} />
@@ -79,8 +100,9 @@ export function KlaviyoDashboard({
         rows={campaigns.map((campaign) => ({
           id: campaign.id,
           name: campaign.name,
-          meta: `${campaign.channel === 'email' ? 'Email' : 'SMS'} · ${campaign.status}`,
+          meta: `${CAMPAIGN_CHANNEL_LABELS[campaign.channel]} · ${campaign.status}`,
           performance: campaignPerformanceById.get(campaign.id) ?? null,
+          href: klaviyoResourceUrl('campaign', campaign.id),
         }))}
         currency={currency}
         truncated={campaignsTruncated}
@@ -94,6 +116,7 @@ export function KlaviyoDashboard({
           name: flow.name,
           meta: `${flow.triggerType ?? 'Không rõ trigger'} · ${flow.status}`,
           performance: flowPerformanceById.get(flow.id) ?? null,
+          href: klaviyoResourceUrl('flow', flow.id),
         }))}
         currency={currency}
         truncated={flowsTruncated}
@@ -107,6 +130,7 @@ interface PerformanceTableRow {
   readonly name: string
   readonly meta: string
   readonly performance: KlaviyoValuesRow | null
+  readonly href: string
 }
 
 function PerformanceTable({
@@ -147,6 +171,7 @@ function PerformanceTable({
                   <TH numeric>Click</TH>
                   <TH numeric>Chuyển đổi</TH>
                   <TH numeric>Doanh thu</TH>
+                  <TH aria-label="Mở trong Klaviyo" />
                 </TR>
               </THead>
               <TBody>
@@ -166,6 +191,17 @@ function PerformanceTable({
                     <TD numeric>{row.performance ? formatCompact(row.performance.conversions) : '—'}</TD>
                     <TD numeric>
                       {row.performance ? formatCurrencyCompact(row.performance.conversionValueMicros, currency) : '—'}
+                    </TD>
+                    <TD numeric>
+                      <a
+                        href={row.href}
+                        target="_blank"
+                        rel="noreferrer"
+                        aria-label={`Mở ${row.name} trong Klaviyo`}
+                        className="inline-flex text-[var(--color-ink-3)] hover:text-[var(--color-accent)]"
+                      >
+                        <ExternalLink aria-hidden className="size-3.5" />
+                      </a>
                     </TD>
                   </TR>
                 ))}
@@ -188,7 +224,7 @@ export function NameList({
 }: {
   readonly label: string
   readonly title: string
-  readonly items: readonly { readonly id: string; readonly name: string; readonly badge?: string }[]
+  readonly items: readonly { readonly id: string; readonly name: string; readonly badge?: string; readonly href?: string }[]
   readonly truncated?: boolean
 }) {
   return (
@@ -207,7 +243,20 @@ export function NameList({
             {items.map((item) => (
               <li key={item.id} className="flex items-center justify-between gap-3 px-4 py-3">
                 <span className="truncate text-[length:var(--text-sm)] text-[var(--color-ink)]">{item.name}</span>
-                {item.badge ? <Badge tone="outline">{item.badge}</Badge> : null}
+                <span className="flex shrink-0 items-center gap-2">
+                  {item.badge ? <Badge tone="outline">{item.badge}</Badge> : null}
+                  {item.href ? (
+                    <a
+                      href={item.href}
+                      target="_blank"
+                      rel="noreferrer"
+                      aria-label={`Mở ${item.name} trong Klaviyo`}
+                      className="inline-flex text-[var(--color-ink-3)] hover:text-[var(--color-accent)]"
+                    >
+                      <ExternalLink aria-hidden className="size-3.5" />
+                    </a>
+                  ) : null}
+                </span>
               </li>
             ))}
           </ul>

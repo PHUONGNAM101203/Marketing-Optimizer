@@ -2,7 +2,14 @@ import { Badge } from '@/components/ui/badge'
 import { Card, SectionHead } from '@/components/ui/card'
 import { EmptyState } from '@/components/ui/feedback'
 import { NameList } from '@/components/channels/klaviyo/klaviyo-dashboard'
+import { klaviyoResourceUrl } from '@/lib/domain/klaviyo-web-links'
 import type { KlaviyoForm, KlaviyoList, KlaviyoMetric, KlaviyoSegment } from '@/lib/providers/klaviyo'
+
+const FORM_STATUS_LABELS: Readonly<Record<KlaviyoForm['status'], string>> = {
+  draft: 'Nháp',
+  live: 'Đang chạy',
+  unknown: 'Không rõ',
+}
 
 /* Hallmark · component: klaviyo-audience-panel · theme: studied-DNA (Ink & Signal)
  *
@@ -45,13 +52,18 @@ export function KlaviyoAudiencePanel({
             id: segment.id,
             name: segment.name,
             badge: segment.isActive ? 'Đang hoạt động' : 'Tạm dừng',
+            href: klaviyoResourceUrl('segment', segment.id),
           }))}
         />
         <NameList
           label="List"
           title="Danh sách (List)"
           truncated={listsTruncated}
-          items={lists.map((list) => ({ id: list.id, name: list.name }))}
+          items={lists.map((list) => ({
+            id: list.id,
+            name: list.name,
+            href: klaviyoResourceUrl('list', list.id),
+          }))}
         />
       </div>
 
@@ -62,7 +74,8 @@ export function KlaviyoAudiencePanel({
         items={forms.map((form) => ({
           id: form.id,
           name: form.name,
-          badge: form.formType ? `${form.formType} · ${form.status}` : form.status,
+          badge: FORM_STATUS_LABELS[form.status],
+          href: klaviyoResourceUrl('form', form.id),
         }))}
       />
 
