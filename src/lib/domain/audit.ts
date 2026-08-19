@@ -125,10 +125,20 @@ export interface PageSpeedStrategyResult {
 /** Google PageSpeed Insights — chỉ gọi cho trang chủ, xem `lib/audit/pagespeed.ts`.
  * Lấy CẢ HAI chiến lược mỗi lượt quét (giống trang pagespeed.web.dev thật, nơi
  * người dùng bấm đổi qua lại Mobile/Desktop). Từng nhánh có thể `null` riêng
- * nếu lượt gọi PSI cho chiến lược đó lỗi/timeout — không kéo cả hai xuống null. */
+ * nếu lượt gọi PSI cho chiến lược đó lỗi/timeout — không kéo cả hai xuống null.
+ *
+ * `mobileError`/`desktopError` ghi lại LÝ DO THẬT khi nhánh tương ứng null —
+ * timeout, HTTP lỗi (kèm status thật của Google), hay JSON không đọc được.
+ * Thiếu trường này (lượt quét cũ trước khi thêm) coi như không có lý do ghi
+ * nhận, không phải bằng chứng "không lỗi". Trước đây mọi nhánh lỗi đều lặng
+ * thinh trả về `null` — cùng lớp lỗi "nuốt lỗi API thật" đã gặp ở GA4/GSC/GTM
+ * (xem `checkGoogleApiErrors` trong `google-discovery.ts`), khiến không ai
+ * biết vì sao Desktop cứ lỗi liên tục dù đã tăng timeout hai lần. */
 export interface PageSpeedResult {
   readonly mobile: PageSpeedStrategyResult | null
   readonly desktop: PageSpeedStrategyResult | null
+  readonly mobileError?: string | null
+  readonly desktopError?: string | null
 }
 
 export interface AuditRun {

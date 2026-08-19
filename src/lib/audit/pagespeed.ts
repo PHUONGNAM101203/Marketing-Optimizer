@@ -84,11 +84,21 @@ interface PsiResponse {
 const toScore = (category: PsiCategory | undefined): number | null =>
   typeof category?.score === 'number' ? Math.round(category.score * 100) : null
 
+/** Kết quả một nhánh — LUÔN kèm `error` khi `result` null, không còn nuốt lý
+ * do thật (timeout / HTTP lỗi kèm status thật / JSON hỏng) như trước. Đây là
+ * bằng chứng để phân biệt "PSI thật sự chậm hơn timeout" với "Google trả lỗi
+ * (quota, key sai, site chặn Lighthouse bot…)" — hai nguyên nhân cần hai cách
+ * sửa khác nhau, không thể đoán được nếu tiếp tục gộp chung thành `null`. */
+interface PsiStrategyOutcome {
+  readonly result: PageSpeedStrategyResult | null
+  readonly error: string | null
+}
+
 const fetchPageSpeedStrategy = async (
   pageUrl: string,
   apiKey: string,
   strategy: PageSpeedStrategy,
-): Promise<PageSpeedStrategyResult | null> => {
+): Promise<PsiStrategyOutcome> => {
   const url = new URL(PSI_ENDPOINT)
   url.searchParams.set('url', pageUrl)
   url.searchParams.set('key', apiKey)
@@ -103,12 +113,25 @@ const fetchPageSpeedStrategy = async (
   let response: Response
   try {
     response = await fetch(url.toString(), { signal: controller.signal })
-  } catch {
-    return null
+  } catch (error) {
+    const isTimeout = error instanceof Error && error.name === 'AbortError'
+    return {
+      result: null,
+      error: isTimeout
+        ? `Quá thời gian chờ (${PSI_TIMEOUT_MS / 1000}s)`
+        : `Lỗi mạng khi gọi PSI: ${error instanceof Error ? error.message : String(error)}`,
+    }
   } finally {
     clearTimeout(timeout)
   }
-  if (!response.ok) return null
+  if (!response.ok) {
+    // Đọc thân response để biết ĐÚNG lý do Google từ chối (quota hết, key
+    // sai/bị giới hạn domain, URL không truy cập được…) — trước đây bỏ qua
+    // hẳn thân response ở nhánh lỗi, y hệt lớp lỗi "nuốt lỗi API thật" đã vá
+    // cho GA4/GSC/GTM.
+    const bodyText = await response.text().catch(() => '')
+    return { result: null, error: `HTTP ${response.status} ${response.statusText}: ${bodyText.slice(0, 300)}` }
+  }
 
   // `response.json()` từng đứng NGOÀI try/catch — PSI trả 200 nhưng thân
   // response không parse được JSON (đã xảy ra thật, 8/2026: gây throw không
@@ -119,8 +142,11 @@ const fetchPageSpeedStrategy = async (
   let body: PsiResponse
   try {
     body = (await response.json()) as PsiResponse
-  } catch {
-    return null
+  } catch (error) {
+    return {
+      result: null,
+      error: `PSI trả về 200 nhưng JSON không đọc được: ${error instanceof Error ? error.message : String(error)}`,
+    }
   }
   const categories = body.lighthouseResult?.categories
   const audits = body.lighthouseResult?.audits ?? {}
@@ -130,27 +156,40 @@ const fetchPageSpeedStrategy = async (
     .map((audit) => ({ title: audit.title ?? '—', savings: audit.displayValue ?? null }))
 
   return {
-    strategy,
-    performanceScore: toScore(categories?.performance),
-    seoScore: toScore(categories?.seo),
-    accessibilityScore: toScore(categories?.accessibility),
-    bestPracticesScore: toScore(categories?.['best-practices']),
-    fcpMs: audits['first-contentful-paint']?.numericValue ?? null,
-    lcpMs: audits['largest-contentful-paint']?.numericValue ?? null,
-    cls: audits['cumulative-layout-shift']?.numericValue ?? null,
-    tbtMs: audits['total-blocking-time']?.numericValue ?? null,
-    speedIndexMs: audits['speed-index']?.numericValue ?? null,
-    opportunities,
-    fetchedAt: new Date().toISOString(),
+    result: {
+      strategy,
+      performanceScore: toScore(categories?.performance),
+      seoScore: toScore(categories?.seo),
+      accessibilityScore: toScore(categories?.accessibility),
+      bestPracticesScore: toScore(categories?.['best-practices']),
+      fcpMs: audits['first-contentful-paint']?.numericValue ?? null,
+      lcpMs: audits['largest-contentful-paint']?.numericValue ?? null,
+      cls: audits['cumulative-layout-shift']?.numericValue ?? null,
+      tbtMs: audits['total-blocking-time']?.numericValue ?? null,
+      speedIndexMs: audits['speed-index']?.numericValue ?? null,
+      opportunities,
+      fetchedAt: new Date().toISOString(),
+    },
+    error: null,
   }
 }
 
 /** Gọi song song cả hai chiến lược — mỗi nhánh lỗi độc lập (timeout desktop
- * không kéo mobile xuống `null` theo, và ngược lại). */
+ * không kéo mobile xuống `null` theo, và ngược lại). Log lỗi thật ra
+ * console.error (đọc được qua `vercel logs`) NGOÀI việc lưu vào
+ * `mobileError`/`desktopError` — hai đường độc lập để chẩn đoán, không phụ
+ * thuộc riêng vào một trong hai. */
 export const fetchPageSpeedInsights = async (pageUrl: string, apiKey: string): Promise<PageSpeedResult> => {
   const [mobile, desktop] = await Promise.all([
     fetchPageSpeedStrategy(pageUrl, apiKey, 'mobile'),
     fetchPageSpeedStrategy(pageUrl, apiKey, 'desktop'),
   ])
-  return { mobile, desktop }
+  if (mobile.error) console.error(`PSI mobile lỗi (${pageUrl}): ${mobile.error}`)
+  if (desktop.error) console.error(`PSI desktop lỗi (${pageUrl}): ${desktop.error}`)
+  return {
+    mobile: mobile.result,
+    desktop: desktop.result,
+    mobileError: mobile.error,
+    desktopError: desktop.error,
+  }
 }

@@ -139,10 +139,17 @@ export function PageSpeedReport({
       {current ? (
         <PageSpeedStrategyPanel result={current} />
       ) : (
-        <p className="text-[length:var(--text-sm)] text-[var(--color-ink-2)]">
-          Chưa lấy được số liệu {STRATEGY_LABEL[strategy]} — lượt gọi PageSpeed Insights cho chiến
-          lược này bị lỗi hoặc quá thời gian chờ ở lượt quét gần nhất, thử &quot;Quét lại&quot;.
-        </p>
+        <div className="flex flex-col gap-1.5">
+          <p className="text-[length:var(--text-sm)] text-[var(--color-ink-2)]">
+            Chưa lấy được số liệu {STRATEGY_LABEL[strategy]} ở lượt quét gần nhất, thử &quot;Quét
+            lại&quot;.
+          </p>
+          {(strategy === 'desktop' ? pagespeed.desktopError : pagespeed.mobileError) ? (
+            <p className="rounded-[var(--radius-sm)] bg-[var(--color-paper-2)] p-2 font-mono text-[length:var(--text-2xs)] break-all text-[var(--color-ink-3)]">
+              {strategy === 'desktop' ? pagespeed.desktopError : pagespeed.mobileError}
+            </p>
+          ) : null}
+        </div>
       )}
     </Card>
   )
