@@ -1,9 +1,8 @@
 import { notFound } from 'next/navigation'
-import { CircleAlert, CircleCheck, Link2Off, TriangleAlert } from 'lucide-react'
+import { CircleCheck, TriangleAlert } from 'lucide-react'
 import { PageHeader, PageShell } from '@/components/layout/page-header'
 import { Card } from '@/components/ui/card'
 import { Badge, StatusDot } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
 import { Callout } from '@/components/ui/feedback'
 import { ProviderMark } from '@/components/connections/provider-mark'
 import { ConnectPanel } from '@/components/connections/connect-panel'
@@ -12,6 +11,7 @@ import { MetaAdsPicker } from '@/components/connections/meta-ads-picker'
 import { GtmPicker } from '@/components/connections/gtm-picker'
 import { ExternalChannelLink } from '@/components/connections/external-channel-link'
 import { RefreshConnectionButton } from '@/components/connections/refresh-connection-button'
+import { DisconnectConnectionButton } from '@/components/connections/disconnect-connection-button'
 import { getSite } from '@/lib/data/sites'
 import { getConnectionSummary } from '@/lib/data/connections'
 import { getConfiguredOAuthApps, getGoogleAdsDeveloperToken } from '@/lib/data/site-oauth-apps'
@@ -247,19 +247,15 @@ function ConnectionCard({ connection }: { readonly connection: Connection }) {
         <div className="flex shrink-0 items-center gap-2">
           <ExternalChannelLink provider={provider} externalAccountId={connection.externalAccountId} />
 
-          {connection.status === 'expired' ? (
-            <Button variant="primary" size="sm">
-              <Link2Off aria-hidden className="size-3.5" />
-              Cấp quyền lại
-            </Button>
-          ) : connection.status === 'error' ? (
-            <Button variant="secondary" size="sm">
-              <CircleAlert aria-hidden className="size-3.5" />
-              Xem lỗi
-            </Button>
-          ) : (
+          {connection.status !== 'expired' && connection.status !== 'error' ? (
             <RefreshConnectionButton connectionId={connection.id} />
-          )}
+          ) : null}
+
+          <DisconnectConnectionButton
+            connectionId={connection.id}
+            providerLabel={PROVIDER_META[provider].label}
+            accountName={connection.accountName}
+          />
         </div>
       </div>
     </Card>
