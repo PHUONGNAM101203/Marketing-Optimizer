@@ -259,14 +259,14 @@ function ConnectionCard({ connection }: { readonly connection: Connection }) {
         </p>
       ) : null}
 
-      <div className="mt-auto flex items-center justify-between gap-3 pt-1">
-        <p className="min-w-0 truncate text-[length:var(--text-xs)] text-[var(--color-ink-3)]">
+      <div className="mt-auto flex flex-col gap-2 pt-1">
+        <p className="text-[length:var(--text-xs)] text-[var(--color-ink-3)]">
           {connection.lastSyncedAt
             ? `Đồng bộ ${formatRelativeTime(connection.lastSyncedAt, new Date())}`
             : 'Đang đồng bộ lần đầu…'}
         </p>
 
-        <div className="flex shrink-0 items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <ExternalChannelLink provider={provider} externalAccountId={connection.externalAccountId} />
 
           {connection.status !== 'expired' && connection.status !== 'error' ? (

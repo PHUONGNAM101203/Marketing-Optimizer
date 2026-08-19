@@ -15,12 +15,14 @@ import { formatRelativeTime } from '@/lib/format'
 export const metadata = { title: 'Kiểm tra SEO/GEO/AIO/AEO' }
 
 // `runSiteAuditAction` (Server Action gọi từ trang này) chạy `performAuditScan`
-// trong `after()` — quét thật (crawl tới `CRAWL_DEADLINE_MS`) + PSI + gợi ý AI
-// có thể mất tới vài phút cho site nhiều trang (xác nhận thật: handdn.com
-// 1182 trang mất ~238s, 8/2026). Không khai báo `maxDuration` thì Next.js áp
-// giới hạn MẶC ĐỊNH của Vercel cho route này — không đủ. Khai theo đúng trần
-// Fluid Compute trên Hobby (xem `api/cron/sync-all/route.ts`, cùng lý do).
-export const maxDuration = 300
+// trong `after()` — quét thật (crawl tới `CRAWL_DEADLINE_MS`) + PSI (tới 2 lượt
+// thử, xem `pagespeed.ts`) + gợi ý AI có thể mất tới vài phút cho site nhiều
+// trang (xác nhận thật: handdn.com 1182 trang mất ~238s, 8/2026). 300s từng là
+// trần đúng cho Hobby — giờ đã lên Vercel Pro (xem lịch sử cron 8/2026), trần
+// thật là 800s không cần đăng ký beta (xác nhận từ tài liệu Vercel). Nới lên
+// 480s để PSI có đủ chỗ retry một lần thay vì bị cắt ngang bởi chính giới hạn
+// của app — vẫn chừa đệm ~130-150s so với trần 800s cho DB write/gợi ý AI.
+export const maxDuration = 480
 
 export default async function AuditPage({
   params,

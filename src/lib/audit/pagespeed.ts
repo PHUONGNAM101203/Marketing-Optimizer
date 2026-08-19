@@ -28,14 +28,16 @@ import type { PageSpeedResult, PageSpeedStrategy, PageSpeedStrategyResult } from
  */
 
 const PSI_ENDPOINT = 'https://www.googleapis.com/pagespeedonline/v5/runPagespeed'
-// Chạy SONG SONG với crawl (tới 240s, xem `actions/audit.ts::performAuditScan`)
-// từ 17/8/2026 — không còn tranh chấp thời gian với phần crawl/PSI tuần tự
-// như trước. Nới từ 45s lên 90s rồi 120s (site rất nặng đo được thật, 8/2026:
-// handdn.com desktop mất ~30s CHẠY RIÊNG LẺ nhưng vẫn timeout khi chạy đồng
-// thời với crawl 1182 trang — Node đơn luồng, JSON.parse ~1MB response PSI
-// cạnh tranh CPU với việc parse HTML của crawl, không phải lỗi mạng). Vẫn
-// nằm gọn trong ngân sách 240s của crawl.
-const PSI_TIMEOUT_MS = 120_000
+// Chạy SONG SONG với crawl (tới 200s, xem `CRAWL_DEADLINE_MS` trong
+// `crawler.ts`) — không tranh chấp thời gian với phần crawl. Nới từ 45s lên
+// 90s rồi 120s (site rất nặng đo được thật, 8/2026: handdn.com desktop mất
+// ~30s CHẠY RIÊNG LẺ nhưng vẫn timeout khi chạy đồng thời với crawl 1182
+// trang — Node đơn luồng, JSON.parse ~1MB response PSI cạnh tranh CPU với
+// việc parse HTML của crawl, không phải lỗi mạng). `maxDuration` của trang
+// audit đã lên 480s (Vercel Pro, xem `audit/page.tsx`) — đủ chỗ nới thêm lên
+// 150s VÀ thử lại một lần trên MỌI lỗi kể cả timeout (xem
+// `fetchPageSpeedStrategy` bên dưới), không chỉ lỗi HTTP nhanh như trước.
+const PSI_TIMEOUT_MS = 150_000
 
 /** `null` khi biến môi trường chưa được đặt — dùng để quyết định có gọi PSI
  * hay không (không âm thầm gọi thiếu key rồi nuốt lỗi). */
@@ -194,18 +196,23 @@ const attemptPageSpeedStrategy = async (
 
 /** PSI/Lighthouse phía Google hay trả lỗi 500 THOÁNG QUA ("Lighthouse
  * returned error: Something went wrong") không liên quan gì tới request của
- * ta — một lần thử lại NGAY (không delay) thường trúng một worker Lighthouse
- * khác của Google và qua. Chỉ thử lại lỗi `errorKind === 'retryable'` — lỗi
- * `timeout` đã ăn hết `PSI_TIMEOUT_MS` rồi, thử lại chỉ tổ vượt `maxDuration`
- * = 300s của cả audit mà không chắc khá hơn. Tối đa 1 lần thử lại — đây là
- * độ bền hợp lý cho một lỗi cơ hội, không phải retry vô hạn. */
+ * ta — một lần thử lại thường trúng một worker Lighthouse khác của Google và
+ * qua. Thử lại trên MỌI lỗi kể cả `timeout` — trước đây bỏ qua `timeout` vì
+ * `maxDuration` chỉ có 300s, không đủ chỗ cho 2×120s cộng với crawl. Giờ
+ * `maxDuration` = 480s (Vercel Pro, xem `audit/page.tsx`): crawl tối đa 200s
+ * chạy song song, PSI worst-case 2×150s = 300s — vẫn nằm gọn trong ngân sách
+ * kể cả cộng dồn phần dư ra ngoài thời gian crawl. Một timeout ở lượt đầu
+ * cũng thường xảy ra ĐÚNG LÚC crawl đang ở đợt xử lý CPU nặng nhất — lượt thử
+ * lại thường rơi vào lúc crawl đã dịu bớt (gần 200s), tăng cơ hội qua thật
+ * chứ không chỉ "thử cho có". Tối đa 1 lần thử lại — độ bền hợp lý cho một
+ * lỗi cơ hội, không phải retry vô hạn. */
 const fetchPageSpeedStrategy = async (
   pageUrl: string,
   apiKey: string,
   strategy: PageSpeedStrategy,
 ): Promise<PsiStrategyOutcome> => {
   const first = await attemptPageSpeedStrategy(pageUrl, apiKey, strategy)
-  if (first.errorKind !== 'retryable') return first
+  if (!first.errorKind) return first
   return attemptPageSpeedStrategy(pageUrl, apiKey, strategy)
 }
 
