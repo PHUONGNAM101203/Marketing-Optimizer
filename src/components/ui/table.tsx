@@ -1,4 +1,6 @@
-import type { HTMLAttributes, ReactNode, ThHTMLAttributes, TdHTMLAttributes } from 'react'
+'use client'
+
+import { useEffect, useRef, type HTMLAttributes, type ReactNode, type ThHTMLAttributes, type TdHTMLAttributes } from 'react'
 import { cn } from '@/lib/cn'
 
 /* Hallmark · component: table · theme: studied-DNA (Ink & Signal)
@@ -12,12 +14,41 @@ import { cn } from '@/lib/cn'
  * ngang theo.
  */
 
+/** Lăn chuột dọc (chuột thường, không phải trackpad) không tự cuộn ngang một
+ * vùng CHỈ tràn ngang — trình duyệt mặc định bỏ qua, người dùng buộc phải
+ * kéo thanh cuộn bằng tay. Bắt sự kiện `wheel` GỐC (không dùng prop `onWheel`
+ * của React — handler đó được gắn passive theo mặc định từ React 17,
+ * `preventDefault()` bên trong bị bỏ qua kèm cảnh báo console, không chặn
+ * được cuộn dọc mặc định của trang) để tự đổi `deltaY` thành `scrollLeft`,
+ * ÁP DỤNG CHUNG cho mọi bảng dùng `TableScroller` trong app (Khám phá, GA4
+ * Chi tiết, AI Visibility…) chỉ bằng một chỗ sửa. */
 export function TableScroller({
   className,
   ...props
 }: HTMLAttributes<HTMLDivElement>) {
+  const ref = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const el = ref.current
+    if (!el) return
+
+    const handleWheel = (event: WheelEvent) => {
+      // Chỉ can thiệp khi vùng THẬT SỰ tràn ngang và đây là cử chỉ lăn dọc
+      // (không phải vuốt ngang trackpad — deltaX đã lớn hơn thì để mặc định
+      // trình duyệt tự xử lý, không giành lại).
+      if (el.scrollWidth <= el.clientWidth) return
+      if (Math.abs(event.deltaY) <= Math.abs(event.deltaX)) return
+      event.preventDefault()
+      el.scrollLeft += event.deltaY
+    }
+
+    el.addEventListener('wheel', handleWheel, { passive: false })
+    return () => el.removeEventListener('wheel', handleWheel)
+  }, [])
+
   return (
     <div
+      ref={ref}
       // tabIndex để người dùng bàn phím cuộn được vùng tràn — không có nó,
       // bảng rộng thành nội dung không thể tới bằng bàn phím.
       tabIndex={0}
