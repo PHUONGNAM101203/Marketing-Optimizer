@@ -20,12 +20,14 @@ import { LlmsTxtPreview } from '@/components/geo/llms-txt-preview'
 import { AddTrackedPromptDialog } from '@/components/geo/add-tracked-prompt-dialog'
 import { TrackedPromptCard } from '@/components/geo/tracked-prompt-card'
 import { AddSuggestedPromptButton } from '@/components/geo/add-suggested-prompt-button'
+import { UrlTabs } from '@/components/ui/tabs'
 import { getSite } from '@/lib/data/sites'
 import { getLatestAuditRun } from '@/lib/data/audit'
 import { listTrackedPrompts } from '@/lib/data/tracked-prompts'
 import { getLatestCitationCheckByPrompt, countCitationChecks } from '@/lib/data/citation-checks'
 import { getSiteAiConnection } from '@/lib/data/site-ai-keys'
 import {
+  CITABILITY_AXIS_EXPLANATIONS,
   CITABILITY_AXIS_LABELS,
   type CitabilityAxes,
   type PageCitabilityScore,
@@ -262,59 +264,116 @@ export default async function AiVisibilityPage({
             description="Sáu trục quyết định một mô hình có trích được trang hay không: nó có bóc tách được cấu trúc, có tin được nguồn, có tìm ra câu trả lời gọn để trích, và trang có tự khai mình là thực thể gì. Tính từ lượt quét kỹ thuật gần nhất."
           />
 
-          <Card className="overflow-hidden">
-            <TableScroller aria-label="Điểm citability từng trang">
-              <Table>
-                <THead>
-                  <TR className="hover:bg-transparent">
-                    <TH>Trang</TH>
-                    <TH numeric>Tổng</TH>
-                    {(Object.keys(CITABILITY_AXIS_LABELS) as (keyof CitabilityAxes)[]).map((axis) => (
-                      <TH key={axis} numeric>
-                        {CITABILITY_AXIS_LABELS[axis]}
-                      </TH>
-                    ))}
-                    <TH numeric>Vấn đề</TH>
-                  </TR>
-                </THead>
-                <TBody>
-                  {pageCitability.map((page) => (
-                    <TR key={page.id}>
-                      <TD className="max-w-[20rem]">
-                        <span className="block truncate font-medium" title={page.title}>
-                          {page.title}
-                        </span>
-                        <span className="block truncate text-[length:var(--text-xs)] text-[var(--color-ink-3)]">
-                          {page.url}
-                        </span>
-                      </TD>
-                      <TD numeric>
-                        <ScoreChip score={page.overall} />
-                      </TD>
-                      {(Object.keys(CITABILITY_AXIS_LABELS) as (keyof CitabilityAxes)[]).map((axis) => (
-                        <TD key={axis} numeric>
-                          <span
-                            className={cn(
-                              page.axes[axis] < 40 && 'text-[var(--color-negative)]',
-                              page.axes[axis] >= 75 && 'text-[var(--color-positive)]',
-                            )}
-                          >
-                            {page.axes[axis]}
-                          </span>
-                        </TD>
-                      ))}
-                      <TD numeric>{page.issues.length}</TD>
-                    </TR>
-                  ))}
-                </TBody>
-              </Table>
-            </TableScroller>
-          </Card>
+          <UrlTabs
+            ariaLabel="Chế độ xem điểm citability"
+            tabs={[
+              {
+                id: 'table',
+                label: 'Bảng điểm',
+                panel: (
+                  <div className="flex flex-col gap-4">
+                    <Card className="overflow-hidden">
+                      <TableScroller aria-label="Điểm citability từng trang">
+                        <Table>
+                          <THead>
+                            <TR className="hover:bg-transparent">
+                              <TH>Trang</TH>
+                              <TH numeric>Tổng</TH>
+                              {(Object.keys(CITABILITY_AXIS_LABELS) as (keyof CitabilityAxes)[]).map((axis) => (
+                                <TH key={axis} numeric>
+                                  {CITABILITY_AXIS_LABELS[axis]}
+                                </TH>
+                              ))}
+                              <TH numeric>Vấn đề</TH>
+                            </TR>
+                          </THead>
+                          <TBody>
+                            {pageCitability.map((page) => (
+                              <TR key={page.id}>
+                                <TD className="max-w-[20rem]">
+                                  <span className="block truncate font-medium" title={page.title}>
+                                    {page.title}
+                                  </span>
+                                  <span className="block truncate text-[length:var(--text-xs)] text-[var(--color-ink-3)]">
+                                    {page.url}
+                                  </span>
+                                </TD>
+                                <TD numeric>
+                                  <ScoreChip score={page.overall} />
+                                </TD>
+                                {(Object.keys(CITABILITY_AXIS_LABELS) as (keyof CitabilityAxes)[]).map((axis) => (
+                                  <TD key={axis} numeric>
+                                    <span
+                                      className={cn(
+                                        page.axes[axis] < 40 && 'text-[var(--color-negative)]',
+                                        page.axes[axis] >= 75 && 'text-[var(--color-positive)]',
+                                      )}
+                                    >
+                                      {page.axes[axis]}
+                                    </span>
+                                  </TD>
+                                ))}
+                                <TD numeric>{page.issues.length}</TD>
+                              </TR>
+                            ))}
+                          </TBody>
+                        </Table>
+                      </TableScroller>
+                    </Card>
 
-          {worstPage ? <WorstPageDetail page={worstPage} /> : null}
+                    {worstPage ? <WorstPageDetail page={worstPage} /> : null}
+                  </div>
+                ),
+              },
+              {
+                id: 'explain',
+                label: 'Giải thích',
+                panel: <CitabilityExplanation />,
+              },
+            ]}
+          />
         </section>
       ) : null}
     </PageShell>
+  )
+}
+
+/** Cách tính THẬT của 6 trục — khớp đúng `computeAxes` trong
+ * `lib/audit/citability.ts`, không phải mô tả chung chung. "Tổng" ở bảng là
+ * trung bình cộng 6 trục; "Vấn đề" là số trục đang dưới 70 điểm, mỗi trục
+ * dưới 70 sinh MỘT gợi ý sửa cụ thể (xem "Trang yếu nhất" ở tab Bảng điểm). */
+function CitabilityExplanation() {
+  return (
+    <div className="flex flex-col gap-4">
+      <Card tone="inset" className="flex flex-col gap-2 p-4">
+        <p className="text-[length:var(--text-sm)] text-[var(--color-ink-2)]">
+          <strong className="text-[var(--color-ink)]">Tổng</strong> là trung bình cộng của 6 trục
+          bên dưới, làm tròn về 0–100.{' '}
+          <strong className="text-[var(--color-ink)]">Vấn đề</strong> là số trục đang dưới 70 điểm
+          — mỗi trục dưới 70 sinh ra một gợi ý sửa cụ thể, xem ở phần &quot;Trang yếu nhất&quot;
+          trong tab Bảng điểm.
+        </p>
+        <p className="text-[length:var(--text-xs)] text-[var(--color-ink-3)]">
+          Màu chữ trong bảng:{' '}
+          <span className="text-[var(--color-negative)]">đỏ dưới 40</span> ·{' '}
+          <span className="text-[var(--color-positive)]">xanh từ 75 trở lên</span> · còn lại
+          không tô màu.
+        </p>
+      </Card>
+
+      <div className="grid gap-3 sm:grid-cols-2">
+        {(Object.keys(CITABILITY_AXIS_LABELS) as (keyof CitabilityAxes)[]).map((axis) => (
+          <Card key={axis} className="flex flex-col gap-1.5 p-4">
+            <p className="text-[length:var(--text-sm)] font-medium text-[var(--color-ink)]">
+              {CITABILITY_AXIS_LABELS[axis]}
+            </p>
+            <p className="text-[length:var(--text-xs)] text-[var(--color-ink-3)]">
+              {CITABILITY_AXIS_EXPLANATIONS[axis]}
+            </p>
+          </Card>
+        ))}
+      </div>
+    </div>
   )
 }
 

@@ -136,6 +136,25 @@ export const CITABILITY_AXIS_LABELS: Readonly<Record<keyof CitabilityAxes, strin
   freshness: 'Độ mới',
 }
 
+/** Mô tả CÁCH TÍNH thật của từng trục (khớp đúng `computeAxes` trong
+ * `lib/audit/citability.ts`) — dùng cho tab "Giải thích" ở trang Hiện diện
+ * AI. Viết đúng ngưỡng điểm thật, không mô tả chung chung, để người dùng
+ * biết chính xác sửa gì thì điểm tăng bao nhiêu. */
+export const CITABILITY_AXIS_EXPLANATIONS: Readonly<Record<keyof CitabilityAxes, string>> = {
+  structure:
+    '+40 nếu trang có đúng một thẻ H1 · +30 nếu có từ 2 heading (H2/H3…) trở lên · +30 nếu có danh sách hoặc bảng. AI cần cấu trúc rõ để bóc tách nội dung thành từng ý — một khối văn bản liền mạch không heading không trích được.',
+  schema:
+    '100 nếu trang có ít nhất một khối JSON-LD (dữ liệu có cấu trúc khai đúng loại thực thể — Article, Product, Organization…) · 15 nếu không có. Đây là cách trực tiếp nhất để nói cho AI biết "đây là cái gì".',
+  answerability:
+    '100 nếu đoạn mở đầu dài 40–300 ký tự (đủ ngắn để trích nguyên văn làm câu trả lời độc lập) · 55 nếu có đoạn mở đầu nhưng dài/ngắn hơn khoảng đó · 15 nếu không tìm thấy đoạn mở đầu rõ ràng.',
+  trust:
+    '+30 nếu dùng HTTPS · +40 nếu có JSON-LD khai Person hoặc Organization (tác giả/tổ chức xác định) · +30 nếu có thẻ canonical. Tín hiệu này giúp AI tin nguồn trước khi trích dẫn.',
+  entityClarity:
+    '+40 nếu tiêu đề trang (thẻ title) dài 10–60 ký tự · +30 nếu có JSON-LD bất kỳ · +30 nếu có đúng một H1. Trang phải tự khai rõ mình đang nói về thực thể/chủ đề gì, không mập mờ.',
+  freshness:
+    '100 nếu tìm thấy tín hiệu ngày cập nhật (dateModified trong schema, hoặc thẻ <time>) · 35 nếu không có. AI ưu tiên trích nội dung còn cập nhật hơn nội dung không rõ tuổi.',
+}
+
 export interface CitabilityIssue {
   readonly axis: keyof CitabilityAxes
   readonly severity: 'high' | 'medium' | 'low'
