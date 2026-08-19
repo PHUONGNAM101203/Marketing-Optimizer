@@ -305,14 +305,20 @@ const fetchValuesReport = async (
 ): Promise<KlaviyoValuesOutcome> => {
   const groupKey = `${resource}_id`
   // Klaviyo BẮT BUỘC group theo cả `{resource}_id` LẪN `{resource}_message_id`
-  // cùng lúc — xác nhận qua docs query_campaign_values/query_flow_values
-  // (8/2026: "The following group by attributes are required: campaign_id,
-  // campaign_message_id" / "...flow_message_id, flow_id"). Một campaign/flow
-  // có thể có nhiều message (A/B test variant), Klaviyo từ chối group chỉ
-  // theo ID cha — gặp lỗi 400 thật khi mới thêm report này ("Grouping by
-  // campaign_message_id is required"). Hệ quả: response trả NHIỀU dòng cho
-  // CÙNG một campaign/flow khi có >1 message — phải cộng dồn lại bên dưới,
-  // không lấy đè dòng cuối lên dòng đầu.
+  // cùng lúc — một campaign/flow có thể có nhiều message (A/B test variant),
+  // Klaviyo từ chối group chỉ theo ID cha. Hệ quả: response trả NHIỀU dòng
+  // cho CÙNG một campaign/flow khi có >1 message — phải cộng dồn lại bên
+  // dưới, không lấy đè dòng cuối lên dòng đầu.
+  //
+  // Tên field body là `group_bys` (SỐ NHIỀU) — KHÔNG phải `group_by` như
+  // docs developers.klaviyo.com/en/reference/query_campaign_values mô tả.
+  // Đã thử `group_by` với 1 rồi 2 giá trị, CẢ HAI LẦN Klaviyo trả về ĐÚNG
+  // MỘT lỗi y hệt ("Grouping by campaign_message_id is required", pointer
+  // "/data/attributes/group_bys") — nội dung mảng group_by đổi mà lỗi không
+  // đổi nghĩa là Klaviyo chưa từng đọc field đó, field nó cần tên khác. Chính
+  // `pointer` trong lỗi đã chỉ thẳng tên field thật (`group_bys`) — tin vào
+  // hành vi API sống hơn bản tóm tắt docs (docs đã sai ở endpoint `/metrics`
+  // trước đó rồi, xem `fetchKlaviyoMetrics`).
   const messageGroupKey = `${resource}_message_id`
   const response = await fetch(`${API_BASE}/${resource}-values-reports`, {
     method: 'POST',
@@ -324,7 +330,7 @@ const fetchValuesReport = async (
           statistics: STATISTICS,
           timeframe: { start: range.start, end: range.end },
           conversion_metric_id: conversionMetricId,
-          group_by: [groupKey, messageGroupKey],
+          group_bys: [groupKey, messageGroupKey],
         },
       },
     }),
