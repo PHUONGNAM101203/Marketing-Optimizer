@@ -94,6 +94,68 @@ export const fetchGa4Explore = async (
   }
 }
 
+/** Bộ chỉ số tổng cho tab "Tổng quan" của GA4 — CÙNG danh sách metric mà
+ * chính trang GA4 thật hiển thị ở báo cáo tổng quan (Users/Sessions/
+ * Engagement/Conversions/Revenue), không phải bộ 3 chỉ số rút gọn của
+ * `Ga4Explore` (vốn chỉ phục vụ 3 breakdown top-N). Một lượt gọi `runReport`
+ * DUY NHẤT, không có `dimensions` — GA4 coi đây là một hàng "tổng" cho cả
+ * khoảng ngày, không phải phân rã theo ngày/trang. */
+const GA4_OVERVIEW_METRICS = [
+  'activeUsers',
+  'newUsers',
+  'sessions',
+  'engagedSessions',
+  'engagementRate',
+  'averageSessionDuration',
+  'screenPageViews',
+  'screenPageViewsPerSession',
+  'eventCount',
+  'conversions',
+  'totalRevenue',
+  'bounceRate',
+] as const
+
+export type Ga4OverviewMetric = (typeof GA4_OVERVIEW_METRICS)[number]
+
+export type Ga4Overview = Readonly<Record<Ga4OverviewMetric, number | null>>
+
+interface Ga4RunReportWithHeadersResponse {
+  readonly metricHeaders?: readonly { readonly name?: string }[]
+  readonly rows?: readonly { readonly metricValues?: readonly { readonly value?: string }[] }[]
+}
+
+export const fetchGa4Overview = async (
+  accessToken: string,
+  property: string,
+  range: { readonly startDate: string; readonly endDate: string },
+): Promise<Ga4Overview | null> => {
+  const response = await fetch(`https://analyticsdata.googleapis.com/v1beta/${property}:runReport`, {
+    method: 'POST',
+    headers: { ...authHeader(accessToken), 'content-type': 'application/json' },
+    body: JSON.stringify({
+      dateRanges: [{ startDate: range.startDate, endDate: range.endDate }],
+      metrics: GA4_OVERVIEW_METRICS.map((name) => ({ name })),
+    }),
+  })
+  if (!response.ok) return null
+
+  const data = (await response.json()) as Ga4RunReportWithHeadersResponse
+  const row = data.rows?.[0]
+  if (!row) return null
+
+  // Đọc theo TÊN cột GA4 thật sự trả về (`metricHeaders`), không giả định
+  // khớp đúng thứ tự đã yêu cầu — cùng lý do YouTube Analytics đã áp dụng ở
+  // trên: một metric không hợp lệ cho property này có thể bị Google âm thầm
+  // bỏ qua trong khi vẫn trả 200 cho các cột còn lại.
+  const columnIndex = new Map((data.metricHeaders ?? []).map((column, index) => [column.name, index]))
+  const valueOf = (metric: Ga4OverviewMetric): number | null => {
+    const index = columnIndex.get(metric)
+    return index === undefined ? null : Number(row.metricValues?.[index]?.value ?? 0)
+  }
+
+  return Object.fromEntries(GA4_OVERVIEW_METRICS.map((metric) => [metric, valueOf(metric)])) as Ga4Overview
+}
+
 // ─── Search Console ─────────────────────────────────────────────────────────
 
 export interface GscExplore {

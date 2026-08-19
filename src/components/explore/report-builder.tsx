@@ -1,11 +1,11 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { Check } from 'lucide-react'
 import { cn } from '@/lib/cn'
 import { Card } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { EmptyState } from '@/components/ui/feedback'
+import { ToggleChip } from '@/components/ui/toggle-chip'
 import {
   TBody,
   TD,
@@ -268,35 +268,5 @@ export function ReportBuilder({ rows, groups, currency }: ReportBuilderProps) {
         ) : null}
       </div>
     </div>
-  )
-}
-
-function ToggleChip({
-  label,
-  active,
-  onToggle,
-}: {
-  readonly label: string
-  readonly active: boolean
-  readonly onToggle: () => void
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onToggle}
-      aria-pressed={active}
-      className={cn(
-        'inline-flex items-center gap-1.5 rounded-[var(--radius-full)] px-3 py-1.5',
-        'text-[length:var(--text-xs)] font-medium whitespace-nowrap',
-        'border transition-colors duration-[var(--dur-fast)] ease-[var(--ease-out)]',
-        'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-focus)]',
-        active
-          ? 'border-[var(--color-accent)] bg-[var(--color-accent)] text-[var(--color-accent-ink)]'
-          : 'border-[var(--color-rule-strong)] bg-[var(--color-paper)] text-[var(--color-ink-2)] hover:text-[var(--color-ink)]',
-      )}
-    >
-      {active ? <Check aria-hidden className="size-3" /> : null}
-      {label}
-    </button>
   )
 }

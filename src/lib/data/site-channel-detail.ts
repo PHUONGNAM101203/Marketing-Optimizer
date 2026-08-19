@@ -3,11 +3,13 @@ import 'server-only'
 import { isProviderId, type ProviderId } from '@/lib/domain/providers'
 import {
   fetchGa4Explore,
+  fetchGa4Overview,
   fetchGscExplore,
   fetchGtmExplore,
   fetchYoutubeExplore,
   getYoutubeVideoTrending,
   type Ga4Explore,
+  type Ga4Overview,
   type GscExplore,
   type GtmExplore,
   type YoutubeExplore,
@@ -76,6 +78,9 @@ export type ChannelDetail =
        * niệm "kênh" (Ads/Analytics/Search Console/Tag Manager/Merchant Center). */
       readonly avatarUrl: string | null
       readonly data: Ga4Explore
+      /** `null` = lượt gọi tổng lỗi/property không hỗ trợ — tab "Tổng quan"
+       * tự ẩn khi null, không hiện một lưới ô trống. */
+      readonly overview: Ga4Overview | null
     }
   | {
       readonly kind: 'gsc'
@@ -307,15 +312,16 @@ export const getChannelDetail = async (
   const avatarUrl = connection.avatar_url
 
   switch (provider) {
-    case 'ga4':
-      return {
-        kind: 'ga4',
-        connectionId: resolvedConnectionId,
-        accountName,
-        externalAccountId,
-        avatarUrl,
-        data: await fetchGa4Explore(tokenResult.accessToken, connection.external_account_id, range),
-      }
+    case 'ga4': {
+      // Song song chứ không nối tiếp — hai lượt đọc độc lập nhau, giống hệt
+      // lý do case 'youtube' bên dưới gộp `data`+`trending` trong một
+      // `Promise.all`.
+      const [data, overview] = await Promise.all([
+        fetchGa4Explore(tokenResult.accessToken, connection.external_account_id, range),
+        fetchGa4Overview(tokenResult.accessToken, connection.external_account_id, range),
+      ])
+      return { kind: 'ga4', connectionId: resolvedConnectionId, accountName, externalAccountId, avatarUrl, data, overview }
+    }
     case 'gsc':
       return {
         kind: 'gsc',

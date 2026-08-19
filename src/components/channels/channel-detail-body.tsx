@@ -15,6 +15,7 @@ import type { ProviderId } from '@/lib/domain/providers'
 import { formatCompact, formatCurrencyCompact, formatNumber, formatPercent } from '@/lib/format'
 import { microsToUnits } from '@/lib/metrics/types'
 import { UrlTabs } from '@/components/ui/tabs'
+import { Ga4OverviewPanel } from '@/components/channels/ga4/ga4-overview-panel'
 import { TiktokVideoGrid } from '@/components/channels/tiktok/tiktok-video-grid'
 import { TiktokDashboard } from '@/components/channels/tiktok/tiktok-dashboard'
 import { YoutubeDashboard } from '@/components/channels/youtube/youtube-dashboard'
@@ -62,8 +63,8 @@ export function ChannelDetailBody({
   readonly page?: number
 }) {
   switch (detail.kind) {
-    case 'ga4':
-      return (
+    case 'ga4': {
+      const breakdown = (
         <div className="flex flex-col gap-6">
           {preset === 'today' ? <ProcessingDelayNote days="24–48 giờ" /> : null}
           <TrendCard
@@ -101,6 +102,26 @@ export function ChannelDetailBody({
           />
         </div>
       )
+
+      // Không có `overview` (lượt gọi tổng lỗi/property chưa hỗ trợ) — bỏ
+      // hẳn tab đó thay vì hiện một tab rỗng, giống quy ước `channelSwitcher`
+      // chỉ hiện khi có từ 2 connection trở lên.
+      if (!detail.overview) return breakdown
+
+      return (
+        <UrlTabs
+          ariaLabel="Chế độ xem"
+          tabs={[
+            {
+              id: 'overview',
+              label: 'Tổng quan',
+              panel: <Ga4OverviewPanel overview={detail.overview} currency={currency} />,
+            },
+            { id: 'breakdown', label: 'Chi tiết', panel: breakdown },
+          ]}
+        />
+      )
+    }
 
     case 'gsc':
       return (
