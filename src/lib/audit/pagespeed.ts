@@ -197,23 +197,33 @@ const attemptPageSpeedStrategy = async (
 /** PSI/Lighthouse phía Google hay trả lỗi 500 THOÁNG QUA ("Lighthouse
  * returned error: Something went wrong") không liên quan gì tới request của
  * ta — một lần thử lại thường trúng một worker Lighthouse khác của Google và
- * qua. Thử lại trên MỌI lỗi kể cả `timeout` — trước đây bỏ qua `timeout` vì
- * `maxDuration` chỉ có 300s, không đủ chỗ cho 2×120s cộng với crawl. Giờ
- * `maxDuration` = 480s (Vercel Pro, xem `audit/page.tsx`): crawl tối đa 200s
- * chạy song song, PSI worst-case 2×150s = 300s — vẫn nằm gọn trong ngân sách
- * kể cả cộng dồn phần dư ra ngoài thời gian crawl. Một timeout ở lượt đầu
- * cũng thường xảy ra ĐÚNG LÚC crawl đang ở đợt xử lý CPU nặng nhất — lượt thử
- * lại thường rơi vào lúc crawl đã dịu bớt (gần 200s), tăng cơ hội qua thật
- * chứ không chỉ "thử cho có". Tối đa 1 lần thử lại — độ bền hợp lý cho một
- * lỗi cơ hội, không phải retry vô hạn. */
+ * qua. Thử lại trên MỌI lỗi kể cả `timeout`.
+ *
+ * TỐI ĐA 2 LẦN THỬ LẠI (3 lượt gọi tổng cộng) — nâng từ 1 lên 2 sau khi xác
+ * nhận thật (8/2026, handdn.com, chiến lược mobile): 1 lần thử lại vẫn KHÔNG
+ * đủ cho site rất nặng — mobile Lighthouse bị Google throttle CPU 4x + mạng
+ * chậm hơn hẳn desktop, nên dễ chạm timeout nội bộ CỦA GOOGLE (khác với
+ * `PSI_TIMEOUT_MS` của ta) trên trang nặng, không phải lỗi ngẫu nhiên một
+ * lần. `maxDuration` đã lên 600s (xem `audit/page.tsx`) để chừa đủ chỗ:
+ * mobile/desktop chạy song song (Promise.all bên dưới) nên ngân sách tính
+ * theo MAX chứ không phải tổng, worst-case một chiến lược = 3×150s = 450s,
+ * cộng ~45s gợi ý AI chạy sau đó (`AI_JSON_TIMEOUT_MS`) và đệm ~100s cho
+ * DB write/khởi động — vẫn cách xa trần 800s thật của Vercel Pro. Nếu 3 lần
+ * vẫn lỗi y hệt, đó là bằng chứng site quá nặng để Lighthouse mobile hoàn
+ * thành trong giới hạn nội bộ của Google — không phải thứ retry thêm sửa
+ * được, thử mở "Mở báo cáo đầy đủ" (pagespeed.web.dev) để xác nhận. */
+const PSI_MAX_ATTEMPTS = 3
+
 const fetchPageSpeedStrategy = async (
   pageUrl: string,
   apiKey: string,
   strategy: PageSpeedStrategy,
 ): Promise<PsiStrategyOutcome> => {
-  const first = await attemptPageSpeedStrategy(pageUrl, apiKey, strategy)
-  if (!first.errorKind) return first
-  return attemptPageSpeedStrategy(pageUrl, apiKey, strategy)
+  let outcome: PsiStrategyOutcome = await attemptPageSpeedStrategy(pageUrl, apiKey, strategy)
+  for (let attempt = 1; attempt < PSI_MAX_ATTEMPTS && outcome.errorKind; attempt += 1) {
+    outcome = await attemptPageSpeedStrategy(pageUrl, apiKey, strategy)
+  }
+  return outcome
 }
 
 /** Gọi song song cả hai chiến lược — mỗi nhánh lỗi độc lập (timeout desktop

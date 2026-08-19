@@ -6,15 +6,7 @@ import { Card, CardBody, CardHeader, SectionHead } from '@/components/ui/card'
 import { StatRow, StatTile } from '@/components/ui/stat-tile'
 import { Badge } from '@/components/ui/badge'
 import { Callout, EmptyState } from '@/components/ui/feedback'
-import {
-  TBody,
-  TD,
-  TH,
-  THead,
-  TR,
-  Table,
-  TableScroller,
-} from '@/components/ui/table'
+import { CitabilityScoreTable } from '@/components/geo/citability-score-table'
 import { GenerateLlmsTxtButton } from '@/components/geo/generate-llms-txt-button'
 import { LlmsTxtPreview } from '@/components/geo/llms-txt-preview'
 import { AddTrackedPromptDialog } from '@/components/geo/add-tracked-prompt-dialog'
@@ -33,7 +25,6 @@ import {
   type PageCitabilityScore,
 } from '@/lib/domain/geo'
 import { formatNumber, formatRelativeTime } from '@/lib/format'
-import { cn } from '@/lib/cn'
 
 export const metadata = { title: 'Hiện diện AI' }
 
@@ -272,54 +263,7 @@ export default async function AiVisibilityPage({
                 label: 'Bảng điểm',
                 panel: (
                   <div className="flex flex-col gap-4">
-                    <Card className="overflow-hidden">
-                      <TableScroller aria-label="Điểm citability từng trang">
-                        <Table>
-                          <THead>
-                            <TR className="hover:bg-transparent">
-                              <TH>Trang</TH>
-                              <TH numeric>Tổng</TH>
-                              {(Object.keys(CITABILITY_AXIS_LABELS) as (keyof CitabilityAxes)[]).map((axis) => (
-                                <TH key={axis} numeric>
-                                  {CITABILITY_AXIS_LABELS[axis]}
-                                </TH>
-                              ))}
-                              <TH numeric>Vấn đề</TH>
-                            </TR>
-                          </THead>
-                          <TBody>
-                            {pageCitability.map((page) => (
-                              <TR key={page.id}>
-                                <TD className="max-w-[20rem]">
-                                  <span className="block truncate font-medium" title={page.title}>
-                                    {page.title}
-                                  </span>
-                                  <span className="block truncate text-[length:var(--text-xs)] text-[var(--color-ink-3)]">
-                                    {page.url}
-                                  </span>
-                                </TD>
-                                <TD numeric>
-                                  <ScoreChip score={page.overall} />
-                                </TD>
-                                {(Object.keys(CITABILITY_AXIS_LABELS) as (keyof CitabilityAxes)[]).map((axis) => (
-                                  <TD key={axis} numeric>
-                                    <span
-                                      className={cn(
-                                        page.axes[axis] < 40 && 'text-[var(--color-negative)]',
-                                        page.axes[axis] >= 75 && 'text-[var(--color-positive)]',
-                                      )}
-                                    >
-                                      {page.axes[axis]}
-                                    </span>
-                                  </TD>
-                                ))}
-                                <TD numeric>{page.issues.length}</TD>
-                              </TR>
-                            ))}
-                          </TBody>
-                        </Table>
-                      </TableScroller>
-                    </Card>
+                    <CitabilityScoreTable pages={pageCitability} />
 
                     {worstPage ? <WorstPageDetail page={worstPage} /> : null}
                   </div>
@@ -375,11 +319,6 @@ function CitabilityExplanation() {
       </div>
     </div>
   )
-}
-
-function ScoreChip({ score }: { readonly score: number }) {
-  const tone = score >= 75 ? 'positive' : score >= 50 ? 'caution' : 'negative'
-  return <Badge tone={tone}>{score}</Badge>
 }
 
 function WorstPageDetail({ page }: { readonly page: PageCitabilityScore }) {
