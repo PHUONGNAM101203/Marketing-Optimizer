@@ -520,14 +520,26 @@ export interface KlaviyoPerformanceOutcome {
  * cần tự tay bump tag. */
 const KLAVIYO_REPORT_REVALIDATE_SECONDS = 6 * 60 * 60
 
-export const fetchKlaviyoPerformance = unstable_cache(
+/** BÀI HỌC THỰC TẾ (8/2026): bản đầu `return` cả kết quả LỖI từ trong hàm
+ * cache — `unstable_cache` coi đó là một kết quả THÀNH CÔNG bình thường và
+ * cache y nguyên 6 giờ. Khi bug `page[size]` ở `/metrics` bị sửa xong và
+ * deploy, người dùng vẫn thấy CÙNG MỘT lỗi cũ (cùng UUID trong body lỗi!)
+ * suốt nhiều phút sau — vì cache key (apiKey + range) không đổi, Next vẫn
+ * trả thẳng bản ghi lỗi đã lưu, không gọi lại Klaviyo. Sửa triệt để: hàm
+ * bên trong `unstable_cache` giờ THROW khi lỗi — `unstable_cache` không
+ * bao giờ lưu một promise bị reject, nên lần gọi kế tiếp LUÔN thử lại thật,
+ * không bị "đóng băng" lỗi cũ tới 6 giờ. Hàm export ở dưới bắt lỗi đó và
+ * đổi lại thành hình dạng `{error}` cũ cho nơi gọi, không phải đổi API.
+ * Key bump 'v2' để xoá NGAY bản ghi lỗi đã cache trước khi có sửa này —
+ * không đợi hết 6 giờ mới hết cache cũ. */
+const fetchKlaviyoPerformanceCached = unstable_cache(
   async (
     apiKey: string,
     range: { readonly startDate: string; readonly endDate: string },
-  ): Promise<KlaviyoPerformanceOutcome> => {
+  ): Promise<{ readonly campaignPerformance: readonly KlaviyoValuesRow[]; readonly flowPerformance: readonly KlaviyoValuesRow[] }> => {
     const metricResult = await resolveConversionMetricId(apiKey)
     if (!metricResult.ok) {
-      return { campaignPerformance: null, flowPerformance: null, error: metricResult.error }
+      throw new Error(metricResult.error)
     }
 
     const reportRange = { start: range.startDate, end: range.endDate }
@@ -537,12 +549,25 @@ export const fetchKlaviyoPerformance = unstable_cache(
     ])
 
     const error = campaigns.error ?? flows.error
-    return {
-      campaignPerformance: campaigns.error ? null : campaigns.rows,
-      flowPerformance: flows.error ? null : flows.rows,
-      error,
-    }
+    if (error) throw new Error(error)
+    return { campaignPerformance: campaigns.rows, flowPerformance: flows.rows }
   },
-  ['klaviyo-performance'],
+  ['klaviyo-performance', 'v2'],
   { revalidate: KLAVIYO_REPORT_REVALIDATE_SECONDS },
 )
+
+export const fetchKlaviyoPerformance = async (
+  apiKey: string,
+  range: { readonly startDate: string; readonly endDate: string },
+): Promise<KlaviyoPerformanceOutcome> => {
+  try {
+    const result = await fetchKlaviyoPerformanceCached(apiKey, range)
+    return { campaignPerformance: result.campaignPerformance, flowPerformance: result.flowPerformance, error: null }
+  } catch (error) {
+    return {
+      campaignPerformance: null,
+      flowPerformance: null,
+      error: error instanceof Error ? error.message : String(error),
+    }
+  }
+}
