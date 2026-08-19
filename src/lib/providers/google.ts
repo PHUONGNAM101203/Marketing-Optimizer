@@ -67,8 +67,17 @@ export const googleAdapter: OAuthFamilyAdapter = {
     // offline + consent: bắt buộc để Google trả refresh_token. Không có
     // "consent" thì lần đăng nhập thứ hai trở đi Google âm thầm bỏ qua màn
     // hình chấp thuận và không gửi refresh_token nữa.
+    //
+    // + select_account: nếu trình duyệt đang có sẵn phiên đăng nhập Google
+    // (rất phổ biến — tài khoản cá nhân dùng hàng ngày khác tài khoản doanh
+    // nghiệp quản lý GA4/Search Console), thiếu cờ này Google bỏ qua màn hình
+    // chọn tài khoản và cấp quyền thẳng cho tài khoản ĐANG đăng nhập — không
+    // phải tài khoản người dùng định chọn. Kết quả: OAuth báo thành công
+    // nhưng `discoverGoogleAccounts` không thấy tài sản nào khớp domain, vì
+    // tài khoản được cấp quyền chưa từng sở hữu property/site đó. Cùng fix đã
+    // áp dụng cho `youtube.ts` — family Google chính thiếu sót này.
     url.searchParams.set('access_type', 'offline')
-    url.searchParams.set('prompt', 'consent')
+    url.searchParams.set('prompt', 'consent select_account')
     url.searchParams.set('include_granted_scopes', 'true')
     url.searchParams.set('state', state)
     return url.toString()
