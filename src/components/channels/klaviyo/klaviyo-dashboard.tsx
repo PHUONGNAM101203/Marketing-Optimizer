@@ -4,7 +4,7 @@ import { Card, SectionHead } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Callout, EmptyState } from '@/components/ui/feedback'
 import { TBody, TD, TH, THead, TR, Table, TableScroller } from '@/components/ui/table'
-import { formatCompact, formatCurrency, formatCurrencyCompact, formatNumber } from '@/lib/format'
+import { formatCurrency, formatCurrencyCompact, formatNumber } from '@/lib/format'
 import { KLAVIYO_PROFILES_URL, klaviyoResourceUrl } from '@/lib/domain/klaviyo-web-links'
 import type { KlaviyoCampaign, KlaviyoFlow, KlaviyoValuesRow } from '@/lib/providers/klaviyo'
 
@@ -27,6 +27,11 @@ export interface KlaviyoDashboardProps {
   readonly campaignsTruncated: boolean
   readonly flows: readonly KlaviyoFlow[]
   readonly flowsTruncated: boolean
+  /** Số campaign/flow hiện ở ô KPI — `null` hiện "—" (report lỗi, không
+   * phải 0 giả). KHÁC `campaigns.length`/`flows.length` (tổng toàn thời
+   * gian, luôn dùng cho bảng chi tiết bên dưới bất kể tab nào). */
+  readonly campaignCount: number | null
+  readonly flowCount: number | null
   readonly campaignPerformance: readonly KlaviyoValuesRow[] | null
   readonly flowPerformance: readonly KlaviyoValuesRow[] | null
   readonly performanceError: string | null
@@ -36,10 +41,10 @@ export interface KlaviyoDashboardProps {
    * phải `site.currency` — xem comment ở field `currency` trong
    * `ChannelDetail`'s klaviyo variant (`site-channel-detail.ts`). */
   readonly currency: string
-  /** Mô tả khoảng ngày report này tính theo — khác nhau giữa tab "Tổng
-   * quan" (theo bộ lọc ngày đầu trang) và "Toàn thời gian" (cố định 365
-   * ngày gần nhất, không đổi theo bộ lọc). */
-  readonly revenueScopeNote: string
+  /** true ở tab "Toàn thời gian" — đổi nhãn/ghi chú "Khách hàng" (tổng) so
+   * với "Khách hàng mới" (trong khoảng ngày), và "365 ngày gần nhất" so với
+   * "khoảng ngày đang chọn ở đầu trang". */
+  readonly isAllTime: boolean
 }
 
 export function KlaviyoDashboard({
@@ -47,13 +52,15 @@ export function KlaviyoDashboard({
   campaignsTruncated,
   flows,
   flowsTruncated,
+  campaignCount,
+  flowCount,
   campaignPerformance,
   flowPerformance,
   performanceError,
   profileCount,
   profileCountTruncated,
   currency,
-  revenueScopeNote,
+  isAllTime,
 }: KlaviyoDashboardProps) {
   const campaignPerformanceById = new Map((campaignPerformance ?? []).map((row) => [row.groupId, row]))
   const flowPerformanceById = new Map((flowPerformance ?? []).map((row) => [row.groupId, row]))
@@ -62,17 +69,25 @@ export function KlaviyoDashboard({
     (campaignPerformance ?? []).reduce((sum, row) => sum + row.conversionValueMicros, 0) +
     (flowPerformance ?? []).reduce((sum, row) => sum + row.conversionValueMicros, 0)
 
+  const periodNote = isAllTime
+    ? '365 ngày gần nhất — cố định, không theo bộ lọc ngày đầu trang (giới hạn 1 năm/lượt gọi của Klaviyo).'
+    : 'Trong khoảng ngày đang chọn ở đầu trang.'
+
   return (
     <div className="flex flex-col gap-6">
       <StatRow>
         <StatTile
-          label="Khách hàng"
-          value={profileCount === null ? '—' : `${formatCompact(profileCount)}${profileCountTruncated ? '+' : ''}`}
+          label={isAllTime ? 'Khách hàng' : 'Khách hàng mới'}
+          value={profileCount === null ? '—' : `${formatNumber(profileCount)}${profileCountTruncated ? '+' : ''}`}
           metric="users"
           deltaPct={null}
           footnote={
             <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
-              {profileCountTruncated ? <span>Danh sách lớn hơn số đọc được — số trên chỉ là một phần.</span> : null}
+              <span>
+                {profileCountTruncated
+                  ? 'Danh sách lớn hơn số đọc được — số trên chỉ là một phần.'
+                  : periodNote}
+              </span>
               <a
                 href={KLAVIYO_PROFILES_URL}
                 target="_blank"
@@ -85,14 +100,26 @@ export function KlaviyoDashboard({
             </span>
           }
         />
-        <StatTile label="Campaign" value={formatCompact(campaigns.length)} metric="conversions" deltaPct={null} />
-        <StatTile label="Flow" value={formatCompact(flows.length)} metric="conversions" deltaPct={null} />
+        <StatTile
+          label="Campaign"
+          value={campaignCount === null ? '—' : formatNumber(campaignCount)}
+          metric="conversions"
+          deltaPct={null}
+          footnote={periodNote}
+        />
+        <StatTile
+          label="Flow"
+          value={flowCount === null ? '—' : formatNumber(flowCount)}
+          metric="conversions"
+          deltaPct={null}
+          footnote={periodNote}
+        />
         <StatTile
           label="Doanh thu quy đổi"
           value={formatCurrencyCompact(totalRevenue, currency)}
           metric="revenueMicros"
           deltaPct={null}
-          footnote={revenueScopeNote}
+          footnote={periodNote}
         />
       </StatRow>
 

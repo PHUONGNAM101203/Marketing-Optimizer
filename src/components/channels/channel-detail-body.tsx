@@ -496,13 +496,15 @@ export function ChannelDetailBody({
                   campaignsTruncated={detail.campaignsTruncated}
                   flows={detail.flows}
                   flowsTruncated={detail.flowsTruncated}
+                  campaignCount={detail.campaignCount}
+                  flowCount={detail.flowCount}
                   campaignPerformance={detail.campaignPerformance}
                   flowPerformance={detail.flowPerformance}
                   performanceError={detail.performanceError}
                   profileCount={detail.profileCount}
                   profileCountTruncated={detail.profileCountTruncated}
                   currency={detail.currency}
-                  revenueScopeNote="Cộng dồn từ report campaign + flow trong khoảng ngày đang chọn ở đầu trang."
+                  isAllTime={false}
                 />
               ),
             },
@@ -515,19 +517,24 @@ export function ChannelDetailBody({
                 // vĩnh viễn dù đã gửi thật. Tab này CỐ ĐỊNH 365 ngày gần nhất
                 // (trần thật của Klaviyo Reporting API), không đổi theo bộ
                 // lọc ngày đầu trang — xem `allTimeCampaignPerformance` ở
-                // `site-channel-detail.ts`.
+                // `site-channel-detail.ts`. Campaign/Flow count ở đây dùng
+                // TỔNG toàn thời gian (`campaigns.length`/`flows.length`,
+                // không phải số dòng report) — khác tab "Tổng quan" vốn chỉ
+                // đếm campaign/flow CÓ hoạt động trong khoảng ngày.
                 <KlaviyoDashboard
                   campaigns={detail.campaigns}
                   campaignsTruncated={detail.campaignsTruncated}
                   flows={detail.flows}
                   flowsTruncated={detail.flowsTruncated}
+                  campaignCount={detail.campaigns.length}
+                  flowCount={detail.flows.length}
                   campaignPerformance={detail.allTimeCampaignPerformance}
                   flowPerformance={detail.allTimeFlowPerformance}
                   performanceError={detail.allTimePerformanceError}
-                  profileCount={detail.profileCount}
-                  profileCountTruncated={detail.profileCountTruncated}
+                  profileCount={detail.allTimeProfileCount}
+                  profileCountTruncated={detail.allTimeProfileCountTruncated}
                   currency={detail.currency}
-                  revenueScopeNote="Cộng dồn từ report campaign + flow trong 365 ngày gần nhất — cố định, không theo bộ lọc ngày đầu trang (giới hạn 1 năm/lượt gọi của Klaviyo)."
+                  isAllTime
                 />
               ),
             },

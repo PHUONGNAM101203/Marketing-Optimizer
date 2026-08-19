@@ -243,6 +243,11 @@ export type ChannelDetail =
       readonly campaignsTruncated: boolean
       readonly flows: readonly KlaviyoFlow[]
       readonly flowsTruncated: boolean
+      /** Số campaign/flow CÓ hoạt động (xuất hiện trong report) trong khoảng
+       * ngày đang chọn — KHÁC `campaigns.length`/`flows.length` (tổng toàn
+       * thời gian, dùng cho tab "Toàn thời gian"). `null` khi report lỗi. */
+      readonly campaignCount: number | null
+      readonly flowCount: number | null
       /** `null` khi không resolve được conversion metric (key thiếu quyền
        * `metrics:read`, hoặc tài khoản chưa có metric nào) — report khi đó
        * cũng `null`, không phải mảng rỗng giả vờ "không có gì". */
@@ -267,10 +272,17 @@ export type ChannelDetail =
        * không phải prop `currency` chung của trang — nhầm hai cái này từng
        * là bug thật khiến doanh thu USD hiện nhầm ký hiệu đồng Việt Nam. */
       readonly currency: string
-      /** `null` khi lượt gọi profiles thất bại ngay trang đầu — KHÁC 0 khách
-       * hàng thật, xem `KlaviyoProfileCount.error`. */
+      /** Khách hàng MỚI (tạo trong khoảng ngày đang chọn) — cho tab "Tổng
+       * quan". `null` khi lượt gọi profiles thất bại ngay trang đầu — KHÁC 0
+       * khách hàng thật, xem `KlaviyoProfileCount.error`. */
       readonly profileCount: number | null
       readonly profileCountTruncated: boolean
+      /** TỔNG khách hàng toàn thời gian, không filter theo `created` — cho
+       * tab "Toàn thời gian". Số CHÍNH XÁC trong hầu hết trường hợp
+       * (`countKlaviyoProfiles` phân trang tới 200 trang mặc định), chỉ
+       * `allTimeProfileCountTruncated` khi tài khoản có hơn ~20.000 hồ sơ. */
+      readonly allTimeProfileCount: number | null
+      readonly allTimeProfileCountTruncated: boolean
       readonly segments: readonly KlaviyoSegment[]
       readonly segmentsTruncated: boolean
       readonly lists: readonly KlaviyoList[]
@@ -481,16 +493,30 @@ export const getChannelDetail = async (
       }
     }
     case 'klaviyo': {
-      const [campaigns, flows, profiles, segments, lists, forms, metrics, accountCurrency] = await Promise.all([
-        fetchKlaviyoCampaigns(tokenResult.accessToken),
-        fetchKlaviyoFlows(tokenResult.accessToken),
-        countKlaviyoProfiles(tokenResult.accessToken),
-        fetchKlaviyoSegments(tokenResult.accessToken),
-        fetchKlaviyoLists(tokenResult.accessToken),
-        fetchKlaviyoForms(tokenResult.accessToken),
-        fetchKlaviyoMetrics(tokenResult.accessToken),
-        fetchKlaviyoAccountCurrency(tokenResult.accessToken),
-      ])
+      // Biên trên LOẠI TRỪ (ngày SAU `range.endDate`) để không bỏ sót khách
+      // hàng tạo trong chính ngày cuối — Klaviyo chỉ có `less-than`, không có
+      // `less-or-equal` cho field `created`.
+      const rangeCreatedFilter = {
+        createdAfterIso: `${range.startDate}T00:00:00Z`,
+        createdBeforeIso: `${toIsoDate(addDays(new Date(`${range.endDate}T00:00:00Z`), 1))}T00:00:00Z`,
+      }
+
+      const [campaigns, flows, allTimeProfiles, rangeProfiles, segments, lists, forms, metrics, accountCurrency] =
+        await Promise.all([
+          fetchKlaviyoCampaigns(tokenResult.accessToken),
+          fetchKlaviyoFlows(tokenResult.accessToken),
+          // Không filter — TỔNG toàn thời gian, số CHÍNH XÁC (maxPages mặc
+          // định đã nâng lên 200 trang, xem `countKlaviyoProfiles`).
+          countKlaviyoProfiles(tokenResult.accessToken),
+          // Filter theo `created` — khách hàng MỚI trong khoảng ngày đang
+          // chọn, cho tab "Tổng quan".
+          countKlaviyoProfiles(tokenResult.accessToken, rangeCreatedFilter),
+          fetchKlaviyoSegments(tokenResult.accessToken),
+          fetchKlaviyoLists(tokenResult.accessToken),
+          fetchKlaviyoForms(tokenResult.accessToken),
+          fetchKlaviyoMetrics(tokenResult.accessToken),
+          fetchKlaviyoAccountCurrency(tokenResult.accessToken),
+        ])
 
       // TUẦN TỰ, không Promise.all — cả hai lượt đều đụng Reporting API (giới
       // hạn ~1 request/giây, xem `fetchKlaviyoPerformance`); gọi song song sẽ
@@ -512,6 +538,12 @@ export const getChannelDetail = async (
         campaignsTruncated: campaigns.truncated,
         flows: flows.items,
         flowsTruncated: flows.truncated,
+        // Campaign/flow "đang có hoạt động" trong khoảng ngày đang chọn =
+        // số dòng report cho khoảng đó (report chỉ trả về campaign/flow có
+        // ít nhất một chỉ số trong khoảng ngày) — `null` khi report lỗi,
+        // không phải 0 giả.
+        campaignCount: performance.campaignPerformance?.length ?? null,
+        flowCount: performance.flowPerformance?.length ?? null,
         campaignPerformance: performance.campaignPerformance,
         flowPerformance: performance.flowPerformance,
         performanceError: performance.error,
@@ -519,8 +551,10 @@ export const getChannelDetail = async (
         allTimeFlowPerformance: allTimePerformance.flowPerformance,
         allTimePerformanceError: allTimePerformance.error,
         currency: accountCurrency ?? 'USD',
-        profileCount: profiles.error ? null : profiles.count,
-        profileCountTruncated: profiles.truncated,
+        profileCount: rangeProfiles.error ? null : rangeProfiles.count,
+        profileCountTruncated: rangeProfiles.truncated,
+        allTimeProfileCount: allTimeProfiles.error ? null : allTimeProfiles.count,
+        allTimeProfileCountTruncated: allTimeProfiles.truncated,
         segments: segments.items,
         segmentsTruncated: segments.truncated,
         lists: lists.items,

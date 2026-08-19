@@ -473,7 +473,27 @@ export interface KlaviyoProfileCount {
   readonly error: string | null
 }
 
-export const countKlaviyoProfiles = async (apiKey: string, maxPages = 5): Promise<KlaviyoProfileCount> => {
+/** Lọc theo ngày tạo profile (`created`) — dùng để đếm khách hàng MỚI trong
+ * một khoảng ngày, khác đếm TỔNG toàn thời gian. Klaviyo chỉ hỗ trợ
+ * `greater-than`/`less-than` cho field `created` (không có or-equal, xác
+ * nhận qua docs `get_profiles`), và nhiều điều kiện nối bằng dấu phẩy được
+ * hiểu là AND (docs Klaviyo). `createdBefore` nên là NGÀY SAU `endDate` mong
+ * muốn (biên trên loại trừ) để không bỏ sót khách hàng tạo trong chính
+ * ngày `endDate`. */
+export interface KlaviyoCreatedFilter {
+  readonly createdAfterIso: string
+  readonly createdBeforeIso: string
+}
+
+/** `maxPages` mặc định CAO (200 trang × 100 = tối đa 20.000 khách hàng) để
+ * ra được SỐ CHÍNH XÁC cho hầu hết tài khoản thay vì "500+" ước lượng —
+ * Get Profiles có rate limit rộng (75/s burst, 750/phút), khác hẳn Reporting
+ * API 1/s, nên phân trang sâu ở đây an toàn, không cần giãn cách. */
+export const countKlaviyoProfiles = async (
+  apiKey: string,
+  filter?: KlaviyoCreatedFilter,
+  maxPages = 200,
+): Promise<KlaviyoProfileCount> => {
   let count = 0
   let cursor: string | undefined
   let pages = 0
@@ -483,6 +503,12 @@ export const countKlaviyoProfiles = async (apiKey: string, maxPages = 5): Promis
     const url = new URL(`${API_BASE}/profiles`)
     url.searchParams.set('page[size]', '100')
     if (cursor) url.searchParams.set('page[cursor]', cursor)
+    if (filter) {
+      url.searchParams.set(
+        'filter',
+        `greater-than(created,${filter.createdAfterIso}),less-than(created,${filter.createdBeforeIso})`,
+      )
+    }
 
     const response = await fetch(url.toString(), { headers: authHeaders(apiKey) })
     if (!response.ok) {
