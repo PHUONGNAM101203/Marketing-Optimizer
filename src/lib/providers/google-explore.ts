@@ -141,11 +141,31 @@ interface Ga4RunReportWithHeadersResponse {
   readonly rows?: readonly { readonly metricValues?: readonly { readonly value?: string }[] }[]
 }
 
-export const fetchGa4Overview = async (
+/** GA4 Data API từ chối CẢ yêu cầu nếu quá 10 metric trong một `runReport`
+ * không lồng report khác ("Requests are limited to 10 metrics within a
+ * nested request" — lỗi thật, xác nhận từ log production khi 17 metric bị
+ * gộp chung một lượt gọi). Chia `GA4_OVERVIEW_METRICS` thành các lô ≤10,
+ * gọi song song, rồi ghép lại — vẫn MỘT vòng round-trip (Promise.all), không
+ * phải tuần tự, và vẫn lấy được ĐỦ toàn bộ 17 metric như yêu cầu. */
+const GA4_OVERVIEW_METRICS_PER_REQUEST = 10
+
+const chunk = <T,>(items: readonly T[], size: number): readonly (readonly T[])[] => {
+  const chunks: T[][] = []
+  for (let i = 0; i < items.length; i += size) chunks.push(items.slice(i, i + size))
+  return chunks
+}
+
+interface Ga4OverviewChunkOutcome {
+  readonly values: Partial<Ga4Overview> | null
+  readonly error: string | null
+}
+
+const runGa4OverviewChunk = async (
   accessToken: string,
   property: string,
   range: { readonly startDate: string; readonly endDate: string },
-): Promise<Ga4OverviewOutcome> => {
+  metrics: readonly Ga4OverviewMetric[],
+): Promise<Ga4OverviewChunkOutcome> => {
   let response: Response
   try {
     response = await fetch(`https://analyticsdata.googleapis.com/v1beta/${property}:runReport`, {
@@ -153,31 +173,26 @@ export const fetchGa4Overview = async (
       headers: { ...authHeader(accessToken), 'content-type': 'application/json' },
       body: JSON.stringify({
         dateRanges: [{ startDate: range.startDate, endDate: range.endDate }],
-        metrics: GA4_OVERVIEW_METRICS.map((name) => ({ name })),
+        metrics: metrics.map((name) => ({ name })),
       }),
     })
   } catch (error) {
     const message = `Lỗi mạng khi gọi GA4 runReport tổng: ${error instanceof Error ? error.message : String(error)}`
     console.error(message)
-    return { overview: null, error: message }
+    return { values: null, error: message }
   }
   if (!response.ok) {
     const bodyText = await response.text().catch(() => '')
     const message = `GA4 runReport tổng trả HTTP ${response.status} ${response.statusText}: ${bodyText.slice(0, 400)}`
     console.error(message)
-    return { overview: null, error: message }
+    return { values: null, error: message }
   }
 
   const data = (await response.json()) as Ga4RunReportWithHeadersResponse
   const row = data.rows?.[0]
   // Không có hàng nào nhưng response 200 hợp lệ — khoảng ngày thật sự không
-  // có traffic, KHÔNG phải lỗi. Trả về toàn 0, không phải `null`/error.
-  if (!row) {
-    return {
-      overview: Object.fromEntries(GA4_OVERVIEW_METRICS.map((metric) => [metric, 0])) as Ga4Overview,
-      error: null,
-    }
-  }
+  // có traffic, KHÔNG phải lỗi. Trả về toàn 0, không phải lỗi.
+  if (!row) return { values: Object.fromEntries(metrics.map((metric) => [metric, 0])), error: null }
 
   // Đọc theo TÊN cột GA4 thật sự trả về (`metricHeaders`), không giả định
   // khớp đúng thứ tự đã yêu cầu — cùng lý do YouTube Analytics đã áp dụng ở
@@ -189,10 +204,30 @@ export const fetchGa4Overview = async (
     return index === undefined ? null : Number(row.metricValues?.[index]?.value ?? 0)
   }
 
-  return {
-    overview: Object.fromEntries(GA4_OVERVIEW_METRICS.map((metric) => [metric, valueOf(metric)])) as Ga4Overview,
-    error: null,
-  }
+  return { values: Object.fromEntries(metrics.map((metric) => [metric, valueOf(metric)])), error: null }
+}
+
+export const fetchGa4Overview = async (
+  accessToken: string,
+  property: string,
+  range: { readonly startDate: string; readonly endDate: string },
+): Promise<Ga4OverviewOutcome> => {
+  const chunks = chunk(GA4_OVERVIEW_METRICS, GA4_OVERVIEW_METRICS_PER_REQUEST)
+  const outcomes = await Promise.all(
+    chunks.map((metrics) => runGa4OverviewChunk(accessToken, property, range, metrics)),
+  )
+
+  // Một lô lỗi thôi cũng đủ để coi cả bộ chỉ số là chưa lấy được — hiện nửa
+  // vời (10/17 metric có số, 7 còn lại trống) dễ bị hiểu nhầm là dữ liệu
+  // thật bằng 0, không phải "chưa tải được".
+  const failed = outcomes.find((outcome) => outcome.error)
+  if (failed) return { overview: null, error: failed.error }
+
+  const overview = outcomes.reduce<Partial<Ga4Overview>>(
+    (merged, outcome) => ({ ...merged, ...outcome.values }),
+    {},
+  )
+  return { overview: overview as Ga4Overview, error: null }
 }
 
 // ─── Search Console ─────────────────────────────────────────────────────────
