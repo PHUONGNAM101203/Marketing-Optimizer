@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import { Be_Vietnam_Pro, Inter } from 'next/font/google'
 import './globals.css'
 import { ThemeScript } from '@/components/layout/theme-script'
+import { SidebarScript } from '@/components/layout/sidebar-script'
 
 /**
  * Be Vietnam Pro is a static family — weights must be declared explicitly.
@@ -43,6 +44,7 @@ export default function RootLayout({ children }: LayoutProps<'/'>) {
     >
       <head>
         <ThemeScript />
+        <SidebarScript />
       </head>
       {/* suppressHydrationWarning: một số tiện ích mở rộng trình duyệt (vd.
           ColorZilla) tự chèn thuộc tính như `cz-shortcut-listen` vào <body>

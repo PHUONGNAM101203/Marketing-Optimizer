@@ -1,6 +1,7 @@
 import 'server-only'
 
 import { unstable_cache } from 'next/cache'
+import { hasUsableData, type ConnectionStatus } from '@/lib/domain/connection'
 import { PROVIDERS, isProviderId, type ProviderId } from '@/lib/domain/providers'
 import { fetchMetaFollowerCount } from '@/lib/providers/meta-discovery'
 import { resolvePageAccessToken } from '@/lib/sync/access-token'
@@ -19,7 +20,11 @@ export interface ChannelTotals {
 
 export interface ChannelSummary {
   readonly provider: ProviderId
-  /** Site có connection cho nền tảng này (bất kể có số liệu hay chưa). */
+  /** Site có connection CÒN DÙNG ĐƯỢC cho nền tảng này (status `connected`
+   * hoặc `syncing` — xem `hasUsableData`), bất kể có số liệu hay chưa. Một
+   * hàng `connections` tồn tại nhưng `expired`/`error`/`revoked` vẫn tính là
+   * `false` — token đã hỏng thì không còn là "đã kết nối" theo đúng nghĩa
+   * người dùng hiểu, dù dữ liệu `metrics_daily` cũ vẫn còn trong DB. */
   readonly connected: boolean
   /** Có ít nhất một hàng metrics_daily thật — khác `connected`: GTM luôn
    * connected=true nhưng hasData=false mãi mãi, nó không có metrics. */
@@ -147,11 +152,23 @@ export const getChannelSummaries = async (
 
   const { data: connections } = await supabase
     .from('connections')
-    .select('id, provider, external_account_id')
+    .select('id, provider, external_account_id, status')
     .eq('site_id', siteId)
 
   const { connectionsByProvider, connectionIdToProvider, snapshotConnectionIds, regularConnectionIds } =
     splitConnectionsBySnapshot(connections ?? [])
+
+  // `connectionsByProvider` (từ `splitConnectionsBySnapshot`) chỉ giữ id —
+  // tính riêng nền tảng nào có connection CÒN DÙNG ĐƯỢC (status), vì một hàng
+  // `connections` tồn tại không có nghĩa là kết nối còn sống (`expired`/
+  // `error`/`revoked` — token đã hết hạn/thu hồi, cần kết nối lại — vẫn giữ
+  // nguyên hàng và dữ liệu `metrics_daily` LỊCH SỬ, không bị xoá như
+  // `disconnected` — xem `hasUsableData` trong `domain/connection.ts`).
+  const usableProviders = new Set(
+    (connections ?? [])
+      .filter((connection) => hasUsableData(connection.status as ConnectionStatus))
+      .map((connection) => connection.provider),
+  )
 
   const METRICS_COLUMNS =
     'connection_id, date, sessions, users, conversions, clicks, impressions, cost_micros, conversion_value_micros, extra'
@@ -180,7 +197,7 @@ export const getChannelSummaries = async (
   const latestSnapshotDate = new Map<ProviderId, string>()
 
   for (const provider of PROVIDERS) {
-    const connected = (connectionsByProvider.get(provider)?.length ?? 0) > 0
+    const connected = usableProviders.has(provider)
     summaries.set(provider, {
       provider,
       connected,

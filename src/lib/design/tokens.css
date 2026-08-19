@@ -178,8 +178,19 @@
      Rail is narrower than the source's 320px — the extra 48px buys the
      data canvas a column it can actually use. */
   --rail-w: 16.5rem;
+  /* Icon + logo only (no labels) — wide enough for a 24px icon centered with
+     comfortable padding, narrow enough to give the canvas real width back. */
+  --rail-w-collapsed: 4.5rem;
   --topbar-h: 3.5rem;
   --canvas-max: 90rem;
+}
+
+/* `data-sidebar-collapsed` written by `SidebarScript`/`SideRail` (see
+   `lib/sidebar.ts`) — overriding the token here means `SideRail` itself
+   never needs a width className switch, and there is zero layout flash on
+   reload since this attribute is set before React hydrates. */
+:root[data-sidebar-collapsed='true'] {
+  --rail-w: var(--rail-w-collapsed);
 }
 
 /* ── Dark ───────────────────────────────────────────────────────────────
