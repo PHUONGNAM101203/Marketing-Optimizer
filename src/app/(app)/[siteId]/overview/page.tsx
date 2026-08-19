@@ -62,7 +62,7 @@ const SPEND_PROVIDERS = CHARTABLE_PROVIDERS.filter((provider) =>
   hasCapability(provider, 'spend'),
 )
 
-const familyMembers = (family: 'google' | 'meta' | 'tiktok'): readonly ProviderId[] =>
+const familyMembers = (family: 'google' | 'youtube' | 'meta' | 'tiktok'): readonly ProviderId[] =>
   PROVIDER_FAMILIES.find((entry) => entry.id === family)?.providers ?? []
 
 export default async function OverviewPage({
@@ -249,6 +249,16 @@ export default async function OverviewPage({
     />
   )
 
+  const youtubePanel = (
+    <FamilyPanel
+      key="youtube"
+      siteId={site.id}
+      providers={familyMembers('youtube')}
+      summaries={channelSummaries}
+      dailySeriesByProvider={dailySeriesByProvider}
+    />
+  )
+
   const metaPanel = (
     <FamilyPanel
       key="meta"
@@ -301,10 +311,11 @@ export default async function OverviewPage({
           tabs={[
             { id: 'summary', label: 'Tổng hợp' },
             { id: 'google', label: 'Google' },
+            { id: 'youtube', label: 'YouTube' },
             { id: 'meta', label: 'Meta' },
             { id: 'tiktok', label: 'TikTok' },
           ]}
-          panels={[summaryPanel, googlePanel, metaPanel, tiktokPanel]}
+          panels={[summaryPanel, googlePanel, youtubePanel, metaPanel, tiktokPanel]}
         />
       </DataGate>
     </PageShell>
