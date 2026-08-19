@@ -78,9 +78,10 @@ export type ChannelDetail =
        * niệm "kênh" (Ads/Analytics/Search Console/Tag Manager/Merchant Center). */
       readonly avatarUrl: string | null
       readonly data: Ga4Explore
-      /** `null` = lượt gọi tổng lỗi/property không hỗ trợ — tab "Tổng quan"
-       * tự ẩn khi null, không hiện một lưới ô trống. */
       readonly overview: Ga4Overview | null
+      /** Lý do THẬT khi `overview` null — hiện trong tab "Chi tiết" thay vì
+       * ẩn hẳn tab đi, xem `Ga4OverviewOutcome`. */
+      readonly overviewError: string | null
     }
   | {
       readonly kind: 'gsc'
@@ -316,11 +317,20 @@ export const getChannelDetail = async (
       // Song song chứ không nối tiếp — hai lượt đọc độc lập nhau, giống hệt
       // lý do case 'youtube' bên dưới gộp `data`+`trending` trong một
       // `Promise.all`.
-      const [data, overview] = await Promise.all([
+      const [data, overviewOutcome] = await Promise.all([
         fetchGa4Explore(tokenResult.accessToken, connection.external_account_id, range),
         fetchGa4Overview(tokenResult.accessToken, connection.external_account_id, range),
       ])
-      return { kind: 'ga4', connectionId: resolvedConnectionId, accountName, externalAccountId, avatarUrl, data, overview }
+      return {
+        kind: 'ga4',
+        connectionId: resolvedConnectionId,
+        accountName,
+        externalAccountId,
+        avatarUrl,
+        data,
+        overview: overviewOutcome.overview,
+        overviewError: overviewOutcome.error,
+      }
     }
     case 'gsc':
       return {

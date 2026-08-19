@@ -94,30 +94,47 @@ export const fetchGa4Explore = async (
   }
 }
 
-/** Bộ chỉ số tổng cho tab "Tổng quan" của GA4 — CÙNG danh sách metric mà
- * chính trang GA4 thật hiển thị ở báo cáo tổng quan (Users/Sessions/
- * Engagement/Conversions/Revenue), không phải bộ 3 chỉ số rút gọn của
- * `Ga4Explore` (vốn chỉ phục vụ 3 breakdown top-N). Một lượt gọi `runReport`
- * DUY NHẤT, không có `dimensions` — GA4 coi đây là một hàng "tổng" cho cả
- * khoảng ngày, không phải phân rã theo ngày/trang. */
+/** Bộ chỉ số tổng cho tab "Chi tiết" của GA4 — MỌI metric tổng hợp cốt lõi mà
+ * GA4 Data API cung cấp cho một property bất kỳ (Users/Sessions/Engagement/
+ * Page views/Events/Conversions/Revenue), không phải bộ 3 chỉ số rút gọn của
+ * `Ga4Explore` (vốn chỉ phục vụ 3 breakdown top-N). CỐ TÌNH chỉ dùng metric
+ * "lõi" (core), không thêm metric riêng của Ecommerce/Publisher/Audience —
+ * những nhóm đó có thể KHÔNG tương thích chung một lượt gọi `runReport`
+ * không-dimension với nhóm lõi, dễ khiến CẢ yêu cầu lỗi 400 vì một metric lạ.
+ * Một lượt gọi `runReport` DUY NHẤT, không có `dimensions` — GA4 coi đây là
+ * một hàng "tổng" cho cả khoảng ngày, không phải phân rã theo ngày/trang. */
 const GA4_OVERVIEW_METRICS = [
   'activeUsers',
+  'totalUsers',
   'newUsers',
   'sessions',
+  'sessionsPerUser',
   'engagedSessions',
   'engagementRate',
   'averageSessionDuration',
+  'userEngagementDuration',
   'screenPageViews',
   'screenPageViewsPerSession',
+  'screenPageViewsPerUser',
   'eventCount',
+  'eventCountPerUser',
   'conversions',
-  'totalRevenue',
   'bounceRate',
+  'totalRevenue',
 ] as const
 
 export type Ga4OverviewMetric = (typeof GA4_OVERVIEW_METRICS)[number]
 
 export type Ga4Overview = Readonly<Record<Ga4OverviewMetric, number | null>>
+
+export interface Ga4OverviewOutcome {
+  readonly overview: Ga4Overview | null
+  /** Lý do THẬT khi `overview` null — HTTP lỗi kèm status/body thật, hay lỗi
+   * mạng. KHÔNG được lặp lại lỗi "nuốt lý do thật" đã gặp ở PSI/GA4 Admin
+   * API trong chính session sửa tính năng này — chính hàm này từng mắc lại
+   * y hệt lỗi đó trước khi có `Ga4OverviewOutcome`. */
+  readonly error: string | null
+}
 
 interface Ga4RunReportWithHeadersResponse {
   readonly metricHeaders?: readonly { readonly name?: string }[]
@@ -128,20 +145,39 @@ export const fetchGa4Overview = async (
   accessToken: string,
   property: string,
   range: { readonly startDate: string; readonly endDate: string },
-): Promise<Ga4Overview | null> => {
-  const response = await fetch(`https://analyticsdata.googleapis.com/v1beta/${property}:runReport`, {
-    method: 'POST',
-    headers: { ...authHeader(accessToken), 'content-type': 'application/json' },
-    body: JSON.stringify({
-      dateRanges: [{ startDate: range.startDate, endDate: range.endDate }],
-      metrics: GA4_OVERVIEW_METRICS.map((name) => ({ name })),
-    }),
-  })
-  if (!response.ok) return null
+): Promise<Ga4OverviewOutcome> => {
+  let response: Response
+  try {
+    response = await fetch(`https://analyticsdata.googleapis.com/v1beta/${property}:runReport`, {
+      method: 'POST',
+      headers: { ...authHeader(accessToken), 'content-type': 'application/json' },
+      body: JSON.stringify({
+        dateRanges: [{ startDate: range.startDate, endDate: range.endDate }],
+        metrics: GA4_OVERVIEW_METRICS.map((name) => ({ name })),
+      }),
+    })
+  } catch (error) {
+    const message = `Lỗi mạng khi gọi GA4 runReport tổng: ${error instanceof Error ? error.message : String(error)}`
+    console.error(message)
+    return { overview: null, error: message }
+  }
+  if (!response.ok) {
+    const bodyText = await response.text().catch(() => '')
+    const message = `GA4 runReport tổng trả HTTP ${response.status} ${response.statusText}: ${bodyText.slice(0, 400)}`
+    console.error(message)
+    return { overview: null, error: message }
+  }
 
   const data = (await response.json()) as Ga4RunReportWithHeadersResponse
   const row = data.rows?.[0]
-  if (!row) return null
+  // Không có hàng nào nhưng response 200 hợp lệ — khoảng ngày thật sự không
+  // có traffic, KHÔNG phải lỗi. Trả về toàn 0, không phải `null`/error.
+  if (!row) {
+    return {
+      overview: Object.fromEntries(GA4_OVERVIEW_METRICS.map((metric) => [metric, 0])) as Ga4Overview,
+      error: null,
+    }
+  }
 
   // Đọc theo TÊN cột GA4 thật sự trả về (`metricHeaders`), không giả định
   // khớp đúng thứ tự đã yêu cầu — cùng lý do YouTube Analytics đã áp dụng ở
@@ -153,7 +189,10 @@ export const fetchGa4Overview = async (
     return index === undefined ? null : Number(row.metricValues?.[index]?.value ?? 0)
   }
 
-  return Object.fromEntries(GA4_OVERVIEW_METRICS.map((metric) => [metric, valueOf(metric)])) as Ga4Overview
+  return {
+    overview: Object.fromEntries(GA4_OVERVIEW_METRICS.map((metric) => [metric, valueOf(metric)])) as Ga4Overview,
+    error: null,
+  }
 }
 
 // ─── Search Console ─────────────────────────────────────────────────────────

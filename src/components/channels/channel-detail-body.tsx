@@ -103,21 +103,20 @@ export function ChannelDetailBody({
         </div>
       )
 
-      // Không có `overview` (lượt gọi tổng lỗi/property chưa hỗ trợ) — bỏ
-      // hẳn tab đó thay vì hiện một tab rỗng, giống quy ước `channelSwitcher`
-      // chỉ hiện khi có từ 2 connection trở lên.
-      if (!detail.overview) return breakdown
-
+      // Luôn hiện cả hai tab — kể cả khi lượt gọi tổng lỗi (`overview` null),
+      // tab "Chi tiết" tự hiện lý do lỗi thật thay vì biến mất lặng lẽ (xem
+      // `Ga4OverviewPanel`). Ẩn hẳn tab từng khiến lỗi 400 của riêng lượt gọi
+      // tổng không ai biết đã xảy ra.
       return (
         <UrlTabs
           ariaLabel="Chế độ xem"
           tabs={[
+            { id: 'overview', label: 'Tổng quan', panel: breakdown },
             {
-              id: 'overview',
-              label: 'Tổng quan',
-              panel: <Ga4OverviewPanel overview={detail.overview} currency={currency} />,
+              id: 'detail',
+              label: 'Chi tiết',
+              panel: <Ga4OverviewPanel overview={detail.overview} error={detail.overviewError} currency={currency} />,
             },
-            { id: 'breakdown', label: 'Chi tiết', panel: breakdown },
           ]}
         />
       )
