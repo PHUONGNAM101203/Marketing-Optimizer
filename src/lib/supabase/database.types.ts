@@ -450,6 +450,9 @@ export type Database = {
           currency: string
           domain: string
           id: string
+          insight_critical_drop_threshold_pct: number | null
+          insight_drop_threshold_pct: number | null
+          insight_stale_sync_hours: number | null
           llms_txt_content: string | null
           llms_txt_generated_at: string | null
           name: string
@@ -463,6 +466,9 @@ export type Database = {
           currency?: string
           domain: string
           id?: string
+          insight_critical_drop_threshold_pct?: number | null
+          insight_drop_threshold_pct?: number | null
+          insight_stale_sync_hours?: number | null
           llms_txt_content?: string | null
           llms_txt_generated_at?: string | null
           name: string
@@ -476,6 +482,9 @@ export type Database = {
           currency?: string
           domain?: string
           id?: string
+          insight_critical_drop_threshold_pct?: number | null
+          insight_drop_threshold_pct?: number | null
+          insight_stale_sync_hours?: number | null
           llms_txt_content?: string | null
           llms_txt_generated_at?: string | null
           name?: string
@@ -484,6 +493,41 @@ export type Database = {
           url?: string
         }
         Relationships: []
+      }
+      insight_actions: {
+        Row: {
+          action: string
+          created_at: string
+          created_by: string | null
+          id: string
+          insight_id: string
+          site_id: string
+        }
+        Insert: {
+          action: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          insight_id: string
+          site_id: string
+        }
+        Update: {
+          action?: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          insight_id?: string
+          site_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "insight_actions_site_id_fkey"
+            columns: ["site_id"]
+            isOneToOne: false
+            referencedRelation: "sites"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       tracked_prompts: {
         Row: {

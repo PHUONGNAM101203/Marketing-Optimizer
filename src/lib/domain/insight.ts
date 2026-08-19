@@ -34,6 +34,23 @@ export type InsightKind =
   | 'audience-overlap'
   | 'ai-visibility-gap'
 
+/** Ngưỡng phát hiện bất thường — cấu hình được theo site (xem
+ * `Site.insightDropThresholdPct` và tương ứng), mặc định dùng khi site chưa
+ * tự đặt. `dropThresholdPct`/`criticalDropThresholdPct` tính theo tỉ lệ
+ * (0.3 = 30%), không phải phần trăm nguyên — khớp cách `deltaPct` đã tính
+ * trong `site-insights.ts`. */
+export interface InsightThresholds {
+  readonly dropThresholdPct: number
+  readonly criticalDropThresholdPct: number
+  readonly staleSyncHours: number
+}
+
+export const DEFAULT_INSIGHT_THRESHOLDS: InsightThresholds = {
+  dropThresholdPct: 0.3,
+  criticalDropThresholdPct: 0.6,
+  staleSyncHours: 48,
+}
+
 export type InsightSeverity = 'critical' | 'warning' | 'opportunity' | 'info'
 
 export type InsightStatus = 'new' | 'acknowledged' | 'applied' | 'dismissed'

@@ -168,3 +168,80 @@ export async function updateSite(
   revalidatePath(`/${parsed.data.siteId}`, 'layout')
   return { error: null, success: true }
 }
+
+// Rỗng ("Dùng mặc định") → ghi `null`, quay về mặc định hệ thống thay vì ép
+// một con số. Nhập được thì phải trong khoảng có nghĩa (tỉ lệ 1-99%, giờ
+// 1-720 ≈ 30 ngày) — ngoài khoảng đó gần như chắc là gõ nhầm đơn vị.
+const percentOrDefault = z.preprocess(
+  (value) => (value === '' || value === undefined ? undefined : Number(value) / 100),
+  z.number().min(0.01).max(0.99).optional(),
+)
+
+const thresholdsSchema = z.object({
+  siteId: z.string().uuid('Site không hợp lệ'),
+  dropThresholdPct: percentOrDefault,
+  criticalDropThresholdPct: percentOrDefault,
+  staleSyncHours: z.preprocess(
+    (value) => (value === '' || value === undefined ? undefined : Number(value)),
+    z.number().int().min(1).max(720).optional(),
+  ),
+})
+
+export interface UpdateInsightThresholdsState {
+  readonly error: string | null
+  readonly success: boolean
+}
+
+/** Ngưỡng cảnh báo trang Đề xuất — trước đây cố định cứng trong
+ * `site-insights.ts` (0.3/0.6/48), giờ mỗi site tự chỉnh được. Cùng khuôn
+ * `updateSite`: không tự kiểm role, dựa vào `sites_update_admin` (RLS). */
+export async function updateInsightThresholds(
+  _previous: UpdateInsightThresholdsState,
+  formData: FormData,
+): Promise<UpdateInsightThresholdsState> {
+  const parsed = thresholdsSchema.safeParse({
+    siteId: formData.get('siteId'),
+    dropThresholdPct: formData.get('dropThresholdPct'),
+    criticalDropThresholdPct: formData.get('criticalDropThresholdPct'),
+    staleSyncHours: formData.get('staleSyncHours'),
+  })
+
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? 'Dữ liệu không hợp lệ', success: false }
+  }
+  if (
+    parsed.data.dropThresholdPct !== undefined &&
+    parsed.data.criticalDropThresholdPct !== undefined &&
+    parsed.data.criticalDropThresholdPct <= parsed.data.dropThresholdPct
+  ) {
+    return {
+      error: 'Ngưỡng nghiêm trọng phải cao hơn ngưỡng cảnh báo thường.',
+      success: false,
+    }
+  }
+
+  const supabase = await createClient()
+  const { error } = await supabase
+    .from('sites')
+    .update({
+      insight_drop_threshold_pct: parsed.data.dropThresholdPct ?? null,
+      insight_critical_drop_threshold_pct: parsed.data.criticalDropThresholdPct ?? null,
+      insight_stale_sync_hours: parsed.data.staleSyncHours ?? null,
+    })
+    .eq('id', parsed.data.siteId)
+    .select('id')
+    .single()
+
+  if (error) {
+    if (error.code === 'PGRST116') {
+      return {
+        error: 'Chỉ chủ sở hữu hoặc quản trị viên mới sửa được ngưỡng cảnh báo.',
+        success: false,
+      }
+    }
+    return { error: `Không lưu được thay đổi: ${error.message}`, success: false }
+  }
+
+  revalidatePath(`/${parsed.data.siteId}/insights`)
+  return { error: null, success: true }
+}

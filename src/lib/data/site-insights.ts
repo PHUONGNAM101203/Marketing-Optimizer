@@ -2,9 +2,14 @@ import 'server-only'
 
 import type { Connection } from '@/lib/domain/connection'
 import { needsAttention } from '@/lib/domain/connection'
-import type { Insight, InsightEvidence } from '@/lib/domain/insight'
+import {
+  DEFAULT_INSIGHT_THRESHOLDS,
+  type Insight,
+  type InsightEvidence,
+  type InsightThresholds,
+} from '@/lib/domain/insight'
 import { PROVIDER_META, type ProviderId } from '@/lib/domain/providers'
-import type { ResolvedDateRange } from '@/lib/domain/site'
+import type { ResolvedDateRange, Site } from '@/lib/domain/site'
 import { formatDate } from '@/lib/format'
 import { createClient } from '@/lib/supabase/server'
 import { listConnections } from './connections'
@@ -42,16 +47,24 @@ const MIN_BASELINE: Readonly<Record<PrimaryMetricDef['key'], number>> = {
   costMicros: 50_000_000, // 50 đơn vị tiền tệ, tính bằng micros
 }
 
-const DROP_THRESHOLD = 0.3
-const CRITICAL_DROP_THRESHOLD = 0.6
-const STALE_SYNC_HOURS = 48
-
 const hoursSince = (isoDate: string): number =>
   (Date.now() - new Date(isoDate).getTime()) / 3_600_000
+
+/** Site chưa tự đặt ngưỡng nào (mọi cột `null`) → dùng nguyên
+ * `DEFAULT_INSIGHT_THRESHOLDS`. Site tự đặt MỘT trong ba cũng không kéo hai
+ * cột kia về mặc định — mỗi cột độc lập, khớp cách cột được lưu (ba cột rời,
+ * không phải một jsonb tất-cả-hoặc-không-gì). */
+export const thresholdsFromSite = (site: Site): InsightThresholds => ({
+  dropThresholdPct: site.insightDropThresholdPct ?? DEFAULT_INSIGHT_THRESHOLDS.dropThresholdPct,
+  criticalDropThresholdPct:
+    site.insightCriticalDropThresholdPct ?? DEFAULT_INSIGHT_THRESHOLDS.criticalDropThresholdPct,
+  staleSyncHours: site.insightStaleSyncHours ?? DEFAULT_INSIGHT_THRESHOLDS.staleSyncHours,
+})
 
 export const getRealInsights = async (
   siteId: string,
   range: ResolvedDateRange,
+  thresholds: InsightThresholds = DEFAULT_INSIGHT_THRESHOLDS,
 ): Promise<readonly Insight[]> => {
   const connections = await listConnections(siteId)
   const insights: Insight[] = []
@@ -63,15 +76,31 @@ export const getRealInsights = async (
     }
     if (connection.status === 'connected' && connection.lastSyncedAt) {
       const hours = hoursSince(connection.lastSyncedAt)
-      if (hours > STALE_SYNC_HOURS) {
+      if (hours > thresholds.staleSyncHours) {
         insights.push(staleSyncInsight(siteId, connection, hours))
       }
     }
   }
 
-  insights.push(...(await detectAnomalies(siteId, connections, range)))
+  insights.push(...(await detectAnomalies(siteId, connections, range, thresholds)))
 
   return insights
+}
+
+/** Trạng thái người dùng tự gán (bỏ qua/đưa vào hàng chờ duyệt) — insight
+ * không có hàng DB riêng nên tra theo `insight_id` dạng text đã sinh ra ở
+ * trên (ổn định qua các lần tải lại vì công thức sinh `id` không đổi theo
+ * thời gian chạy). */
+export const getInsightActionMap = async (
+  siteId: string,
+): Promise<ReadonlyMap<string, 'dismissed' | 'acknowledged'>> => {
+  const supabase = await createClient()
+  const { data } = await supabase
+    .from('insight_actions')
+    .select('insight_id, action')
+    .eq('site_id', siteId)
+
+  return new Map((data ?? []).map((row) => [row.insight_id, row.action as 'dismissed' | 'acknowledged']))
 }
 
 const brokenConnectionInsight = (siteId: string, connection: Connection): Insight => {
@@ -143,6 +172,7 @@ const detectAnomalies = async (
   siteId: string,
   connections: readonly Connection[],
   range: ResolvedDateRange,
+  thresholds: InsightThresholds,
 ): Promise<readonly Insight[]> => {
   const eligible = connections.filter(
     (connection): connection is Connection & { readonly provider: ProviderId } =>
@@ -183,13 +213,27 @@ const detectAnomalies = async (
 
     const deltaPct = (current - previous) / previous
 
-    if (deltaPct <= -DROP_THRESHOLD) {
+    if (deltaPct <= -thresholds.dropThresholdPct) {
       insights.push(
-        anomalyInsight(siteId, connection, def, { current, previous, deltaPct, range, kind: 'drop' }),
+        anomalyInsight(siteId, connection, def, {
+          current,
+          previous,
+          deltaPct,
+          range,
+          kind: 'drop',
+          thresholds,
+        }),
       )
-    } else if (def.key === 'costMicros' && deltaPct >= DROP_THRESHOLD) {
+    } else if (def.key === 'costMicros' && deltaPct >= thresholds.dropThresholdPct) {
       insights.push(
-        anomalyInsight(siteId, connection, def, { current, previous, deltaPct, range, kind: 'spike' }),
+        anomalyInsight(siteId, connection, def, {
+          current,
+          previous,
+          deltaPct,
+          range,
+          kind: 'spike',
+          thresholds,
+        }),
       )
     }
   }
@@ -207,12 +251,13 @@ const anomalyInsight = (
     readonly deltaPct: number
     readonly range: ResolvedDateRange
     readonly kind: 'drop' | 'spike'
+    readonly thresholds: InsightThresholds
   },
 ): Insight => {
-  const { current, previous, deltaPct, range, kind } = params
+  const { current, previous, deltaPct, range, kind, thresholds } = params
   const pctLabel = `${Math.round(Math.abs(deltaPct) * 100)}%`
   const severity =
-    Math.abs(deltaPct) >= CRITICAL_DROP_THRESHOLD ? 'critical' : ('warning' as const)
+    Math.abs(deltaPct) >= thresholds.criticalDropThresholdPct ? 'critical' : ('warning' as const)
 
   const title =
     kind === 'drop'

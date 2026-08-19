@@ -28,6 +28,12 @@ export interface Site {
    * `{domain}/llms.txt` trên server thật, app này không có quyền ghi. */
   readonly llmsTxtContent: string | null
   readonly llmsTxtGeneratedAt: string | null
+  /** Ngưỡng cảnh báo cho trang Đề xuất — `null` nghĩa là dùng mặc định hệ
+   * thống (xem `DEFAULT_INSIGHT_THRESHOLDS` trong `domain/insight.ts`), chưa
+   * từng là "tắt cảnh báo". */
+  readonly insightDropThresholdPct: number | null
+  readonly insightCriticalDropThresholdPct: number | null
+  readonly insightStaleSyncHours: number | null
 }
 
 export type SiteRole = 'owner' | 'admin' | 'viewer'

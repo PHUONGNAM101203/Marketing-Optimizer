@@ -93,6 +93,9 @@ const fetchSiteRow = async (admin: AdminClient, siteId: string): Promise<Site | 
     createdAt: data.created_at,
     llmsTxtContent: data.llms_txt_content,
     llmsTxtGeneratedAt: data.llms_txt_generated_at,
+    insightDropThresholdPct: data.insight_drop_threshold_pct,
+    insightCriticalDropThresholdPct: data.insight_critical_drop_threshold_pct,
+    insightStaleSyncHours: data.insight_stale_sync_hours,
   }
 }
 

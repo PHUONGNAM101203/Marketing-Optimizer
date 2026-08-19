@@ -26,6 +26,9 @@ interface SiteRow {
   readonly created_at: string
   readonly llms_txt_content: string | null
   readonly llms_txt_generated_at: string | null
+  readonly insight_drop_threshold_pct: number | null
+  readonly insight_critical_drop_threshold_pct: number | null
+  readonly insight_stale_sync_hours: number | null
 }
 
 const toSite = (row: SiteRow): Site => ({
@@ -40,6 +43,9 @@ const toSite = (row: SiteRow): Site => ({
   createdAt: row.created_at,
   llmsTxtContent: row.llms_txt_content,
   llmsTxtGeneratedAt: row.llms_txt_generated_at,
+  insightDropThresholdPct: row.insight_drop_threshold_pct,
+  insightCriticalDropThresholdPct: row.insight_critical_drop_threshold_pct,
+  insightStaleSyncHours: row.insight_stale_sync_hours,
 })
 
 export const listSites = async (): Promise<readonly Site[]> => {
