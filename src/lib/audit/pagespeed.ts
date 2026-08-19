@@ -88,13 +88,22 @@ const toScore = (category: PsiCategory | undefined): number | null =>
  * do thật (timeout / HTTP lỗi kèm status thật / JSON hỏng) như trước. Đây là
  * bằng chứng để phân biệt "PSI thật sự chậm hơn timeout" với "Google trả lỗi
  * (quota, key sai, site chặn Lighthouse bot…)" — hai nguyên nhân cần hai cách
- * sửa khác nhau, không thể đoán được nếu tiếp tục gộp chung thành `null`. */
+ * sửa khác nhau, không thể đoán được nếu tiếp tục gộp chung thành `null`.
+ *
+ * `errorKind` phân biệt lỗi ĐÁNG thử lại (HTTP lỗi/JSON hỏng — Google trả về
+ * rất nhanh, còn dư ngân sách thời gian) với lỗi timeout (đã ăn hết
+ * `PSI_TIMEOUT_MS`, thử lại chỉ tổ vượt `maxDuration` mà không chắc khá
+ * hơn). "Lighthouse returned error: Something went wrong" — lỗi 500 chung
+ * chung, không phải do request sai — là chính lớp lỗi Google KHUYẾN NGHỊ
+ * thử lại (xác nhận thật từ log production 8/2026, xem `attemptPageSpeedStrategy`
+ * bên dưới). */
 interface PsiStrategyOutcome {
   readonly result: PageSpeedStrategyResult | null
   readonly error: string | null
+  readonly errorKind: 'timeout' | 'retryable' | null
 }
 
-const fetchPageSpeedStrategy = async (
+const attemptPageSpeedStrategy = async (
   pageUrl: string,
   apiKey: string,
   strategy: PageSpeedStrategy,
@@ -120,17 +129,24 @@ const fetchPageSpeedStrategy = async (
       error: isTimeout
         ? `Quá thời gian chờ (${PSI_TIMEOUT_MS / 1000}s)`
         : `Lỗi mạng khi gọi PSI: ${error instanceof Error ? error.message : String(error)}`,
+      errorKind: isTimeout ? 'timeout' : 'retryable',
     }
   } finally {
     clearTimeout(timeout)
   }
   if (!response.ok) {
     // Đọc thân response để biết ĐÚNG lý do Google từ chối (quota hết, key
-    // sai/bị giới hạn domain, URL không truy cập được…) — trước đây bỏ qua
-    // hẳn thân response ở nhánh lỗi, y hệt lớp lỗi "nuốt lỗi API thật" đã vá
-    // cho GA4/GSC/GTM.
+    // sai/bị giới hạn domain, URL không truy cập được, hoặc — trường hợp phổ
+    // biến nhất thực tế — Lighthouse phía Google tự crash giữa chừng, một
+    // lỗi 500 chung chung không liên quan gì tới request của ta) — trước đây
+    // bỏ qua hẳn thân response ở nhánh lỗi, y hệt lớp lỗi "nuốt lỗi API
+    // thật" đã vá cho GA4/GSC/GTM.
     const bodyText = await response.text().catch(() => '')
-    return { result: null, error: `HTTP ${response.status} ${response.statusText}: ${bodyText.slice(0, 300)}` }
+    return {
+      result: null,
+      error: `HTTP ${response.status} ${response.statusText}: ${bodyText.slice(0, 300)}`,
+      errorKind: 'retryable',
+    }
   }
 
   // `response.json()` từng đứng NGOÀI try/catch — PSI trả 200 nhưng thân
@@ -146,6 +162,7 @@ const fetchPageSpeedStrategy = async (
     return {
       result: null,
       error: `PSI trả về 200 nhưng JSON không đọc được: ${error instanceof Error ? error.message : String(error)}`,
+      errorKind: 'retryable',
     }
   }
   const categories = body.lighthouseResult?.categories
@@ -171,7 +188,25 @@ const fetchPageSpeedStrategy = async (
       fetchedAt: new Date().toISOString(),
     },
     error: null,
+    errorKind: null,
   }
+}
+
+/** PSI/Lighthouse phía Google hay trả lỗi 500 THOÁNG QUA ("Lighthouse
+ * returned error: Something went wrong") không liên quan gì tới request của
+ * ta — một lần thử lại NGAY (không delay) thường trúng một worker Lighthouse
+ * khác của Google và qua. Chỉ thử lại lỗi `errorKind === 'retryable'` — lỗi
+ * `timeout` đã ăn hết `PSI_TIMEOUT_MS` rồi, thử lại chỉ tổ vượt `maxDuration`
+ * = 300s của cả audit mà không chắc khá hơn. Tối đa 1 lần thử lại — đây là
+ * độ bền hợp lý cho một lỗi cơ hội, không phải retry vô hạn. */
+const fetchPageSpeedStrategy = async (
+  pageUrl: string,
+  apiKey: string,
+  strategy: PageSpeedStrategy,
+): Promise<PsiStrategyOutcome> => {
+  const first = await attemptPageSpeedStrategy(pageUrl, apiKey, strategy)
+  if (first.errorKind !== 'retryable') return first
+  return attemptPageSpeedStrategy(pageUrl, apiKey, strategy)
 }
 
 /** Gọi song song cả hai chiến lược — mỗi nhánh lỗi độc lập (timeout desktop
