@@ -6,13 +6,14 @@
  * bằng `useState`, không gọi lại API — dữ liệu của mọi hạng mục đã có sẵn
  * trong `ExploreSource`. YouTube không có lựa chọn (chỉ một hạng mục "video"
  * có nghĩa), nên không cần kiểu dimension riêng. */
-export const GA4_EXPLORE_DIMENSIONS = ['page', 'channel', 'device'] as const
+export const GA4_EXPLORE_DIMENSIONS = ['page', 'channel', 'device', 'country'] as const
 export type Ga4ExploreDimension = (typeof GA4_EXPLORE_DIMENSIONS)[number]
 
 export const GA4_EXPLORE_DIMENSION_LABELS: Readonly<Record<Ga4ExploreDimension, string>> = {
   page: 'Trang',
   channel: 'Kênh',
   device: 'Thiết bị',
+  country: 'Quốc gia',
 }
 
 export const DEFAULT_GA4_EXPLORE_DIMENSION: Ga4ExploreDimension = 'page'

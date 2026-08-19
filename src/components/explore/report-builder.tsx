@@ -113,7 +113,9 @@ const buildExploreRows = (
         ? source.ga4.channels.map((row) => ({ label: row.channel, value: row.sessions }))
         : ga4Dimension === 'device'
           ? source.ga4.devices.map((row) => ({ label: row.device, value: row.sessions }))
-          : source.ga4.topPages.map((row) => ({ label: row.path, value: row.views }))
+          : ga4Dimension === 'country'
+            ? source.ga4.countries.map((row) => ({ label: row.country, value: row.sessions }))
+            : source.ga4.topPages.map((row) => ({ label: row.path, value: row.views }))
     rows.push(
       ...ga4Rows.slice(0, rowLimit).map(
         (row): ReportRow => ({

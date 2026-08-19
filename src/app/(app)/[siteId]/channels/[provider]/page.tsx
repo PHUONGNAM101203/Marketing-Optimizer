@@ -197,6 +197,8 @@ export default async function ChannelDetailPage({
           preset={range.preset}
           currency={site.currency}
           siteId={site.id}
+          startDate={range.start}
+          endDate={range.end}
           provider={provider}
           rangeParam={rangeParam}
           fromParam={from}

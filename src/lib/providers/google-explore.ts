@@ -8,6 +8,7 @@ import 'server-only'
  * mà không ai dùng lại.
  */
 
+import type { Ga4ExploreDimension } from '@/lib/domain/explore-dimension'
 import {
   MAX_TOP_ALL_TIME,
   MIN_TRENDING_VIEWS,
@@ -25,6 +26,7 @@ export interface Ga4Explore {
   readonly topPages: readonly { readonly path: string; readonly views: number }[]
   readonly channels: readonly { readonly channel: string; readonly sessions: number }[]
   readonly devices: readonly { readonly device: string; readonly sessions: number }[]
+  readonly countries: readonly { readonly country: string; readonly sessions: number }[]
 }
 
 interface Ga4RunReportResponse {
@@ -81,16 +83,86 @@ export const fetchGa4Explore = async (
   range: { readonly startDate: string; readonly endDate: string },
   limit: number = DEFAULT_CHANNEL_DETAIL_ROW_LIMIT,
 ): Promise<Ga4Explore> => {
-  const [pages, channels, devices] = await Promise.all([
+  const [pages, channels, devices, countries] = await Promise.all([
     runGa4Report(accessToken, property, range, 'pagePath', 'screenPageViews', limit),
     runGa4Report(accessToken, property, range, 'sessionDefaultChannelGroup', 'sessions', limit),
     runGa4Report(accessToken, property, range, 'deviceCategory', 'sessions', limit),
+    runGa4Report(accessToken, property, range, 'country', 'sessions', limit),
   ])
 
   return {
     topPages: pages.map((row) => ({ path: row.label, views: row.value })),
     channels: channels.map((row) => ({ channel: row.label, sessions: row.value })),
     devices: devices.map((row) => ({ device: row.label, sessions: row.value })),
+    countries: countries.map((row) => ({ country: row.label, sessions: row.value })),
+  }
+}
+
+/** Bốn hạng mục drill-down GA4 hỗ trợ khi bấm vào một ô chỉ số ở tab "Chi
+ * tiết" — ÁNH XẠ sang tên dimension THẬT của GA4 Data API. Dùng chung kiểu
+ * `Ga4ExploreDimension` với trang Khám phá (đã mở rộng thêm 'country' ở
+ * `explore-dimension.ts`), không tạo hai khái niệm "hạng mục GA4" khác nhau
+ * trong cùng một app. */
+const GA4_BREAKDOWN_DIMENSION_NAMES: Readonly<Record<Ga4ExploreDimension, string>> = {
+  page: 'pagePath',
+  channel: 'sessionDefaultChannelGroup',
+  device: 'deviceCategory',
+  country: 'country',
+}
+
+export interface Ga4MetricBreakdownRow {
+  readonly label: string
+  readonly value: number
+}
+
+/** Phân rã MỘT chỉ số cụ thể (bất kỳ trong 17 chỉ số của tab "Chi tiết") theo
+ * MỘT hạng mục người dùng chọn — trả lỗi thật thay vì mảng rỗng khi API từ
+ * chối (`runGa4Report` hiện tại nuốt lỗi thành `[]`, chấp nhận được cho
+ * `fetchGa4Explore` vì 3-4 breakdown độc lập đã có test thật; ở đây người
+ * dùng bấm CHỦ ĐỘNG để xem một phân rã cụ thể, im lặng trả rỗng sẽ trông y
+ * hệt "trang này thật sự không có traffic" — phải phân biệt rõ). */
+export const fetchGa4MetricBreakdown = async (
+  accessToken: string,
+  property: string,
+  range: { readonly startDate: string; readonly endDate: string },
+  metric: Ga4OverviewMetric,
+  dimension: Ga4ExploreDimension,
+  limit: number,
+): Promise<{ readonly rows: readonly Ga4MetricBreakdownRow[] | null; readonly error: string | null }> => {
+  const dimensionName = GA4_BREAKDOWN_DIMENSION_NAMES[dimension]
+  let response: Response
+  try {
+    response = await fetch(`https://analyticsdata.googleapis.com/v1beta/${property}:runReport`, {
+      method: 'POST',
+      headers: { ...authHeader(accessToken), 'content-type': 'application/json' },
+      body: JSON.stringify({
+        dateRanges: [{ startDate: range.startDate, endDate: range.endDate }],
+        dimensions: [{ name: dimensionName }],
+        metrics: [{ name: metric }],
+        orderBys: [{ metric: { metricName: metric }, desc: true }],
+        limit,
+      }),
+    })
+  } catch (error) {
+    return {
+      rows: null,
+      error: `Lỗi mạng khi gọi GA4 runReport: ${error instanceof Error ? error.message : String(error)}`,
+    }
+  }
+  if (!response.ok) {
+    const bodyText = await response.text().catch(() => '')
+    return { rows: null, error: `HTTP ${response.status} ${response.statusText}: ${bodyText.slice(0, 400)}` }
+  }
+
+  const data = (await response.json()) as Ga4RunReportResponse
+  return {
+    rows: (data.rows ?? [])
+      .filter((row) => Boolean(row.dimensionValues?.[0]?.value))
+      .map((row) => ({
+        label: row.dimensionValues?.[0]?.value as string,
+        value: Number(row.metricValues?.[0]?.value ?? 0),
+      })),
+    error: null,
   }
 }
 
@@ -103,7 +175,7 @@ export const fetchGa4Explore = async (
  * không-dimension với nhóm lõi, dễ khiến CẢ yêu cầu lỗi 400 vì một metric lạ.
  * Một lượt gọi `runReport` DUY NHẤT, không có `dimensions` — GA4 coi đây là
  * một hàng "tổng" cho cả khoảng ngày, không phải phân rã theo ngày/trang. */
-const GA4_OVERVIEW_METRICS = [
+export const GA4_OVERVIEW_METRICS = [
   'activeUsers',
   'totalUsers',
   'newUsers',

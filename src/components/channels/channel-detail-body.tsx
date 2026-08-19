@@ -40,6 +40,8 @@ export function ChannelDetailBody({
   preset,
   currency,
   siteId,
+  startDate,
+  endDate,
   provider,
   rangeParam,
   fromParam,
@@ -51,9 +53,15 @@ export function ChannelDetailBody({
   readonly dailySeries: readonly ChannelDailyPoint[]
   readonly preset: DateRangePreset
   readonly currency: string
-  /** Năm cái dưới đây chỉ Merchant Center dùng — để dựng link filter trạng
-   * thái/phân trang mà vẫn giữ nguyên khoảng ngày đang chọn. */
+  /** `siteId` dùng cho cả Merchant Center (dựng link filter trạng thái/phân
+   * trang) lẫn GA4 (drill-down chỉ số ở `Ga4OverviewPanel`, gọi thẳng một
+   * Server Action tự kiểm quyền theo `siteId`). `startDate`/`endDate` (ISO,
+   * khớp `range.start`/`range.end` ở trang cha) chỉ GA4 dùng — truyền
+   * nguyên khoảng ngày đang chọn cho lượt gọi drill-down thay vì suy lại từ
+   * `preset`. */
   readonly siteId?: string
+  readonly startDate?: string
+  readonly endDate?: string
   readonly provider?: ProviderId
   readonly rangeParam?: string
   /** Chỉ có giá trị khi `rangeParam === 'custom'` — xem `parseCustomRangeParams`. */
@@ -115,7 +123,17 @@ export function ChannelDetailBody({
             {
               id: 'detail',
               label: 'Chi tiết',
-              panel: <Ga4OverviewPanel overview={detail.overview} error={detail.overviewError} currency={currency} />,
+              panel: (
+                <Ga4OverviewPanel
+                  overview={detail.overview}
+                  error={detail.overviewError}
+                  currency={currency}
+                  connectionId={detail.connectionId}
+                  siteId={siteId ?? ''}
+                  startDate={startDate ?? ''}
+                  endDate={endDate ?? ''}
+                />
+              ),
             },
           ]}
         />
