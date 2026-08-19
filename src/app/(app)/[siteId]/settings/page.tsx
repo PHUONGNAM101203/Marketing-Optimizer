@@ -1,16 +1,18 @@
 import { notFound } from 'next/navigation'
-import { Trash2, UserPlus } from 'lucide-react'
+import { Trash2 } from 'lucide-react'
 import { PageHeader, PageShell } from '@/components/layout/page-header'
 import { Card, CardBody, CardHeader } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { getSite, listMembers } from '@/lib/data/sites'
+import { getInviteLink } from '@/lib/data/site-invite'
 import { getLatestAuditPageSignals } from '@/lib/data/audit'
 import { applyDetectedMarketOnce } from '@/lib/audit/apply-market'
 import { getSiteAiConnection } from '@/lib/data/site-ai-keys'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { EditSiteForm } from '@/components/settings/edit-site-form'
 import { AiKeySetup } from '@/components/settings/ai-key-setup'
+import { InviteMemberDialog } from '@/components/settings/invite-member-dialog'
 import { canManageConnections, type SiteRole } from '@/lib/domain/site'
 import { TLD_MARKET } from '@/lib/audit/market-detection'
 import { formatRelativeTime } from '@/lib/format'
@@ -50,6 +52,7 @@ export default async function SettingsPage({
 
   const members = await listMembers(site.id)
   const aiConnection = await getSiteAiConnection(site.id)
+  const inviteLink = await getInviteLink(site.id)
 
   return (
     <PageShell>
@@ -97,10 +100,11 @@ export default async function SettingsPage({
           title="Thành viên"
           description="Người có quyền chỉ xem không kết nối được tài khoản quảng cáo và không duyệt được hành động của agent."
           action={
-            <Button variant="secondary" size="sm">
-              <UserPlus aria-hidden className="size-3.5" />
-              Mời
-            </Button>
+            <InviteMemberDialog
+              siteId={site.id}
+              initialToken={inviteLink?.token ?? null}
+              initialRole={inviteLink?.role ?? 'viewer'}
+            />
           }
           ruled
         />

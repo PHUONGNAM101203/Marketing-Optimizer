@@ -494,6 +494,38 @@ export type Database = {
         }
         Relationships: []
       }
+      site_invite_links: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          role: Database["public"]["Enums"]["site_role"]
+          site_id: string
+          token: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          role?: Database["public"]["Enums"]["site_role"]
+          site_id: string
+          token: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          role?: Database["public"]["Enums"]["site_role"]
+          site_id?: string
+          token?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "site_invite_links_site_id_fkey"
+            columns: ["site_id"]
+            isOneToOne: true
+            referencedRelation: "sites"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       insight_actions: {
         Row: {
           action: string
