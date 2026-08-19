@@ -195,3 +195,109 @@ export const fetchMerchantCenterProducts = async (
 
   return { products, truncated }
 }
+
+// ─── Reports API (hiệu suất thật, khác trạng thái duyệt ở trên) ────────────
+
+export interface MerchantProductPerformance {
+  readonly productId: string
+  readonly title: string
+  readonly clicks: number
+  readonly impressions: number
+  readonly ctr: number
+  readonly conversions: number
+}
+
+export interface MerchantPerformanceOutcome {
+  readonly rows: readonly MerchantProductPerformance[]
+  readonly truncated: boolean
+  readonly error: string | null
+}
+
+interface ReportsSearchRow {
+  readonly productView?: { readonly id?: string; readonly title?: string }
+  readonly metrics?: { readonly clicks?: string; readonly impressions?: string; readonly conversions?: string }
+}
+
+interface ReportsSearchResponse {
+  readonly results?: readonly ReportsSearchRow[]
+  readonly nextPageToken?: string
+}
+
+const REPORTS_PAGE_SIZE = 500
+
+/** `reports.search` (MCQL) — số liệu HIỆU SUẤT thật (clicks/impressions/
+ * ctr/conversions theo từng sản phẩm), khác hẳn `productstatuses.list` ở
+ * trên vốn chỉ là trạng thái duyệt. Đây là mảnh còn thiếu để Merchant Center
+ * có số liệu tương đương GA4/GSC (cả hai đều là "hiệu suất", không chỉ
+ * "trạng thái").
+ *
+ * CHƯA ai chạy thử với tài khoản Merchant Center thật có bật Reporting —
+ * cú pháp MCQL bám theo tài liệu Content API v2.1 chính thức
+ * (`ProductPerformanceView`), cần verify khi có token thật. Một tài khoản
+ * nhỏ/mới có thể trả về rỗng vì chưa đủ khối lượng dữ liệu Google yêu cầu
+ * cho báo cáo — không phải lỗi của lượt gọi này, khác với lỗi HTTP thật.
+ * `PriceCompetitivenessProductView`/`BestSellersProductClusterView` là hai
+ * view khác đáng thêm sau — không đưa vào lần này để tránh mở rộng phạm vi
+ * quá xa cho một bản chưa verify được với dữ liệu thật. */
+export const fetchMerchantPerformanceReport = async (
+  accessToken: string,
+  merchantId: string,
+  range: { readonly startDate: string; readonly endDate: string },
+  maxPages = 3,
+): Promise<MerchantPerformanceOutcome> => {
+  const query =
+    'SELECT product_view.id, product_view.title, metrics.clicks, metrics.impressions, metrics.conversions ' +
+    'FROM ProductPerformanceView ' +
+    `WHERE segments.date BETWEEN '${range.startDate}' AND '${range.endDate}' ` +
+    'ORDER BY metrics.clicks DESC'
+
+  const rows: MerchantProductPerformance[] = []
+  let pageToken: string | undefined
+  let pages = 0
+  let error: string | null = null
+
+  do {
+    const response = await fetch(
+      `https://shoppingcontent.googleapis.com/content/${API_VERSION}/${merchantId}/reports/search`,
+      {
+        method: 'POST',
+        headers: { authorization: `Bearer ${accessToken}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ query, pageSize: REPORTS_PAGE_SIZE, pageToken }),
+      },
+    )
+    if (!response.ok) {
+      const bodyText = await response.text().catch(() => '')
+      error = `HTTP ${response.status} ${response.statusText}: ${bodyText.slice(0, 300)}`
+      console.error(`Merchant Center reports.search lỗi (${merchantId}): ${error}`)
+      break
+    }
+
+    let data: ReportsSearchResponse
+    try {
+      data = (await response.json()) as ReportsSearchResponse
+    } catch (parseError) {
+      error = `Merchant Center reports.search trả 200 nhưng JSON không đọc được: ${parseError instanceof Error ? parseError.message : String(parseError)}`
+      console.error(error)
+      break
+    }
+
+    for (const row of data.results ?? []) {
+      const id = row.productView?.id
+      if (!id) continue
+      const clicks = Number(row.metrics?.clicks ?? 0)
+      const impressions = Number(row.metrics?.impressions ?? 0)
+      rows.push({
+        productId: id,
+        title: row.productView?.title ?? id,
+        clicks,
+        impressions,
+        ctr: impressions > 0 ? clicks / impressions : 0,
+        conversions: Number(row.metrics?.conversions ?? 0),
+      })
+    }
+    pageToken = data.nextPageToken
+    pages += 1
+  } while (pageToken && pages < maxPages)
+
+  return { rows, truncated: Boolean(pageToken), error }
+}

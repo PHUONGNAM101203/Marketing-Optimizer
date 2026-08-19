@@ -5,12 +5,14 @@ import {
   fetchGa4Explore,
   fetchGa4Overview,
   fetchGscExplore,
+  fetchGscOverview,
   fetchGtmExplore,
   fetchYoutubeExplore,
   getYoutubeVideoTrending,
   type Ga4Explore,
   type Ga4Overview,
   type GscExplore,
+  type GscOverview,
   type GtmExplore,
   type YoutubeExplore,
 } from '@/lib/providers/google-explore'
@@ -21,6 +23,8 @@ import { getContentTrending } from '@/lib/data/content-trending'
 import { fetchGoogleAdsCampaignMetrics } from '@/lib/providers/google-ads'
 import {
   fetchMerchantCenterProducts,
+  fetchMerchantPerformanceReport,
+  type MerchantProductPerformance,
   type MerchantProductStatus,
   type ProductApprovalStatus,
 } from '@/lib/providers/google-merchant'
@@ -93,6 +97,9 @@ export type ChannelDetail =
        * niệm "kênh" (Ads/Analytics/Search Console/Tag Manager/Merchant Center). */
       readonly avatarUrl: string | null
       readonly data: GscExplore
+      readonly overview: GscOverview | null
+      /** Lý do THẬT khi `overview` null — cùng tinh thần `ga4`. */
+      readonly overviewError: string | null
     }
   | {
       readonly kind: 'gtm'
@@ -138,6 +145,12 @@ export type ChannelDetail =
        * niệm "kênh" (Ads/Analytics/Search Console/Tag Manager/Merchant Center). */
       readonly avatarUrl: string | null
       readonly data: MerchantCenterExplore
+      readonly performance: readonly MerchantProductPerformance[]
+      readonly performanceTruncated: boolean
+      /** Lý do THẬT khi rỗng vì lỗi HTTP thật — KHÁC rỗng vì tài khoản chưa
+       * đủ dữ liệu báo cáo (Google trả 200 với `results` rỗng, không phải
+       * lỗi — xem `fetchMerchantPerformanceReport`). */
+      readonly performanceError: string | null
     }
   | {
       readonly kind: 'meta-ads'
@@ -332,15 +345,33 @@ export const getChannelDetail = async (
         overviewError: overviewOutcome.error,
       }
     }
-    case 'gsc':
+    case 'gsc': {
+      // `rowLimit` cao (khác GA4/GTM/YouTube — mặc định 10) vì tab "Chi tiết"
+      // mới cần phân trang tới 1000 dòng/hạng mục; tab "Tổng quan" (không
+      // đổi) tự cắt lại còn 10 dòng khi render, xem `channel-detail-body.tsx`.
+      // Không cần chunk nhiều lượt gọi như GA4 — GSC không giới hạn số chỉ
+      // số mỗi request.
+      const GSC_CHANNEL_DETAIL_ROW_LIMIT = 1000
+      const [data, overviewOutcome] = await Promise.all([
+        fetchGscExplore(
+          tokenResult.accessToken,
+          connection.external_account_id,
+          range,
+          GSC_CHANNEL_DETAIL_ROW_LIMIT,
+        ),
+        fetchGscOverview(tokenResult.accessToken, connection.external_account_id, range),
+      ])
       return {
         kind: 'gsc',
         connectionId: resolvedConnectionId,
         accountName,
         externalAccountId,
         avatarUrl,
-        data: await fetchGscExplore(tokenResult.accessToken, connection.external_account_id, range),
+        data,
+        overview: overviewOutcome.overview,
+        overviewError: overviewOutcome.error,
       }
+    }
     case 'gtm':
       return {
         kind: 'gtm',
@@ -363,11 +394,10 @@ export const getChannelDetail = async (
       return { kind: 'youtube', connectionId: resolvedConnectionId, accountName, externalAccountId, avatarUrl, data, trending }
     }
     case 'merchant-center': {
-      const { products, truncated } = await fetchMerchantCenterProducts(
-        tokenResult.accessToken,
-        connection.external_account_id,
-        productFilter,
-      )
+      const [{ products, truncated }, performanceOutcome] = await Promise.all([
+        fetchMerchantCenterProducts(tokenResult.accessToken, connection.external_account_id, productFilter),
+        fetchMerchantPerformanceReport(tokenResult.accessToken, connection.external_account_id, range),
+      ])
       return {
         kind: 'merchant-center',
         connectionId: resolvedConnectionId,
@@ -375,6 +405,9 @@ export const getChannelDetail = async (
         externalAccountId,
         avatarUrl,
         data: { products, truncated, filter: productFilter ?? null },
+        performance: performanceOutcome.rows,
+        performanceTruncated: performanceOutcome.truncated,
+        performanceError: performanceOutcome.error,
       }
     }
     case 'google-ads': {

@@ -16,6 +16,8 @@ import { formatCompact, formatCurrencyCompact, formatNumber, formatPercent } fro
 import { microsToUnits } from '@/lib/metrics/types'
 import { UrlTabs } from '@/components/ui/tabs'
 import { Ga4OverviewPanel } from '@/components/channels/ga4/ga4-overview-panel'
+import { GscOverviewPanel } from '@/components/channels/gsc/gsc-overview-panel'
+import { MerchantPerformancePanel } from '@/components/channels/merchant/merchant-performance-panel'
 import { TiktokVideoGrid } from '@/components/channels/tiktok/tiktok-video-grid'
 import { TiktokDashboard } from '@/components/channels/tiktok/tiktok-dashboard'
 import { YoutubeDashboard } from '@/components/channels/youtube/youtube-dashboard'
@@ -140,8 +142,8 @@ export function ChannelDetailBody({
       )
     }
 
-    case 'gsc':
-      return (
+    case 'gsc': {
+      const breakdown = (
         <div className="flex flex-col gap-6">
           {preset === 'today' ? <ProcessingDelayNote days="2–3 ngày" /> : null}
           <TrendCard
@@ -153,7 +155,7 @@ export function ChannelDetailBody({
           <BreakdownSection
             label="Truy vấn"
             title="Truy vấn tìm kiếm hàng đầu"
-            rows={detail.data.topQueries.map((row) => ({
+            rows={detail.data.topQueries.slice(0, 10).map((row) => ({
               dimension: row.query,
               cells: [
                 formatCompact(row.clicks),
@@ -167,7 +169,7 @@ export function ChannelDetailBody({
           <BreakdownSection
             label="Trang"
             title="Trang được tìm thấy nhiều nhất"
-            rows={detail.data.topPages.map((row) => ({
+            rows={detail.data.topPages.slice(0, 10).map((row) => ({
               dimension: row.page,
               cells: [
                 formatCompact(row.clicks),
@@ -181,7 +183,7 @@ export function ChannelDetailBody({
             <BreakdownSection
               label="Quốc gia"
               title="Theo quốc gia"
-              rows={detail.data.countries.map((row) => ({
+              rows={detail.data.countries.slice(0, 10).map((row) => ({
                 dimension: row.country,
                 cells: [formatCompact(row.clicks)],
               }))}
@@ -190,7 +192,7 @@ export function ChannelDetailBody({
             <BreakdownSection
               label="Thiết bị"
               title="Theo thiết bị"
-              rows={detail.data.devices.map((row) => ({
+              rows={detail.data.devices.slice(0, 10).map((row) => ({
                 dimension: row.device,
                 cells: [formatCompact(row.clicks)],
               }))}
@@ -199,6 +201,32 @@ export function ChannelDetailBody({
           </div>
         </div>
       )
+
+      // Cùng lý do với GA4: `data` giờ đã fetch tới 1000 dòng/hạng mục (xem
+      // `site-channel-detail.ts`) để tab "Chi tiết" có đủ để phân trang —
+      // "Tổng quan" ở trên cố tình `.slice(0, 10)` lại để giữ đúng hình dạng
+      // nhẹ vốn có, không đổ hết 1000 dòng vào một `BreakdownSection` không
+      // phân trang.
+      return (
+        <UrlTabs
+          ariaLabel="Chế độ xem"
+          tabs={[
+            { id: 'overview', label: 'Tổng quan', panel: breakdown },
+            {
+              id: 'detail',
+              label: 'Chi tiết',
+              panel: (
+                <GscOverviewPanel
+                  data={detail.data}
+                  overview={detail.overview}
+                  overviewError={detail.overviewError}
+                />
+              ),
+            },
+          ]}
+        />
+      )
+    }
 
     case 'youtube':
       return (
@@ -252,17 +280,43 @@ export function ChannelDetailBody({
       )
 
     case 'merchant-center':
+      // Cùng cấu trúc "Tổng quan" (không đổi) / "Chi tiết" (mới) với GA4/GSC
+      // — "Chi tiết" ở đây là số liệu HIỆU SUẤT (clicks/impressions/ctr/
+      // conversions), mảnh còn thiếu so với phần trạng thái duyệt sản phẩm
+      // đã có sẵn trong `MerchantCenterSection`.
       return (
-        <MerchantCenterSection
-          detail={detail}
-          dailySeries={dailySeries}
-          siteId={siteId as string}
-          provider={provider as ProviderId}
-          rangeParam={rangeParam}
-          fromParam={fromParam}
-          toParam={toParam}
-          productFilter={productFilter}
-          page={page ?? 1}
+        <UrlTabs
+          ariaLabel="Chế độ xem"
+          tabs={[
+            {
+              id: 'overview',
+              label: 'Tổng quan',
+              panel: (
+                <MerchantCenterSection
+                  detail={detail}
+                  dailySeries={dailySeries}
+                  siteId={siteId as string}
+                  provider={provider as ProviderId}
+                  rangeParam={rangeParam}
+                  fromParam={fromParam}
+                  toParam={toParam}
+                  productFilter={productFilter}
+                  page={page ?? 1}
+                />
+              ),
+            },
+            {
+              id: 'detail',
+              label: 'Chi tiết',
+              panel: (
+                <MerchantPerformancePanel
+                  rows={detail.performance}
+                  truncated={detail.performanceTruncated}
+                  error={detail.performanceError}
+                />
+              ),
+            },
+          ]}
         />
       )
 

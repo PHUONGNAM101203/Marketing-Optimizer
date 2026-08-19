@@ -304,22 +304,37 @@ export const fetchGa4Overview = async (
 
 // ─── Search Console ─────────────────────────────────────────────────────────
 
+/** Mỗi hàng phân rã đều mang đủ 4 chỉ số GSC có — khác GA4 (nhiều chỉ số,
+ * phải chunk từng đợt 10 vì giới hạn API), GSC luôn trả cả clicks/
+ * impressions/ctr/position TRONG CÙNG một hàng bất kể hạng mục nào, nên
+ * "lấy hết dữ liệu" ở đây là thêm HẠNG MỤC (searchType, searchAppearance —
+ * hai dimension API hỗ trợ nhưng trước đây chưa dùng tới), không phải thêm
+ * chỉ số. */
+interface GscBreakdownRow {
+  readonly clicks: number
+  readonly impressions: number
+  readonly ctr: number
+  readonly position: number
+}
+
 export interface GscExplore {
-  readonly topQueries: readonly {
-    readonly query: string
-    readonly clicks: number
-    readonly impressions: number
-    readonly ctr: number
-    readonly position: number
-  }[]
-  readonly topPages: readonly {
-    readonly page: string
-    readonly clicks: number
-    readonly impressions: number
-    readonly ctr: number
-  }[]
-  readonly countries: readonly { readonly country: string; readonly clicks: number }[]
-  readonly devices: readonly { readonly device: string; readonly clicks: number }[]
+  readonly topQueries: readonly (GscBreakdownRow & { readonly query: string })[]
+  readonly topPages: readonly (GscBreakdownRow & { readonly page: string })[]
+  readonly countries: readonly (GscBreakdownRow & { readonly country: string })[]
+  readonly devices: readonly (GscBreakdownRow & { readonly device: string })[]
+  /** `web`/`image`/`video`/`news`/`discover`/`googleNews` — dimension
+   * `searchType` của Search Analytics API, trước đây chưa dùng. */
+  readonly searchTypes: readonly (GscBreakdownRow & { readonly searchType: string })[]
+  /** Định dạng kết quả rich result (AMP, sản phẩm, sự kiện…) — dimension
+   * `searchAppearance`, trước đây chưa dùng. */
+  readonly appearances: readonly (GscBreakdownRow & { readonly appearance: string })[]
+}
+
+export type GscOverview = GscBreakdownRow
+
+export interface GscOverviewOutcome {
+  readonly overview: GscOverview | null
+  readonly error: string | null
 }
 
 interface GscQueryRow {
@@ -329,13 +344,20 @@ interface GscQueryRow {
   readonly position?: number
 }
 
+interface GscQueryOutcome {
+  readonly rows: readonly GscQueryRow[]
+  readonly error: string | null
+}
+
+/** `dimensions: []` (mảng rỗng) — Search Analytics API trả về ĐÚNG MỘT hàng
+ * tổng cho toàn site, không có `keys`, dùng cho `fetchGscOverview`. */
 const runGscQuery = async (
   accessToken: string,
   siteUrl: string,
   params: { readonly startDate: string; readonly endDate: string },
-  dimension: string,
+  dimensions: readonly string[],
   rowLimit: number,
-): Promise<readonly GscQueryRow[]> => {
+): Promise<GscQueryOutcome> => {
   const response = await fetch(
     `https://www.googleapis.com/webmasters/v3/sites/${encodeURIComponent(siteUrl)}/searchAnalytics/query`,
     {
@@ -344,58 +366,95 @@ const runGscQuery = async (
       body: JSON.stringify({
         startDate: params.startDate,
         endDate: params.endDate,
-        dimensions: [dimension],
+        dimensions,
         rowLimit,
       }),
     },
   )
-  if (!response.ok) return []
+  if (!response.ok) {
+    // Trước đây trả `[]` lặng lẽ khi lỗi — cùng lớp lỗi "nuốt lỗi API thật"
+    // đã vá cho PSI/GA4 trong phiên này. Log ra console.error để đọc được
+    // qua `vercel logs` thay vì Chi tiết chỉ hiện trống không rõ lý do.
+    const bodyText = await response.text().catch(() => '')
+    const error = `HTTP ${response.status} ${response.statusText}: ${bodyText.slice(0, 300)}`
+    console.error(`GSC searchAnalytics.query lỗi (${siteUrl}, dimensions=${dimensions.join(',') || '(tổng)'}): ${error}`)
+    return { rows: [], error }
+  }
 
-  const data = (await response.json()) as { rows?: readonly GscQueryRow[] }
-  return data.rows ?? []
+  try {
+    const data = (await response.json()) as { rows?: readonly GscQueryRow[] }
+    return { rows: data.rows ?? [], error: null }
+  } catch (error) {
+    const message = `GSC trả 200 nhưng JSON không đọc được: ${error instanceof Error ? error.message : String(error)}`
+    console.error(message)
+    return { rows: [], error: message }
+  }
 }
+
+const toBreakdownRow = (row: GscQueryRow): GscBreakdownRow => ({
+  clicks: row.clicks ?? 0,
+  impressions: row.impressions ?? 0,
+  ctr: (row.impressions ?? 0) > 0 ? (row.clicks ?? 0) / (row.impressions as number) : 0,
+  position: row.position ?? 0,
+})
 
 /** `rowLimit` — Search Console API cho `rowLimit` tới 25.000, thoải mái
  * chuyển thẳng lựa chọn 10-1000 của trang Khám phá. Mặc định
- * `DEFAULT_CHANNEL_DETAIL_ROW_LIMIT` cho trang chi tiết kênh. */
+ * `DEFAULT_CHANNEL_DETAIL_ROW_LIMIT` cho trang chi tiết kênh — tab "Tổng
+ * quan" (không đổi) tự cắt xuống còn 10 dòng khi hiện, còn tab "Chi tiết"
+ * dùng nguyên `rowLimit` truyền vào (xem `site-channel-detail.ts` truyền
+ * 1000 riêng cho GSC). Lỗi từng hạng mục lỗi ĐỘC LẬP — một hạng mục lỗi
+ * (đã log console.error ở `runGscQuery`) chỉ làm mảng đó rỗng, không kéo
+ * các hạng mục khác theo, giữ đúng hành vi khoan dung đã có từ trước. */
 export const fetchGscExplore = async (
   accessToken: string,
   siteUrl: string,
   range: { readonly startDate: string; readonly endDate: string },
   rowLimit: number = DEFAULT_CHANNEL_DETAIL_ROW_LIMIT,
 ): Promise<GscExplore> => {
-  const [queries, pages, countries, devices] = await Promise.all([
-    runGscQuery(accessToken, siteUrl, range, 'query', rowLimit),
-    runGscQuery(accessToken, siteUrl, range, 'page', rowLimit),
-    runGscQuery(accessToken, siteUrl, range, 'country', rowLimit),
-    runGscQuery(accessToken, siteUrl, range, 'device', rowLimit),
+  const [queries, pages, countries, devices, searchTypes, appearances] = await Promise.all([
+    runGscQuery(accessToken, siteUrl, range, ['query'], rowLimit),
+    runGscQuery(accessToken, siteUrl, range, ['page'], rowLimit),
+    runGscQuery(accessToken, siteUrl, range, ['country'], rowLimit),
+    runGscQuery(accessToken, siteUrl, range, ['device'], rowLimit),
+    runGscQuery(accessToken, siteUrl, range, ['searchType'], rowLimit),
+    runGscQuery(accessToken, siteUrl, range, ['searchAppearance'], rowLimit),
   ])
 
   return {
-    topQueries: queries
+    topQueries: queries.rows
       .filter((row) => Boolean(row.keys?.[0]))
-      .map((row) => ({
-        query: row.keys?.[0] as string,
-        clicks: row.clicks ?? 0,
-        impressions: row.impressions ?? 0,
-        ctr: (row.impressions ?? 0) > 0 ? (row.clicks ?? 0) / (row.impressions as number) : 0,
-        position: row.position ?? 0,
-      })),
-    topPages: pages
+      .map((row) => ({ query: row.keys?.[0] as string, ...toBreakdownRow(row) })),
+    topPages: pages.rows
       .filter((row) => Boolean(row.keys?.[0]))
-      .map((row) => ({
-        page: row.keys?.[0] as string,
-        clicks: row.clicks ?? 0,
-        impressions: row.impressions ?? 0,
-        ctr: (row.impressions ?? 0) > 0 ? (row.clicks ?? 0) / (row.impressions as number) : 0,
-      })),
-    countries: countries
+      .map((row) => ({ page: row.keys?.[0] as string, ...toBreakdownRow(row) })),
+    countries: countries.rows
       .filter((row) => Boolean(row.keys?.[0]))
-      .map((row) => ({ country: row.keys?.[0] as string, clicks: row.clicks ?? 0 })),
-    devices: devices
+      .map((row) => ({ country: row.keys?.[0] as string, ...toBreakdownRow(row) })),
+    devices: devices.rows
       .filter((row) => Boolean(row.keys?.[0]))
-      .map((row) => ({ device: row.keys?.[0] as string, clicks: row.clicks ?? 0 })),
+      .map((row) => ({ device: row.keys?.[0] as string, ...toBreakdownRow(row) })),
+    searchTypes: searchTypes.rows
+      .filter((row) => Boolean(row.keys?.[0]))
+      .map((row) => ({ searchType: row.keys?.[0] as string, ...toBreakdownRow(row) })),
+    appearances: appearances.rows
+      .filter((row) => Boolean(row.keys?.[0]))
+      .map((row) => ({ appearance: row.keys?.[0] as string, ...toBreakdownRow(row) })),
   }
+}
+
+/** Tổng toàn site (không chia hạng mục) cho 4 ô số đầu tab "Chi tiết" —
+ * cùng tinh thần `fetchGa4Overview`: LUÔN kèm lỗi thật khi `overview` null,
+ * không đoán mò lý do. */
+export const fetchGscOverview = async (
+  accessToken: string,
+  siteUrl: string,
+  range: { readonly startDate: string; readonly endDate: string },
+): Promise<GscOverviewOutcome> => {
+  const outcome = await runGscQuery(accessToken, siteUrl, range, [], 1)
+  if (outcome.error) return { overview: null, error: outcome.error }
+  const row = outcome.rows[0]
+  return { overview: row ? toBreakdownRow(row) : { clicks: 0, impressions: 0, ctr: 0, position: 0 }, error: null }
 }
 
 // ─── Tag Manager ────────────────────────────────────────────────────────────
