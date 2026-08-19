@@ -210,10 +210,15 @@ export default async function ConnectionsPage({
       <GoogleAdsPicker siteId={site.id} />
       <MetaAdsPicker siteId={site.id} />
       {/* Không đi qua `ConnectPanel` — Klaviyo không thuộc OAuth family nào,
-          xác thực bằng private API key dán trực tiếp. Ẩn khi đã kết nối,
-          giống các picker OAuth ở trên tự ẩn theo trạng thái riêng của
-          chúng — connection đã có sẽ hiện ở lưới "Đã kết nối" bên dưới. */}
-      {!summary.byProvider.has('klaviyo') ? <KlaviyoConnectCard siteId={site.id} /> : null}
+          xác thực bằng private API key dán trực tiếp. LUÔN hiện, giống các
+          thẻ family ở `ConnectPanel` (Google/Meta/TikTok...) vẫn hiện kể cả
+          khi đã kết nối — nút đổi thành "Thêm tài khoản" thay vì biến mất,
+          để thêm được tài khoản Klaviyo thứ hai nếu cần. Bọc trong cùng
+          lưới `lg:grid-cols-3` để card giữ đúng chiều rộng như thẻ family
+          thay vì kéo dài hết chiều ngang trang. */}
+      <div className="grid gap-3 lg:grid-cols-3">
+        <KlaviyoConnectCard siteId={site.id} isConnected={summary.byProvider.has('klaviyo')} />
+      </div>
 
       {summary.all.length > 0 ? (
         <section className="flex flex-col gap-4">

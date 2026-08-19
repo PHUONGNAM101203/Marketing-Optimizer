@@ -18,6 +18,7 @@ const EMPTY_SOURCE: ExploreSource = {
   instagram: null,
   facebook: null,
   tiktok: null,
+  klaviyo: null,
 }
 
 /** Tách theo ĐÚNG `ProviderFamily` app đã dùng khắp nơi khác (`domain/providers.ts`:
@@ -27,7 +28,10 @@ const EMPTY_SOURCE: ExploreSource = {
  * đúng family đó — `ReportBuilder` không cần biết gì về khái niệm "family",
  * nó chỉ thấy field nào có/không có, giống hệt cách nó đã hoạt động trước khi
  * có tab. */
-const familySource = (source: ExploreSource, family: 'google' | 'youtube' | 'meta' | 'tiktok'): ExploreSource => {
+const familySource = (
+  source: ExploreSource,
+  family: 'google' | 'youtube' | 'meta' | 'tiktok' | 'klaviyo',
+): ExploreSource => {
   switch (family) {
     case 'google':
       return { ...EMPTY_SOURCE, ga4: source.ga4, gsc: source.gsc }
@@ -37,11 +41,21 @@ const familySource = (source: ExploreSource, family: 'google' | 'youtube' | 'met
       return { ...EMPTY_SOURCE, instagram: source.instagram, facebook: source.facebook }
     case 'tiktok':
       return { ...EMPTY_SOURCE, tiktok: source.tiktok }
+    case 'klaviyo':
+      return { ...EMPTY_SOURCE, klaviyo: source.klaviyo }
   }
 }
 
 const hasData = (source: ExploreSource): boolean =>
-  Boolean(source.ga4 || source.gsc || source.youtube || source.instagram || source.facebook || source.tiktok)
+  Boolean(
+    source.ga4 ||
+      source.gsc ||
+      source.youtube ||
+      source.instagram ||
+      source.facebook ||
+      source.tiktok ||
+      source.klaviyo,
+  )
 
 export default async function ExplorePage({
   params,
@@ -74,6 +88,7 @@ export default async function ExplorePage({
       { id: 'youtube', label: 'YouTube', family: 'youtube' as const },
       { id: 'meta', label: 'Meta', family: 'meta' as const },
       { id: 'tiktok', label: 'TikTok', family: 'tiktok' as const },
+      { id: 'klaviyo', label: 'Klaviyo', family: 'klaviyo' as const },
     ] as const
   )
     .map((tab) => ({ ...tab, source: familySource(source, tab.family) }))

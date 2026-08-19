@@ -62,8 +62,13 @@ const SPEND_PROVIDERS = CHARTABLE_PROVIDERS.filter((provider) =>
   hasCapability(provider, 'spend'),
 )
 
-const familyMembers = (family: 'google' | 'youtube' | 'meta' | 'tiktok'): readonly ProviderId[] =>
-  PROVIDER_FAMILIES.find((entry) => entry.id === family)?.providers ?? []
+// Klaviyo cố tình KHÔNG có mặt trong `PROVIDER_FAMILIES` (mảng đó chỉ phục
+// vụ luồng OAuth, xem `domain/providers.ts`) nên không tra được qua
+// `.find(...)` như 4 family kia — trả thẳng mảng một phần tử.
+const familyMembers = (
+  family: 'google' | 'youtube' | 'meta' | 'tiktok' | 'klaviyo',
+): readonly ProviderId[] =>
+  family === 'klaviyo' ? ['klaviyo'] : (PROVIDER_FAMILIES.find((entry) => entry.id === family)?.providers ?? [])
 
 export default async function OverviewPage({
   params,
@@ -279,6 +284,16 @@ export default async function OverviewPage({
     />
   )
 
+  const klaviyoPanel = (
+    <FamilyPanel
+      key="klaviyo"
+      siteId={site.id}
+      providers={familyMembers('klaviyo')}
+      summaries={channelSummaries}
+      dailySeriesByProvider={dailySeriesByProvider}
+    />
+  )
+
   return (
     <PageShell>
       <PageHeader
@@ -314,8 +329,9 @@ export default async function OverviewPage({
             { id: 'youtube', label: 'YouTube' },
             { id: 'meta', label: 'Meta' },
             { id: 'tiktok', label: 'TikTok' },
+            { id: 'klaviyo', label: 'Klaviyo' },
           ]}
-          panels={[summaryPanel, googlePanel, youtubePanel, metaPanel, tiktokPanel]}
+          panels={[summaryPanel, googlePanel, youtubePanel, metaPanel, tiktokPanel, klaviyoPanel]}
         />
       </DataGate>
     </PageShell>

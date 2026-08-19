@@ -123,7 +123,9 @@ function ConfigOnlyState({
   const text =
     provider === 'gtm'
       ? 'Cấu hình thẻ — không phải số liệu theo ngày'
-      : 'Đang đồng bộ… chưa có dữ liệu danh mục sản phẩm'
+      : provider === 'klaviyo'
+        ? 'Xem campaign, flow và doanh thu ở trang chi tiết kênh'
+        : 'Đang đồng bộ… chưa có dữ liệu danh mục sản phẩm'
 
   return (
     <div className="flex items-center gap-2 py-8 text-[length:var(--text-sm)] text-[var(--color-ink-3)]">

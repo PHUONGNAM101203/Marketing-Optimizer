@@ -41,20 +41,17 @@ import { getGoogleAdsDeveloperToken } from './site-oauth-apps'
 import { resolveAccessToken, resolveKlaviyoApiKey, resolvePageAccessToken } from '@/lib/sync/access-token'
 import {
   countKlaviyoProfiles,
-  fetchCampaignValuesReport,
-  fetchFlowValuesReport,
   fetchKlaviyoCampaigns,
   fetchKlaviyoFlows,
   fetchKlaviyoLists,
+  fetchKlaviyoPerformance,
   fetchKlaviyoSegments,
-  resolveConversionMetricId,
   type KlaviyoCampaign,
   type KlaviyoFlow,
   type KlaviyoList,
   type KlaviyoSegment,
   type KlaviyoValuesRow,
 } from '@/lib/providers/klaviyo'
-import { unstable_cache } from 'next/cache'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
 
@@ -309,50 +306,6 @@ export const listChannelConnections = async (
     externalAccountId: row.external_account_id,
   }))
 }
-
-/** Reporting API của Klaviyo giới hạn 225 request/NGÀY (so với hàng trăm/giây
- * của GA4/GSC) — gọi trực tiếp mỗi lần tải trang chi tiết kênh như các
- * provider khác sẽ cạn hạn mức chỉ sau vài chục lượt xem. Cache 6 giờ (tối
- * đa 4 lượt gọi thật/ngày mỗi report dù có bao nhiêu người xem trang) —
- * chấp nhận số liệu có thể trễ tới 6 giờ, đổi lấy việc KHÔNG BAO GIỜ cạn hạn
- * mức trong điều kiện dùng thực tế. `apiKey` nằm trong tham số hàm nên đổi
- * key (kết nối lại) tự ra cache key khác, không cần tự tay bump tag. */
-const KLAVIYO_REPORT_REVALIDATE_SECONDS = 6 * 60 * 60
-
-const fetchKlaviyoPerformance = unstable_cache(
-  async (
-    apiKey: string,
-    range: { readonly startDate: string; readonly endDate: string },
-  ): Promise<{
-    readonly campaignPerformance: readonly KlaviyoValuesRow[] | null
-    readonly flowPerformance: readonly KlaviyoValuesRow[] | null
-    readonly error: string | null
-  }> => {
-    const conversionMetricId = await resolveConversionMetricId(apiKey)
-    if (!conversionMetricId) {
-      return {
-        campaignPerformance: null,
-        flowPerformance: null,
-        error: 'Không tìm được metric nào trong tài khoản Klaviyo này để tính chuyển đổi.',
-      }
-    }
-
-    const reportRange = { start: range.startDate, end: range.endDate }
-    const [campaigns, flows] = await Promise.all([
-      fetchCampaignValuesReport(apiKey, conversionMetricId, reportRange),
-      fetchFlowValuesReport(apiKey, conversionMetricId, reportRange),
-    ])
-
-    const error = campaigns.error ?? flows.error
-    return {
-      campaignPerformance: campaigns.error ? null : campaigns.rows,
-      flowPerformance: flows.error ? null : flows.rows,
-      error,
-    }
-  },
-  ['klaviyo-performance'],
-  { revalidate: KLAVIYO_REPORT_REVALIDATE_SECONDS },
-)
 
 export const getChannelDetail = async (
   siteId: string,

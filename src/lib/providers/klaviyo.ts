@@ -1,5 +1,7 @@
 import 'server-only'
 
+import { unstable_cache } from 'next/cache'
+
 /**
  * Klaviyo API.
  *
@@ -342,3 +344,55 @@ export const fetchKlaviyoLists = async (apiKey: string): Promise<readonly Klaviy
   }
   return (data.data ?? []).map((row) => ({ id: row.id, name: row.attributes?.name ?? row.id }))
 }
+
+// ─── Hiệu suất, ĐÃ CACHE (dùng chung cho channel-detail lẫn Khám phá/Tổng quan) ──
+
+export interface KlaviyoPerformanceOutcome {
+  readonly campaignPerformance: readonly KlaviyoValuesRow[] | null
+  readonly flowPerformance: readonly KlaviyoValuesRow[] | null
+  readonly error: string | null
+}
+
+/** Reporting API giới hạn 225 request/NGÀY (so với hàng trăm/giây của
+ * GA4/GSC) — gọi trực tiếp mỗi lần tải trang như các provider khác sẽ cạn
+ * hạn mức chỉ sau vài chục lượt xem. Cache 6 giờ (tối đa 4 lượt gọi thật/
+ * ngày mỗi report dù có bao nhiêu người xem trang) — chấp nhận số liệu có
+ * thể trễ tới 6 giờ, đổi lấy việc KHÔNG BAO GIỜ cạn hạn mức trong điều kiện
+ * dùng thực tế. Export TỪ FILE NÀY (không phải riêng ở `site-channel-detail.ts`)
+ * để trang chi tiết kênh VÀ trang Khám phá/Tổng quan (khi thêm tab Klaviyo)
+ * dùng CHUNG một cache — cùng site/apiKey/range trong cùng cửa sổ 6 giờ chỉ
+ * tốn đúng 2 request thật, bất kể gọi từ mấy trang khác nhau. `apiKey` nằm
+ * trong tham số hàm nên đổi key (kết nối lại) tự ra cache key khác, không
+ * cần tự tay bump tag. */
+const KLAVIYO_REPORT_REVALIDATE_SECONDS = 6 * 60 * 60
+
+export const fetchKlaviyoPerformance = unstable_cache(
+  async (
+    apiKey: string,
+    range: { readonly startDate: string; readonly endDate: string },
+  ): Promise<KlaviyoPerformanceOutcome> => {
+    const conversionMetricId = await resolveConversionMetricId(apiKey)
+    if (!conversionMetricId) {
+      return {
+        campaignPerformance: null,
+        flowPerformance: null,
+        error: 'Không tìm được metric nào trong tài khoản Klaviyo này để tính chuyển đổi.',
+      }
+    }
+
+    const reportRange = { start: range.startDate, end: range.endDate }
+    const [campaigns, flows] = await Promise.all([
+      fetchCampaignValuesReport(apiKey, conversionMetricId, reportRange),
+      fetchFlowValuesReport(apiKey, conversionMetricId, reportRange),
+    ])
+
+    const error = campaigns.error ?? flows.error
+    return {
+      campaignPerformance: campaigns.error ? null : campaigns.rows,
+      flowPerformance: flows.error ? null : flows.rows,
+      error,
+    }
+  },
+  ['klaviyo-performance'],
+  { revalidate: KLAVIYO_REPORT_REVALIDATE_SECONDS },
+)

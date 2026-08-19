@@ -70,6 +70,10 @@ export interface ReportRow {
   readonly likes: number | null
   readonly comments: number | null
   readonly shares: number | null
+  /** Doanh thu quy đổi — phục vụ Klaviyo (campaign/flow), nền tảng KHÔNG có
+   * khái niệm "chi phí" (không phải nền tảng quảng cáo) nên `costMicros`/
+   * `cpaMicros`/`roas` không hợp nghĩa cho nó, cần cột riêng. */
+  readonly revenueMicros: number | null
 }
 
 type MetricKey = Exclude<keyof ReportRow, 'key' | 'dimension' | 'group' | 'colorToken'>
@@ -93,6 +97,7 @@ const COLUMNS: readonly MetricColumn[] = [
   { key: 'likes', label: 'Lượt thích', formatter: 'compact' },
   { key: 'comments', label: 'Bình luận', formatter: 'compact' },
   { key: 'shares', label: 'Chia sẻ', formatter: 'compact' },
+  { key: 'revenueMicros', label: 'Doanh thu', formatter: 'currency' },
 ]
 
 const DEFAULT_METRICS: readonly MetricKey[] = [
@@ -106,6 +111,7 @@ const DEFAULT_METRICS: readonly MetricKey[] = [
   'likes',
   'comments',
   'shares',
+  'revenueMicros',
 ]
 
 /** `impressions` đứng thay cho "lượt xem/sessions" của GA4/YouTube — không
@@ -142,6 +148,7 @@ const buildExploreRows = (
           ctr: null,
           cpaMicros: null,
           roas: null,
+          revenueMicros: null,
           likes: null,
           comments: null,
           shares: null,
@@ -181,6 +188,7 @@ const buildExploreRows = (
           ctr: row.impressions && row.impressions > 0 ? row.clicks / row.impressions : null,
           cpaMicros: null,
           roas: null,
+          revenueMicros: null,
           likes: null,
           comments: null,
           shares: null,
@@ -204,6 +212,7 @@ const buildExploreRows = (
           ctr: null,
           cpaMicros: null,
           roas: null,
+          revenueMicros: null,
           likes: video.likes,
           comments: video.comments,
           shares: video.shares,
@@ -227,6 +236,7 @@ const buildExploreRows = (
           ctr: null,
           cpaMicros: null,
           roas: null,
+          revenueMicros: null,
           likes: post.likes,
           comments: post.comments,
           // Instagram Graph API không trả shares cho bài đăng qua field cơ
@@ -252,6 +262,7 @@ const buildExploreRows = (
           ctr: null,
           cpaMicros: null,
           roas: null,
+          revenueMicros: null,
           likes: post.reactions,
           comments: post.comments,
           shares: post.shares,
@@ -275,9 +286,37 @@ const buildExploreRows = (
           ctr: null,
           cpaMicros: null,
           roas: null,
+          revenueMicros: null,
           likes: video.likes,
           comments: video.comments,
           shares: video.shares,
+        }),
+      ),
+    )
+  }
+
+  if (source.klaviyo) {
+    rows.push(
+      ...source.klaviyo.items.slice(0, rowLimit).map(
+        (item): ReportRow => ({
+          key: `klaviyo:${item.kind}:${item.id}`,
+          dimension: item.name,
+          // 'Campaign'/'Flow' làm phụ-nhóm bên trong Klaviyo — người xem cần
+          // phân biệt ngay một dòng chi phí gửi thủ công (campaign) hay tự
+          // động lặp lại (flow), hai bản chất khác hẳn nhau dù cùng chỉ số.
+          group: item.kind === 'campaign' ? 'Klaviyo · Campaign' : 'Klaviyo · Flow',
+          colorToken: colorTokenOf('klaviyo'),
+          impressions: item.recipients,
+          clicks: item.clicks,
+          costMicros: null,
+          conversions: item.conversions,
+          ctr: item.recipients > 0 ? item.clicks / item.recipients : null,
+          cpaMicros: null,
+          roas: null,
+          revenueMicros: item.revenueMicros,
+          likes: null,
+          comments: null,
+          shares: null,
         }),
       ),
     )
@@ -305,6 +344,13 @@ export function ReportBuilder({ source, currency }: ReportBuilderProps) {
     if (source.instagram) list.push('Instagram')
     if (source.facebook) list.push('Facebook')
     if (source.tiktok) list.push('TikTok')
+    // Klaviyo tách 'group' thành hai giá trị (Campaign/Flow, xem
+    // `buildExploreRows`) — cả hai phải có mặt ở đây để chip lọc kênh bắt
+    // được đúng giá trị đang thật sự nằm trong `rows`, không chỉ tên nền
+    // tảng chung chung.
+    if (source.klaviyo) {
+      list.push('Klaviyo · Campaign', 'Klaviyo · Flow')
+    }
     return list
   }, [source])
 
