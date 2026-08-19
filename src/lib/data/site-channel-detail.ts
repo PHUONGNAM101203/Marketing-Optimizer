@@ -41,6 +41,7 @@ import { getGoogleAdsDeveloperToken } from './site-oauth-apps'
 import { resolveAccessToken, resolveKlaviyoApiKey, resolvePageAccessToken } from '@/lib/sync/access-token'
 import {
   countKlaviyoProfiles,
+  fetchKlaviyoAccountCurrency,
   fetchKlaviyoCampaigns,
   fetchKlaviyoFlows,
   fetchKlaviyoForms,
@@ -56,6 +57,7 @@ import {
   type KlaviyoSegment,
   type KlaviyoValuesRow,
 } from '@/lib/providers/klaviyo'
+import { addDays, toIsoDate } from '@/mock/dates'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
 
@@ -247,6 +249,24 @@ export type ChannelDetail =
       readonly campaignPerformance: readonly KlaviyoValuesRow[] | null
       readonly flowPerformance: readonly KlaviyoValuesRow[] | null
       readonly performanceError: string | null
+      /** Cùng report campaign/flow ở trên nhưng khoảng ngày CỐ ĐỊNH 365 ngày
+       * gần nhất — KHÔNG theo bộ lọc ngày ở đầu trang. Campaign là sự kiện
+       * gửi MỘT LẦN (không như session GA4 lặp lại hằng ngày) — lọc theo một
+       * khoảng ngày gần (vd. 7-28 ngày) khiến MỌI campaign gửi trước đó hiện
+       * "—" vĩnh viễn dù đã gửi thật. Tab "Toàn thời gian" dùng cặp field
+       * này để luôn thấy đủ lịch sử, tách khỏi tab "Tổng quan" (vẫn theo bộ
+       * lọc ngày, nhất quán với các kênh khác). 365 ngày là TRẦN THẬT của
+       * Klaviyo Reporting API (không nhận timeframe dài hơn 1 năm/lượt gọi). */
+      readonly allTimeCampaignPerformance: readonly KlaviyoValuesRow[] | null
+      readonly allTimeFlowPerformance: readonly KlaviyoValuesRow[] | null
+      readonly allTimePerformanceError: string | null
+      /** Đơn vị tiền THẬT của tài khoản Klaviyo (`preferred_currency` —
+       * xem `fetchKlaviyoAccountCurrency`) — KHÁC `currency` truyền vào
+       * `ChannelDetailBody` từ `site.currency` (đơn vị người dùng cấu hình
+       * cho quảng cáo, GA4...). Dùng field này để format doanh thu Klaviyo,
+       * không phải prop `currency` chung của trang — nhầm hai cái này từng
+       * là bug thật khiến doanh thu USD hiện nhầm ký hiệu đồng Việt Nam. */
+      readonly currency: string
       /** `null` khi lượt gọi profiles thất bại ngay trang đầu — KHÁC 0 khách
        * hàng thật, xem `KlaviyoProfileCount.error`. */
       readonly profileCount: number | null
@@ -461,7 +481,7 @@ export const getChannelDetail = async (
       }
     }
     case 'klaviyo': {
-      const [campaigns, flows, profiles, segments, lists, forms, metrics, performance] = await Promise.all([
+      const [campaigns, flows, profiles, segments, lists, forms, metrics, accountCurrency] = await Promise.all([
         fetchKlaviyoCampaigns(tokenResult.accessToken),
         fetchKlaviyoFlows(tokenResult.accessToken),
         countKlaviyoProfiles(tokenResult.accessToken),
@@ -469,8 +489,19 @@ export const getChannelDetail = async (
         fetchKlaviyoLists(tokenResult.accessToken),
         fetchKlaviyoForms(tokenResult.accessToken),
         fetchKlaviyoMetrics(tokenResult.accessToken),
-        fetchKlaviyoPerformance(tokenResult.accessToken, range),
+        fetchKlaviyoAccountCurrency(tokenResult.accessToken),
       ])
+
+      // TUẦN TỰ, không Promise.all — cả hai lượt đều đụng Reporting API (giới
+      // hạn ~1 request/giây, xem `fetchKlaviyoPerformance`); gọi song song sẽ
+      // tái diễn đúng lỗi 429 vừa sửa ở tầng dưới.
+      const performance = await fetchKlaviyoPerformance(tokenResult.accessToken, range)
+      const allTimeRange = {
+        startDate: toIsoDate(addDays(new Date(), -365)),
+        endDate: toIsoDate(new Date()),
+      }
+      const allTimePerformance = await fetchKlaviyoPerformance(tokenResult.accessToken, allTimeRange)
+
       return {
         kind: 'klaviyo',
         connectionId: resolvedConnectionId,
@@ -484,6 +515,10 @@ export const getChannelDetail = async (
         campaignPerformance: performance.campaignPerformance,
         flowPerformance: performance.flowPerformance,
         performanceError: performance.error,
+        allTimeCampaignPerformance: allTimePerformance.campaignPerformance,
+        allTimeFlowPerformance: allTimePerformance.flowPerformance,
+        allTimePerformanceError: allTimePerformance.error,
+        currency: accountCurrency ?? 'USD',
         profileCount: profiles.error ? null : profiles.count,
         profileCountTruncated: profiles.truncated,
         segments: segments.items,

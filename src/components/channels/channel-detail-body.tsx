@@ -501,7 +501,33 @@ export function ChannelDetailBody({
                   performanceError={detail.performanceError}
                   profileCount={detail.profileCount}
                   profileCountTruncated={detail.profileCountTruncated}
-                  currency={currency}
+                  currency={detail.currency}
+                  revenueScopeNote="Cộng dồn từ report campaign + flow trong khoảng ngày đang chọn ở đầu trang."
+                />
+              ),
+            },
+            {
+              id: 'all-time',
+              label: 'Toàn thời gian',
+              panel: (
+                // Campaign là sự kiện gửi MỘT LẦN — lọc theo bộ lọc ngày gần
+                // (7/28 ngày...) khiến mọi campaign gửi trước đó hiện "—"
+                // vĩnh viễn dù đã gửi thật. Tab này CỐ ĐỊNH 365 ngày gần nhất
+                // (trần thật của Klaviyo Reporting API), không đổi theo bộ
+                // lọc ngày đầu trang — xem `allTimeCampaignPerformance` ở
+                // `site-channel-detail.ts`.
+                <KlaviyoDashboard
+                  campaigns={detail.campaigns}
+                  campaignsTruncated={detail.campaignsTruncated}
+                  flows={detail.flows}
+                  flowsTruncated={detail.flowsTruncated}
+                  campaignPerformance={detail.allTimeCampaignPerformance}
+                  flowPerformance={detail.allTimeFlowPerformance}
+                  performanceError={detail.allTimePerformanceError}
+                  profileCount={detail.profileCount}
+                  profileCountTruncated={detail.profileCountTruncated}
+                  currency={detail.currency}
+                  revenueScopeNote="Cộng dồn từ report campaign + flow trong 365 ngày gần nhất — cố định, không theo bộ lọc ngày đầu trang (giới hạn 1 năm/lượt gọi của Klaviyo)."
                 />
               ),
             },

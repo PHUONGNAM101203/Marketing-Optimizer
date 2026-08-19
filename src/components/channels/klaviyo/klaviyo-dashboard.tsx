@@ -4,7 +4,7 @@ import { Card, SectionHead } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Callout, EmptyState } from '@/components/ui/feedback'
 import { TBody, TD, TH, THead, TR, Table, TableScroller } from '@/components/ui/table'
-import { formatCompact, formatCurrencyCompact } from '@/lib/format'
+import { formatCompact, formatCurrency, formatCurrencyCompact, formatNumber } from '@/lib/format'
 import { KLAVIYO_PROFILES_URL, klaviyoResourceUrl } from '@/lib/domain/klaviyo-web-links'
 import type { KlaviyoCampaign, KlaviyoFlow, KlaviyoValuesRow } from '@/lib/providers/klaviyo'
 
@@ -32,7 +32,14 @@ export interface KlaviyoDashboardProps {
   readonly performanceError: string | null
   readonly profileCount: number | null
   readonly profileCountTruncated: boolean
+  /** Đơn vị tiền THẬT của tài khoản Klaviyo (`preferred_currency`), KHÔNG
+   * phải `site.currency` — xem comment ở field `currency` trong
+   * `ChannelDetail`'s klaviyo variant (`site-channel-detail.ts`). */
   readonly currency: string
+  /** Mô tả khoảng ngày report này tính theo — khác nhau giữa tab "Tổng
+   * quan" (theo bộ lọc ngày đầu trang) và "Toàn thời gian" (cố định 365
+   * ngày gần nhất, không đổi theo bộ lọc). */
+  readonly revenueScopeNote: string
 }
 
 export function KlaviyoDashboard({
@@ -46,6 +53,7 @@ export function KlaviyoDashboard({
   profileCount,
   profileCountTruncated,
   currency,
+  revenueScopeNote,
 }: KlaviyoDashboardProps) {
   const campaignPerformanceById = new Map((campaignPerformance ?? []).map((row) => [row.groupId, row]))
   const flowPerformanceById = new Map((flowPerformance ?? []).map((row) => [row.groupId, row]))
@@ -84,7 +92,7 @@ export function KlaviyoDashboard({
           value={formatCurrencyCompact(totalRevenue, currency)}
           metric="revenueMicros"
           deltaPct={null}
-          footnote="Cộng dồn từ report campaign + flow trong khoảng ngày đang chọn."
+          footnote={revenueScopeNote}
         />
       </StatRow>
 
@@ -185,12 +193,12 @@ function PerformanceTable({
                         {row.meta}
                       </span>
                     </TD>
-                    <TD numeric>{row.performance ? formatCompact(row.performance.recipients) : '—'}</TD>
-                    <TD numeric>{row.performance ? formatCompact(row.performance.opens) : '—'}</TD>
-                    <TD numeric>{row.performance ? formatCompact(row.performance.clicks) : '—'}</TD>
-                    <TD numeric>{row.performance ? formatCompact(row.performance.conversions) : '—'}</TD>
+                    <TD numeric>{row.performance ? formatNumber(row.performance.recipients) : '—'}</TD>
+                    <TD numeric>{row.performance ? formatNumber(row.performance.opens) : '—'}</TD>
+                    <TD numeric>{row.performance ? formatNumber(row.performance.clicks) : '—'}</TD>
+                    <TD numeric>{row.performance ? formatNumber(row.performance.conversions) : '—'}</TD>
                     <TD numeric>
-                      {row.performance ? formatCurrencyCompact(row.performance.conversionValueMicros, currency) : '—'}
+                      {row.performance ? formatCurrency(row.performance.conversionValueMicros, currency) : '—'}
                     </TD>
                     <TD numeric>
                       <a

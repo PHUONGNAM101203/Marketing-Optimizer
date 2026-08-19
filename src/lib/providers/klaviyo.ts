@@ -83,6 +83,30 @@ export const verifyKlaviyoApiKey = async (apiKey: string): Promise<KlaviyoVerify
   }
 }
 
+/** Đơn vị tiền THẬT của tài khoản Klaviyo — `preferred_currency` trên
+ * `/api/accounts` ("the currency used for currency-based metrics in
+ * dashboards, analytics, coupons, and templates", xác nhận qua SDK Python
+ * chính thức). BUG THẬT đã xảy ra: trước đây `conversion_value` từ report
+ * campaign/flow bị format bằng `site.currency` (đơn vị người dùng cấu hình
+ * cho các nền tảng QUẢNG CÁO — Google Ads/Meta Ads, có thể là VND) thay vì
+ * đơn vị THẬT Klaviyo trả về — doanh thu USD hiện nhầm ký hiệu "đ" khiến số
+ * trông nhỏ hơn ~25.000 lần giá trị thật. `null` nếu gọi lỗi — nơi dùng
+ * PHẢI fallback về 'USD' (mặc định phổ biến nhất của Klaviyo), TUYỆT ĐỐI
+ * không fallback về `site.currency` — đó chính là bug vừa sửa. */
+export const fetchKlaviyoAccountCurrency = async (apiKey: string): Promise<string | null> => {
+  const response = await fetch(`${API_BASE}/accounts`, { headers: authHeaders(apiKey) })
+  if (!response.ok) return null
+
+  try {
+    const data = (await response.json()) as {
+      readonly data?: readonly { readonly attributes?: { readonly preferred_currency?: string } }[]
+    }
+    return data.data?.[0]?.attributes?.preferred_currency ?? null
+  } catch {
+    return null
+  }
+}
+
 // ─── Helper phân trang dùng chung (JSON:API cursor) ───────────────────────
 
 interface JsonApiRow {
