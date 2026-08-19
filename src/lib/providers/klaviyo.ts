@@ -325,15 +325,15 @@ const fetchValuesReport = async (
   // cho CÙNG một campaign/flow khi có >1 message — phải cộng dồn lại bên
   // dưới, không lấy đè dòng cuối lên dòng đầu.
   //
-  // Tên field body là `group_bys` (SỐ NHIỀU) — KHÔNG phải `group_by` như
-  // docs developers.klaviyo.com/en/reference/query_campaign_values mô tả.
-  // Đã thử `group_by` với 1 rồi 2 giá trị, CẢ HAI LẦN Klaviyo trả về ĐÚNG
-  // MỘT lỗi y hệt ("Grouping by campaign_message_id is required", pointer
-  // "/data/attributes/group_bys") — nội dung mảng group_by đổi mà lỗi không
-  // đổi nghĩa là Klaviyo chưa từng đọc field đó, field nó cần tên khác. Chính
-  // `pointer` trong lỗi đã chỉ thẳng tên field thật (`group_bys`) — tin vào
-  // hành vi API sống hơn bản tóm tắt docs (docs đã sai ở endpoint `/metrics`
-  // trước đó rồi, xem `fetchKlaviyoMetrics`).
+  // Tên field body ĐÚNG LÀ `group_by` (số ít) — xác nhận trực tiếp từ mã
+  // nguồn SDK Python CHÍNH THỨC của Klaviyo (github.com/klaviyo/klaviyo-api-python,
+  // file campaign_values_request_dto_resource_object_attributes.py, sinh tự
+  // động từ OpenAPI spec thật, không phải bản tóm tắt docs): field
+  // `group_by: Optional[List[StrictStr]]`, KHÔNG có alias nào khác — JSON
+  // key gửi lên đúng là "group_by". Một lượt sửa trước đó đã đổi nhầm thành
+  // `group_bys` (số nhiều) do suy diễn sai từ field `source.pointer` trong
+  // response lỗi (pointer đó là cách Klaviyo HIỂN THỊ lỗi, không phải tên
+  // field JSON thật) — đọc thẳng mã nguồn SDK mới là bằng chứng đáng tin.
   const messageGroupKey = `${resource}_message_id`
 
   // Reporting API giới hạn ~1 request/giây — gọi TỪ ĐÂY campaign VÀ flow
@@ -352,7 +352,7 @@ const fetchValuesReport = async (
             statistics: STATISTICS,
             timeframe: { start: range.start, end: range.end },
             conversion_metric_id: conversionMetricId,
-            group_bys: [groupKey, messageGroupKey],
+            group_by: [groupKey, messageGroupKey],
           },
         },
       }),
