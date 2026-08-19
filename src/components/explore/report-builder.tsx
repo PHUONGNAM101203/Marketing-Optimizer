@@ -64,6 +64,12 @@ export interface ReportRow {
   readonly ctr: number | null
   readonly cpaMicros: number | null
   readonly roas: number | null
+  /** Ba cột dưới đây phục vụ Meta/TikTok/YouTube (tương tác nội dung hữu cơ)
+   * — GA4/GSC không có khái niệm này nên luôn `null` ở hàng của chúng, không
+   * phải thiếu sót. */
+  readonly likes: number | null
+  readonly comments: number | null
+  readonly shares: number | null
 }
 
 type MetricKey = Exclude<keyof ReportRow, 'key' | 'dimension' | 'group' | 'colorToken'>
@@ -77,13 +83,16 @@ interface MetricColumn {
 }
 
 const COLUMNS: readonly MetricColumn[] = [
-  { key: 'impressions', label: 'Hiển thị', formatter: 'compact' },
+  { key: 'impressions', label: 'Hiển thị/Lượt xem', formatter: 'compact' },
   { key: 'clicks', label: 'Lượt nhấp', formatter: 'compact' },
   { key: 'ctr', label: 'CTR', formatter: 'percent' },
   { key: 'costMicros', label: 'Chi phí', formatter: 'currency' },
   { key: 'conversions', label: 'Chuyển đổi', formatter: 'number' },
   { key: 'cpaMicros', label: 'CPA', formatter: 'currency' },
   { key: 'roas', label: 'ROAS', formatter: 'multiplier' },
+  { key: 'likes', label: 'Lượt thích', formatter: 'compact' },
+  { key: 'comments', label: 'Bình luận', formatter: 'compact' },
+  { key: 'shares', label: 'Chia sẻ', formatter: 'compact' },
 ]
 
 const DEFAULT_METRICS: readonly MetricKey[] = [
@@ -94,6 +103,9 @@ const DEFAULT_METRICS: readonly MetricKey[] = [
   'conversions',
   'cpaMicros',
   'roas',
+  'likes',
+  'comments',
+  'shares',
 ]
 
 /** `impressions` đứng thay cho "lượt xem/sessions" của GA4/YouTube — không
@@ -130,6 +142,9 @@ const buildExploreRows = (
           ctr: null,
           cpaMicros: null,
           roas: null,
+          likes: null,
+          comments: null,
+          shares: null,
         }),
       ),
     )
@@ -166,6 +181,9 @@ const buildExploreRows = (
           ctr: row.impressions && row.impressions > 0 ? row.clicks / row.impressions : null,
           cpaMicros: null,
           roas: null,
+          likes: null,
+          comments: null,
+          shares: null,
         }),
       ),
     )
@@ -186,6 +204,80 @@ const buildExploreRows = (
           ctr: null,
           cpaMicros: null,
           roas: null,
+          likes: video.likes,
+          comments: video.comments,
+          shares: video.shares,
+        }),
+      ),
+    )
+  }
+
+  if (source.instagram) {
+    rows.push(
+      ...source.instagram.topPosts.slice(0, rowLimit).map(
+        (post): ReportRow => ({
+          key: `instagram:${post.caption}`,
+          dimension: post.caption,
+          group: 'Instagram',
+          colorToken: colorTokenOf('instagram'),
+          impressions: null,
+          clicks: null,
+          costMicros: null,
+          conversions: null,
+          ctr: null,
+          cpaMicros: null,
+          roas: null,
+          likes: post.likes,
+          comments: post.comments,
+          // Instagram Graph API không trả shares cho bài đăng qua field cơ
+          // bản này (xem `InstagramExplore` trong `meta-explore.ts`).
+          shares: null,
+        }),
+      ),
+    )
+  }
+
+  if (source.facebook) {
+    rows.push(
+      ...source.facebook.topPosts.slice(0, rowLimit).map(
+        (post): ReportRow => ({
+          key: `facebook:${post.message}`,
+          dimension: post.message,
+          group: 'Facebook',
+          colorToken: colorTokenOf('facebook'),
+          impressions: null,
+          clicks: null,
+          costMicros: null,
+          conversions: null,
+          ctr: null,
+          cpaMicros: null,
+          roas: null,
+          likes: post.reactions,
+          comments: post.comments,
+          shares: post.shares,
+        }),
+      ),
+    )
+  }
+
+  if (source.tiktok) {
+    rows.push(
+      ...source.tiktok.topVideos.slice(0, rowLimit).map(
+        (video): ReportRow => ({
+          key: `tiktok:${video.title}`,
+          dimension: video.title,
+          group: 'TikTok',
+          colorToken: colorTokenOf('tiktok'),
+          impressions: video.views,
+          clicks: null,
+          costMicros: null,
+          conversions: null,
+          ctr: null,
+          cpaMicros: null,
+          roas: null,
+          likes: video.likes,
+          comments: video.comments,
+          shares: video.shares,
         }),
       ),
     )
@@ -210,6 +302,9 @@ export function ReportBuilder({ source, currency }: ReportBuilderProps) {
     if (source.ga4) list.push('GA4')
     if (source.gsc) list.push('Search Console')
     if (source.youtube) list.push('YouTube')
+    if (source.instagram) list.push('Instagram')
+    if (source.facebook) list.push('Facebook')
+    if (source.tiktok) list.push('TikTok')
     return list
   }, [source])
 
