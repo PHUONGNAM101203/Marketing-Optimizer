@@ -27,6 +27,8 @@ import { unstable_cache } from 'next/cache'
  *      thường như GA4/GSC — không cần cache.
  */
 
+const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms))
+
 const API_BASE = 'https://a.klaviyo.com/api'
 const REVISION = '2026-07-15'
 
@@ -297,6 +299,19 @@ export interface KlaviyoValuesOutcome {
 
 const STATISTICS = ['opens', 'clicks', 'conversions', 'conversion_value', 'recipients'] as const
 
+/** Đọc "Expected available in 1 second." từ body lỗi 429 để biết CHÍNH XÁC
+ * chờ bao lâu trước khi thử lại, thay vì đoán một hằng số cố định — Klaviyo
+ * trả con số này thẳng trong response. `null` nếu không parse được (dùng
+ * mặc định 1500ms ở nơi gọi). */
+const parseThrottleWaitMs = (bodyText: string): number | null => {
+  const match = bodyText.match(/available in ([\d.]+) second/i)
+  if (!match) return null
+  const seconds = Number(match[1])
+  return Number.isFinite(seconds) ? Math.ceil(seconds * 1000) + 100 : null
+}
+
+const MAX_THROTTLE_ATTEMPTS = 3
+
 const fetchValuesReport = async (
   apiKey: string,
   resource: 'campaign' | 'flow',
@@ -320,70 +335,90 @@ const fetchValuesReport = async (
   // hành vi API sống hơn bản tóm tắt docs (docs đã sai ở endpoint `/metrics`
   // trước đó rồi, xem `fetchKlaviyoMetrics`).
   const messageGroupKey = `${resource}_message_id`
-  const response = await fetch(`${API_BASE}/${resource}-values-reports`, {
-    method: 'POST',
-    headers: { ...authHeaders(apiKey), 'content-type': 'application/vnd.api+json' },
-    body: JSON.stringify({
-      data: {
-        type: `${resource}-values-report`,
-        attributes: {
-          statistics: STATISTICS,
-          timeframe: { start: range.start, end: range.end },
-          conversion_metric_id: conversionMetricId,
-          group_bys: [groupKey, messageGroupKey],
+
+  // Reporting API giới hạn ~1 request/giây — gọi TỪ ĐÂY campaign VÀ flow
+  // gần như cùng lúc (xem `fetchKlaviyoPerformance`) từng bị throttle 429
+  // thật (8/2026). Nơi gọi giờ đã giãn cách hai lượt gọi, nhưng vẫn retry ở
+  // đây làm lớp phòng thủ thứ hai — chờ đúng thời gian Klaviyo yêu cầu rồi
+  // thử lại, tối đa `MAX_THROTTLE_ATTEMPTS` lần thay vì trả lỗi ngay.
+  for (let attempt = 1; attempt <= MAX_THROTTLE_ATTEMPTS; attempt += 1) {
+    const response = await fetch(`${API_BASE}/${resource}-values-reports`, {
+      method: 'POST',
+      headers: { ...authHeaders(apiKey), 'content-type': 'application/vnd.api+json' },
+      body: JSON.stringify({
+        data: {
+          type: `${resource}-values-report`,
+          attributes: {
+            statistics: STATISTICS,
+            timeframe: { start: range.start, end: range.end },
+            conversion_metric_id: conversionMetricId,
+            group_bys: [groupKey, messageGroupKey],
+          },
         },
-      },
-    }),
-  })
+      }),
+    })
 
-  if (!response.ok) {
-    const bodyText = await response.text().catch(() => '')
-    const error = `HTTP ${response.status}: ${bodyText.slice(0, 300)}`
-    console.error(`Klaviyo ${resource}-values-reports lỗi: ${error}`)
-    return { rows: [], error }
-  }
+    if (response.status === 429 && attempt < MAX_THROTTLE_ATTEMPTS) {
+      const bodyText = await response.text().catch(() => '')
+      const waitMs = parseThrottleWaitMs(bodyText) ?? 1500
+      console.error(
+        `Klaviyo ${resource}-values-reports bị throttle (lần ${attempt}/${MAX_THROTTLE_ATTEMPTS}) — chờ ${waitMs}ms rồi thử lại.`,
+      )
+      await sleep(waitMs)
+      continue
+    }
 
-  try {
-    const data = (await response.json()) as {
-      readonly data?: {
-        readonly attributes?: {
-          readonly results?: readonly {
-            readonly groupings?: Readonly<Record<string, string>>
-            readonly statistics?: Readonly<Record<string, number>>
-          }[]
+    if (!response.ok) {
+      const bodyText = await response.text().catch(() => '')
+      const error = `HTTP ${response.status}: ${bodyText.slice(0, 300)}`
+      console.error(`Klaviyo ${resource}-values-reports lỗi: ${error}`)
+      return { rows: [], error }
+    }
+
+    try {
+      const data = (await response.json()) as {
+        readonly data?: {
+          readonly attributes?: {
+            readonly results?: readonly {
+              readonly groupings?: Readonly<Record<string, string>>
+              readonly statistics?: Readonly<Record<string, number>>
+            }[]
+          }
         }
       }
-    }
-    // Cộng dồn theo `{resource}_id` — mỗi message/variant của cùng một
-    // campaign/flow ra một dòng riêng ở API, nhưng UI hiện MỘT dòng/campaign
-    // (giống bản trước khi group theo message_id trở thành bắt buộc).
-    const aggregated = new Map<string, { opens: number; clicks: number; conversions: number; conversionValueMicros: number; recipients: number }>()
-    for (const row of data.data?.attributes?.results ?? []) {
-      const id = row.groupings?.[groupKey]
-      if (!id) continue
-      const existing = aggregated.get(id) ?? {
-        opens: 0,
-        clicks: 0,
-        conversions: 0,
-        conversionValueMicros: 0,
-        recipients: 0,
+      // Cộng dồn theo `{resource}_id` — mỗi message/variant của cùng một
+      // campaign/flow ra một dòng riêng ở API, nhưng UI hiện MỘT dòng/campaign
+      // (giống bản trước khi group theo message_id trở thành bắt buộc).
+      const aggregated = new Map<string, { opens: number; clicks: number; conversions: number; conversionValueMicros: number; recipients: number }>()
+      for (const row of data.data?.attributes?.results ?? []) {
+        const id = row.groupings?.[groupKey]
+        if (!id) continue
+        const existing = aggregated.get(id) ?? {
+          opens: 0,
+          clicks: 0,
+          conversions: 0,
+          conversionValueMicros: 0,
+          recipients: 0,
+        }
+        aggregated.set(id, {
+          opens: existing.opens + (row.statistics?.opens ?? 0),
+          clicks: existing.clicks + (row.statistics?.clicks ?? 0),
+          conversions: existing.conversions + (row.statistics?.conversions ?? 0),
+          conversionValueMicros:
+            existing.conversionValueMicros + Math.round((row.statistics?.conversion_value ?? 0) * 1_000_000),
+          recipients: existing.recipients + (row.statistics?.recipients ?? 0),
+        })
       }
-      aggregated.set(id, {
-        opens: existing.opens + (row.statistics?.opens ?? 0),
-        clicks: existing.clicks + (row.statistics?.clicks ?? 0),
-        conversions: existing.conversions + (row.statistics?.conversions ?? 0),
-        conversionValueMicros:
-          existing.conversionValueMicros + Math.round((row.statistics?.conversion_value ?? 0) * 1_000_000),
-        recipients: existing.recipients + (row.statistics?.recipients ?? 0),
-      })
+      const rows = [...aggregated.entries()].map(([groupId, stats]) => ({ groupId, ...stats }))
+      return { rows, error: null }
+    } catch (error) {
+      const message = `Trả về 200 nhưng JSON không đọc được: ${error instanceof Error ? error.message : String(error)}`
+      console.error(`Klaviyo ${resource}-values-reports: ${message}`)
+      return { rows: [], error: message }
     }
-    const rows = [...aggregated.entries()].map(([groupId, stats]) => ({ groupId, ...stats }))
-    return { rows, error: null }
-  } catch (error) {
-    const message = `Trả về 200 nhưng JSON không đọc được: ${error instanceof Error ? error.message : String(error)}`
-    console.error(`Klaviyo ${resource}-values-reports: ${message}`)
-    return { rows: [], error: message }
   }
+
+  return { rows: [], error: `Klaviyo báo throttled (429) ${MAX_THROTTLE_ATTEMPTS} lần liên tiếp — thử lại sau.` }
 }
 
 export const fetchCampaignValuesReport = (
@@ -573,10 +608,13 @@ const fetchKlaviyoPerformanceCached = unstable_cache(
     }
 
     const reportRange = { start: range.startDate, end: range.endDate }
-    const [campaigns, flows] = await Promise.all([
-      fetchCampaignValuesReport(apiKey, metricResult.metricId, reportRange),
-      fetchFlowValuesReport(apiKey, metricResult.metricId, reportRange),
-    ])
+    // TUẦN TỰ, không Promise.all — Reporting API chỉ cho ~1 request/giây,
+    // gọi campaign+flow đồng thời từng gây 429 thật (8/2026). `fetchValuesReport`
+    // tự retry khi bị throttle rồi, nhưng giãn cách sẵn ở đây để KHÔNG PHẢI
+    // dựa vào retry cho trường hợp phổ biến nhất.
+    const campaigns = await fetchCampaignValuesReport(apiKey, metricResult.metricId, reportRange)
+    await sleep(1100)
+    const flows = await fetchFlowValuesReport(apiKey, metricResult.metricId, reportRange)
 
     const error = campaigns.error ?? flows.error
     if (error) throw new Error(error)
