@@ -203,22 +203,20 @@ export default async function ConnectionsPage({
         appOrigin={appOrigin}
         hasGoogleAdsDeveloperToken={Boolean(googleAdsDeveloperToken)}
         hasPageSpeedApiKey={hasPageSpeedApiKey}
+        // Klaviyo không thuộc `PROVIDER_FAMILIES` (không phải OAuth — xác
+        // thực bằng private API key dán tay), nên không nằm trong vòng lặp
+        // family của ConnectPanel. Truyền qua `extraCards` để nó vẫn render
+        // NGAY TRONG cùng lưới `lg:grid-cols-3` với Google/Meta/TikTok thay
+        // vì tách thành khối riêng bên dưới các picker GTM/Ads.
+        extraCards={
+          <KlaviyoConnectCard siteId={site.id} isConnected={summary.byProvider.has('klaviyo')} />
+        }
       />
 
       <PendingGoogleConnectionsPicker siteId={site.id} />
       <GtmPicker siteId={site.id} />
       <GoogleAdsPicker siteId={site.id} />
       <MetaAdsPicker siteId={site.id} />
-      {/* Không đi qua `ConnectPanel` — Klaviyo không thuộc OAuth family nào,
-          xác thực bằng private API key dán trực tiếp. LUÔN hiện, giống các
-          thẻ family ở `ConnectPanel` (Google/Meta/TikTok...) vẫn hiện kể cả
-          khi đã kết nối — nút đổi thành "Thêm tài khoản" thay vì biến mất,
-          để thêm được tài khoản Klaviyo thứ hai nếu cần. Bọc trong cùng
-          lưới `lg:grid-cols-3` để card giữ đúng chiều rộng như thẻ family
-          thay vì kéo dài hết chiều ngang trang. */}
-      <div className="grid gap-3 lg:grid-cols-3">
-        <KlaviyoConnectCard siteId={site.id} isConnected={summary.byProvider.has('klaviyo')} />
-      </div>
 
       {summary.all.length > 0 ? (
         <section className="flex flex-col gap-4">

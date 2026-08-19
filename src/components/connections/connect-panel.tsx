@@ -46,6 +46,11 @@ export interface ConnectPanelProps {
    * thống. Hiện thành một dòng trạng thái độc lập thay vì nhét vào danh sách
    * sản phẩm phía trên vì nó không phải connection/entity của riêng Site này. */
   readonly hasPageSpeedApiKey: boolean
+  /** Thẻ bổ sung render CÙNG lưới `lg:grid-cols-3` với các thẻ family, ngay
+   * sau chúng — dùng cho Klaviyo (không thuộc `PROVIDER_FAMILIES` vì xác
+   * thực bằng API key dán tay, không phải OAuth) để nó nằm chung hàng với
+   * Google/Meta/TikTok thay vì tách thành khối riêng bên dưới. */
+  readonly extraCards?: React.ReactNode
 }
 
 export function ConnectPanel({
@@ -55,6 +60,7 @@ export function ConnectPanel({
   appOrigin,
   hasGoogleAdsDeveloperToken,
   hasPageSpeedApiKey,
+  extraCards,
 }: ConnectPanelProps) {
   return (
     <section className="flex flex-col gap-4">
@@ -260,6 +266,7 @@ export function ConnectPanel({
             </Card>
           )
         })}
+        {extraCards}
       </div>
 
       <p className="text-[length:var(--text-xs)] text-[var(--color-ink-3)]">
