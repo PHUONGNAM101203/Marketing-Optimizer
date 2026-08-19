@@ -391,6 +391,43 @@ const listMerchantCenterAccounts = async (
     }))
 }
 
+// ─── Chẩn đoán lỗi API (không phải "rỗng thật") ─────────────────────────────
+
+const API_CHECK_TARGETS: ReadonlyArray<{ readonly label: string; readonly url: string }> = [
+  { label: 'GA4', url: GA4_ACCOUNT_SUMMARIES_ENDPOINT },
+  { label: 'Search Console', url: SEARCH_CONSOLE_SITES_ENDPOINT },
+  { label: 'Tag Manager', url: GTM_ACCOUNTS_ENDPOINT },
+]
+
+/**
+ * Ba hàm gộp ứng viên ở trên đều `if (!response.ok) return []` — coi lỗi API
+ * THẬT (403 vì chưa bật "Google Analytics Admin API"/"Search Console
+ * API"/"Tag Manager API" trong Google Cloud project của Site, quota, token
+ * sai…) giống hệt "tài khoản này thật sự không có gì cả". Cùng lớp lỗi đã
+ * gặp với TikTok Display API (xem `providers/tiktok.ts`) — im lặng như vậy
+ * khiến người quản trị THẬT SỰ có quyền vẫn thấy app báo "không có tài sản
+ * nào", không có manh mối để tự sửa.
+ *
+ * Chỉ gọi hàm này khi `listAllGooglePendingCandidates` trả về rỗng — tốn
+ * thêm 3 lượt gọi API, chấp nhận được vì đây là nhánh hiếm (lọc cứng ĐÃ thất
+ * bại), đổi lại người dùng biết chính xác API nào đang lỗi thay vì đoán.
+ */
+const checkGoogleApiErrors = async (accessToken: string): Promise<readonly string[]> => {
+  const results = await Promise.all(
+    API_CHECK_TARGETS.map(async ({ label, url }) => {
+      try {
+        const response = await fetch(url, { headers: authHeader(accessToken) })
+        if (response.ok) return null
+        const body = await response.text()
+        return `${label}: HTTP ${response.status} — ${body.slice(0, 300)}`
+      } catch (error) {
+        return `${label}: ${error instanceof Error ? error.message : String(error)}`
+      }
+    }),
+  )
+  return results.filter((entry): entry is string => entry !== null)
+}
+
 // ─── Tổng hợp ────────────────────────────────────────────────────────────────
 
 export const discoverGoogleAccounts = async (
@@ -417,16 +454,24 @@ export const discoverGoogleAccounts = async (
  * riêng ở `GoogleAdsPicker`) và Merchant Center (cũng có luồng nâng quyền
  * riêng, tự dò domain lại sau khi có thêm scope Content API).
  */
+export interface GooglePendingCandidatesResult {
+  readonly candidates: readonly PendingGoogleCandidate[]
+  /** Rỗng nghĩa là tài khoản THẬT SỰ không có gì. Có phần tử nghĩa là ít
+   * nhất một trong ba API lỗi thật (xem `checkGoogleApiErrors`) — kết quả
+   * rỗng ở trên có thể KHÔNG đáng tin, phải báo lỗi thay vì "không có gì". */
+  readonly apiErrors: readonly string[]
+}
+
 export const listAllGooglePendingCandidates = async (
   accessToken: string,
-): Promise<readonly PendingGoogleCandidate[]> => {
+): Promise<GooglePendingCandidatesResult> => {
   const [ga4, gsc, gtm] = await Promise.all([
     listAllGa4PropertiesWithDetail(accessToken),
     listAllSearchConsoleSites(accessToken),
     listAllGtmContainers(accessToken),
   ])
 
-  return [
+  const candidates = [
     ...ga4,
     ...gsc,
     ...gtm.map((container) => ({
@@ -436,6 +481,10 @@ export const listAllGooglePendingCandidates = async (
       detail: null,
     })),
   ]
+
+  const apiErrors = candidates.length === 0 ? await checkGoogleApiErrors(accessToken) : []
+
+  return { candidates, apiErrors }
 }
 
 /** YouTube giờ là family OAuth riêng (`providers/youtube.ts`) — tài khoản

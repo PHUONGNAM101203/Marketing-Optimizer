@@ -36,11 +36,12 @@ export async function GET(
 
   const expectedState = request.cookies.get(OAUTH_STATE_COOKIE)?.value
 
-  const failure = (reason: string, siteId?: string) => {
+  const failure = (reason: string, siteId?: string, detail?: string) => {
     const target = siteId
       ? new URL(`/${siteId}/connections`, request.nextUrl.origin)
       : new URL('/', request.nextUrl.origin)
     target.searchParams.set('oauth_error', reason)
+    if (detail) target.searchParams.set('oauth_error_detail', detail)
     const response = NextResponse.redirect(target)
     response.cookies.delete(OAUTH_STATE_COOKIE)
     return response
@@ -173,10 +174,21 @@ export async function GET(
       // 'google' có luồng chọn tay này (xem `pending_google_connections`) —
       // youtube/meta/tiktok không có khái niệm "nhiều ứng viên GA4-kiểu" để
       // chọn.
-      const candidates =
-        family === 'google' ? await listAllGooglePendingCandidates(tokens.accessToken) : []
+      const { candidates, apiErrors } =
+        family === 'google'
+          ? await listAllGooglePendingCandidates(tokens.accessToken)
+          : { candidates: [], apiErrors: [] }
 
-      if (candidates.length === 0) return failure('no-accounts', siteId)
+      if (candidates.length === 0) {
+        // Rỗng vì lỗi API thật (chưa bật "Google Analytics Admin
+        // API"/"Search Console API"/"Tag Manager API" trong Google Cloud
+        // project, quota, token sai…) khác hẳn "tài khoản này thật sự
+        // không có gì" — hai nguyên nhân cần hai cách sửa khác nhau, không
+        // được gộp chung một câu báo lỗi im lặng như trước.
+        return apiErrors.length > 0
+          ? failure('google-api-error', siteId, apiErrors.join(' · '))
+          : failure('no-accounts', siteId)
+      }
 
       // Dọn ứng viên cũ của Site này trước — mỗi lượt cấp quyền mới thay thế
       // hoàn toàn, không cộng dồn ứng viên từ nhiều lượt thử khác nhau.

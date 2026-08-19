@@ -50,6 +50,8 @@ const OAUTH_ERROR_LABELS: Readonly<Record<string, string>> = {
   'missing-code': 'Google không trả về mã xác thực. Vui lòng thử lại.',
   'no-accounts':
     'Cấp quyền thành công, nhưng tài khoản Google đó không có tài sản nào (GA4, Search Console, Tag Manager, YouTube, Merchant Center) cả — đã kiểm tra toàn bộ, không chỉ riêng cái khớp domain này. Có thể bạn đã chọn nhầm tài khoản Google lúc cấp quyền (nếu trình duyệt có sẵn nhiều tài khoản, màn hình chọn tài khoản sẽ hiện lại — chọn đúng tài khoản quản lý website này). Với Merchant Center: kiểm tra (1) đã bật đúng "Content API for Shopping" trong Google Cloud — KHÔNG phải "Merchant API" mới, và (2) tài khoản Merchant Center đã khai báo đúng Website URL trùng domain này chưa (Cài đặt doanh nghiệp → Thông tin doanh nghiệp trong merchants.google.com).',
+  'google-api-error':
+    'Cấp quyền thành công, nhưng gọi API của Google bị lỗi khi dò tài sản (không phải "không có gì" — xem chi tiết bên dưới). Thường do chưa bật đúng API trong Google Cloud project của OAuth app này: vào console.cloud.google.com → APIs & Services → Enabled APIs, bật "Google Analytics Admin API", "Google Search Console API", "Tag Manager API".',
   forbidden: 'Chỉ chủ sở hữu hoặc quản trị viên của website mới được thêm kết nối.',
   'family-not-ready': 'Nhà cung cấp này chưa mở kết nối thật.',
   'app-not-configured':
@@ -69,12 +71,13 @@ export default async function ConnectionsPage({
   readonly searchParams: Promise<{
     readonly oauth_connected?: string
     readonly oauth_error?: string
+    readonly oauth_error_detail?: string
     readonly oauth_pending?: string
     readonly count?: string
   }>
 }) {
   const { siteId } = await params
-  const { oauth_connected, oauth_error, oauth_pending, count } = await searchParams
+  const { oauth_connected, oauth_error, oauth_error_detail, oauth_pending, count } = await searchParams
   const site = await getSite(siteId)
   if (!site) notFound()
 
@@ -149,6 +152,11 @@ export default async function ConnectionsPage({
           title="Kết nối chưa thành công"
         >
           <p>{OAUTH_ERROR_LABELS[oauth_error] ?? 'Có lỗi xảy ra. Vui lòng thử lại.'}</p>
+          {oauth_error_detail ? (
+            <p className="mt-2 rounded-[var(--radius-sm)] bg-[var(--color-paper)]/60 p-2.5 font-mono text-[length:var(--text-xs)] text-[var(--color-ink-2)]">
+              {oauth_error_detail}
+            </p>
+          ) : null}
         </Callout>
       ) : null}
 
