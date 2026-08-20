@@ -1,9 +1,10 @@
 import Link from 'next/link'
+import { Suspense } from 'react'
 import { AlertTriangle, Eye, Heart, Info, MessageCircle, Settings2, Share2 } from 'lucide-react'
 import { Card, CardBody, CardHeader, SectionHead } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Callout, EmptyState } from '@/components/ui/feedback'
+import { Callout, EmptyState, Skeleton } from '@/components/ui/feedback'
 import { TBody, TD, TH, THead, TR, Table, TableScroller } from '@/components/ui/table'
 import { TrendChart, type TrendPoint } from '@/components/charts/trend-chart-lazy'
 import { Pagination } from '@/components/ui/pagination'
@@ -20,7 +21,7 @@ import { GscOverviewPanel } from '@/components/channels/gsc/gsc-overview-panel'
 import { MerchantPerformancePanel } from '@/components/channels/merchant/merchant-performance-panel'
 import { KlaviyoDashboard } from '@/components/channels/klaviyo/klaviyo-dashboard'
 import { KlaviyoAudiencePanel } from '@/components/channels/klaviyo/klaviyo-audience-panel'
-import { TiktokVideoGrid } from '@/components/channels/tiktok/tiktok-video-grid'
+import { TiktokExploreSection } from '@/components/channels/tiktok/tiktok-explore-section'
 import { TiktokDashboard } from '@/components/channels/tiktok/tiktok-dashboard'
 import { YoutubeDashboard } from '@/components/channels/youtube/youtube-dashboard'
 import { MetaPostList, type MetaPostItem } from '@/components/channels/meta/meta-post-list'
@@ -571,7 +572,16 @@ export function ChannelDetailBody({
               label: 'Tổng quan',
               panel: (
                 <div className="flex flex-col gap-6">
-                  <TiktokVideoGrid videos={detail.data.topVideos} fetchError={detail.data.fetchError} />
+                  {siteId && startDate && endDate ? (
+                    <Suspense fallback={<TiktokExploreGridSkeleton />}>
+                      <TiktokExploreSection
+                        siteId={siteId}
+                        connectionId={detail.connectionId}
+                        startDate={startDate}
+                        endDate={endDate}
+                      />
+                    </Suspense>
+                  ) : null}
                 </div>
               ),
             },
@@ -583,6 +593,12 @@ export function ChannelDetailBody({
                   rangeStats={detail.rangeStats}
                   trending={detail.trending}
                   rangeLabel={DATE_RANGE_LABELS[preset]}
+                  // Trang cha (`channels/[provider]/page.tsx`) luôn truyền
+                  // `startDate` cho MỌI provider — `?? ''` chỉ là fallback
+                  // kiểu học (prop khai báo optional để dùng chung được cho
+                  // provider khác không cần nó), không phải nhánh thật sẽ
+                  // chạy.
+                  rangeStartDate={startDate ?? ''}
                   videoSnapshotsLikelyBroken={detail.videoSnapshotsLikelyBroken}
                 />
               ),
@@ -1161,5 +1177,17 @@ function ProcessingDelayNote({ days }: { readonly days: string }) {
     >
       <p>Không phải lỗi đồng bộ. Chọn &quot;7 ngày qua&quot; trở lên để thấy số liệu đầy đủ.</p>
     </Callout>
+  )
+}
+
+/** Khung xương cho `<Suspense>` bọc `TiktokExploreSection` — cùng lưới 3-6
+ * cột `TiktokVideoGrid` thật dùng, để không có nhảy layout khi dữ liệu về. */
+function TiktokExploreGridSkeleton() {
+  return (
+    <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 lg:grid-cols-6">
+      {Array.from({ length: 12 }, (_unused, index) => (
+        <Skeleton key={index} className="aspect-9/16 w-full" />
+      ))}
+    </div>
   )
 }

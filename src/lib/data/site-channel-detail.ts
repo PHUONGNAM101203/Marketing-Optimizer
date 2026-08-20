@@ -213,7 +213,12 @@ export type ChannelDetail =
        * react-hooks (đã xác nhận qua lint), phải đẩy phép tính này ra khỏi
        * render. */
       readonly videoSnapshotsLikelyBroken: boolean
-      readonly data: TiktokExplore
+      /** KHÔNG còn `data: TiktokExplore` ở đây — 20 video gần nhất (Display
+       * API sống) giờ tự fetch trong `TiktokExploreSection`
+       * (`channel-detail-body.tsx`, bọc `<Suspense>` riêng) qua
+       * `getTiktokExploreVideos` bên dưới, không còn nằm trên đường chặn
+       * TTFB của toàn trang. Xem docblock case `'tiktok'` trong
+       * `getChannelDetail`. */
       readonly trending: VideoTrendingResult
       /** Tăng trưởng views/likes/comments/shares TRONG khoảng ngày đang chọn,
        * tính từ snapshot đã lưu (`video_metrics_daily`) — KHÁC `data.topVideos`
@@ -359,6 +364,29 @@ export const listChannelConnections = async (
     avatarUrl: row.avatar_url,
     externalAccountId: row.external_account_id,
   }))
+}
+
+/**
+ * 20 video gần nhất của MỘT connection TikTok đã biết trước (Display API
+ * sống) — tách khỏi `getChannelDetail` để gọi được từ một Server Component
+ * con bọc `<Suspense>` riêng (`TiktokExploreSection`), không còn nằm trên
+ * đường chặn TTFB của cả trang chi tiết kênh (xem docblock case `'tiktok'`
+ * trong `getChannelDetail`). Nhận thẳng `connectionId` đã resolve sẵn — KHÔNG
+ * tự truy vấn lại bảng `connections` để tìm đúng connection (trang cha đã
+ * làm việc đó một lần trong `getChannelDetail`), tránh lặp lại logic chọn
+ * connection mặc định/theo `?connection=`.
+ */
+export const getTiktokExploreVideos = async (
+  siteId: string,
+  connectionId: string,
+  range: { readonly startDate: string; readonly endDate: string },
+): Promise<TiktokExplore> => {
+  const admin = createAdminClient()
+  const tokenResult = await resolveAccessToken(admin, connectionId, siteId, 'tiktok')
+  if (!tokenResult.ok) {
+    return { topVideos: [], fetchError: 'Không lấy được token TikTok — thử ngắt kết nối và kết nối lại.' }
+  }
+  return fetchTiktokContentExplore(tokenResult.accessToken, range)
 }
 
 export const getChannelDetail = async (
@@ -594,13 +622,17 @@ export const getChannelDetail = async (
       }
     }
     case 'tiktok': {
-      // `Promise.all` chứ không await nối tiếp: ba lượt đọc độc lập nhau,
-      // chạy song song thì TTFB của trang chi tiết kênh bằng lượt chậm hơn
-      // thay vì bằng tổng ba lượt.
-      const [data, trending, rangeStats] = await Promise.all([
-        // Không truyền `externalAccountId` — Display API không có khái niệm
-        // "chọn tài khoản", token đã gắn chết với đúng một tài khoản rồi.
-        fetchTiktokContentExplore(tokenResult.accessToken, range),
+      // CHỈ hai lượt đọc ở đây — KHÔNG còn `fetchTiktokContentExplore`
+      // (lượt gọi SỐNG tới TikTok Display API, độ trễ mạng thật, ~vài trăm
+      // ms tới vài giây) trong `Promise.all` chặn TTFB của cả trang. Trước
+      // đây mọi lần đổi khoảng ngày phải đợi lượt gọi này xong dù tab đang
+      // xem là "Dashboard" (chỉ cần `rangeStats`/`trending`, hai RPC Supabase
+      // nhanh hơn nhiều) — cảm giác "bấm đổi khoảng ngày load lâu" người
+      // dùng báo cáo. Danh sách 20 video gần nhất (tab "Tổng quan") giờ tự
+      // fetch trong `TiktokExploreSection` (Client boundary `<Suspense>`
+      // riêng, xem `channel-detail-body.tsx`), qua `getTiktokExploreVideos`
+      // bên dưới — không chặn phần còn lại của trang.
+      const [trending, rangeStats] = await Promise.all([
         // Không truyền `range` — trending có 3 cửa sổ cố định riêng, độc lập
         // với khoảng ngày trang đang chọn (xem Task 4/5 trong plan này).
         getTiktokVideoTrending(connection.id),
@@ -626,7 +658,6 @@ export const getChannelDetail = async (
         externalAccountId,
         avatarUrl,
         videoSnapshotsLikelyBroken: trending.earliestSnapshotAt === null && daysSinceConnected >= 3,
-        data,
         trending,
         rangeStats,
       }
