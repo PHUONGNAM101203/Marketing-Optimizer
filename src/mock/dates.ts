@@ -49,11 +49,31 @@ const PRESET_LENGTHS: Readonly<Partial<Record<DateRangePreset, number>>> = {
  * — thiếu nó (bookmark cũ, gõ tay URL) thì SẬP VỀ `last-28` như trước khi có
  * tuỳ chọn này, không render một khoảng ngày trống nghĩa.
  */
+/** `compareRange`: kỳ so sánh người dùng TỰ CHỌN (từ `?compareFrom=`/
+ * `?compareTo=`), ghi đè lên kỳ liền-trước-tự-động — áp dụng cho MỌI preset,
+ * không chỉ `custom`. Đặt sau khi hàm bên trong đã tính xong kỳ chính + kỳ
+ * trước mặc định, để không phải lặp lại logic ghi đè ở từng nhánh preset. */
 export const resolveDateRange = (
   preset: DateRangePreset,
   today: Date = MOCK_TODAY,
   customRange?: { readonly start: IsoDate; readonly end: IsoDate },
+  compareRange?: { readonly start: IsoDate; readonly end: IsoDate },
 ): ResolvedDateRange => {
+  const base = resolveDateRangeWithoutCompare(preset, today, customRange)
+  if (!compareRange) return { ...base, isCustomCompare: false }
+  return {
+    ...base,
+    previousStart: compareRange.start,
+    previousEnd: compareRange.end,
+    isCustomCompare: true,
+  }
+}
+
+const resolveDateRangeWithoutCompare = (
+  preset: DateRangePreset,
+  today: Date,
+  customRange?: { readonly start: IsoDate; readonly end: IsoDate },
+): Omit<ResolvedDateRange, 'isCustomCompare'> => {
   if (preset === 'custom' && customRange) {
     const start = new Date(customRange.start)
     const length = daysBetween(customRange)

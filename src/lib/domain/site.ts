@@ -82,7 +82,14 @@ export interface ResolvedDateRange {
   readonly preset: DateRangePreset
   readonly start: IsoDate
   readonly end: IsoDate
-  /** Kỳ liền trước, cùng độ dài — dùng cho mọi phép so sánh delta. */
+  /** Kỳ so sánh — mặc định là kỳ liền trước cùng độ dài, nhưng người dùng có
+   * thể tự chọn một kỳ khác qua `?compareFrom=`/`?compareTo=` (xem
+   * `parseCompareRangeParams`) — khi đó hai field này là kỳ NGƯỜI DÙNG chọn,
+   * không nhất thiết liền kề hay cùng độ dài với kỳ chính. */
   readonly previousStart: IsoDate
   readonly previousEnd: IsoDate
+  /** true khi `previousStart`/`previousEnd` là kỳ NGƯỜI DÙNG tự chọn (không
+   * phải kỳ liền trước tự động) — UI dùng field này để hiện đúng nhãn ("so
+   * với 12/07–18/07" thay vì "so với kỳ trước"). */
+  readonly isCustomCompare: boolean
 }

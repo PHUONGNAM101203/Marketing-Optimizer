@@ -4,7 +4,7 @@ import Link from 'next/link'
 import dynamic from 'next/dynamic'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { useActionState, useState, useTransition } from 'react'
-import { Calendar, Check, ChevronDown, Plus, RefreshCw, Search } from 'lucide-react'
+import { Calendar, Check, ChevronDown, GitCompare, Plus, RefreshCw, Search, X } from 'lucide-react'
 import { DropdownMenu } from 'radix-ui'
 import { cn } from '@/lib/cn'
 import { Button } from '@/components/ui/button'
@@ -13,7 +13,7 @@ import { DialogContent, DialogRoot } from '@/components/ui/dialog'
 import { ThemeToggle } from '@/components/layout/theme-toggle'
 import { SiteFavicon } from '@/components/brand/site-favicon'
 import { resyncSiteAction, type ResyncState } from '@/lib/actions/sync'
-import { parseCustomRangeParams, parseRangeParam } from '@/lib/domain/date-range-param'
+import { parseCompareRangeParams, parseCustomRangeParams, parseRangeParam } from '@/lib/domain/date-range-param'
 import { DATE_RANGE_LABELS, type DateRangePreset, type Site } from '@/lib/domain/site'
 import { formatDateRange, formatRelativeTime } from '@/lib/format'
 
@@ -63,6 +63,10 @@ export function Topbar({ site, sites, lastSyncedAt, hasConnections, now }: Topba
     searchParams.get('from') ?? undefined,
     searchParams.get('to') ?? undefined,
   )
+  const compareRange = parseCompareRangeParams(
+    searchParams.get('compareFrom') ?? undefined,
+    searchParams.get('compareTo') ?? undefined,
+  )
   return (
     <header
       className={cn(
@@ -111,7 +115,7 @@ export function Topbar({ site, sites, lastSyncedAt, hasConnections, now }: Topba
           </span>
         )}
 
-        <DateRangeMenu preset={preset} customRange={customRange} />
+        <DateRangeMenu preset={preset} customRange={customRange} compareRange={compareRange} />
 
         <SyncAllButton siteId={site.id} />
 
@@ -211,9 +215,15 @@ function SiteSwitcher({
 function DateRangeMenu({
   preset,
   customRange,
+  compareRange,
 }: {
   readonly preset: DateRangePreset
   readonly customRange: { readonly start: string; readonly end: string } | null
+  /** Kỳ so sánh người dùng tự chọn, khác kỳ trước tự động — xem
+   * `parseCompareRangeParams`. Áp dụng độc lập với `preset`/`customRange`,
+   * không bị xoá khi đổi preset chính (người dùng có thể muốn giữ nguyên
+   * một kỳ so sánh cố định trong lúc thử nhiều preset chính khác nhau). */
+  readonly compareRange: { readonly start: string; readonly end: string } | null
 }) {
   const router = useRouter()
   const pathname = usePathname()
@@ -221,6 +231,9 @@ function DateRangeMenu({
   const [customDialogOpen, setCustomDialogOpen] = useState(false)
   const [from, setFrom] = useState(customRange?.start ?? '')
   const [to, setTo] = useState(customRange?.end ?? '')
+  const [compareDialogOpen, setCompareDialogOpen] = useState(false)
+  const [compareFrom, setCompareFrom] = useState(compareRange?.start ?? '')
+  const [compareTo, setCompareTo] = useState(compareRange?.end ?? '')
   // Đổi khoảng ngày = điều hướng, đợi cả trang render lại phía server. Không
   // bọc trong transition thì nút bấm không đổi trạng thái gì cho tới khi
   // trang mới xong hẳn — CẢM GIÁC như bấm không ăn. `isPending` cho nút biết
@@ -244,6 +257,29 @@ function DateRangeMenu({
     params.set('from', from)
     params.set('to', to)
     setCustomDialogOpen(false)
+    startTransition(() => {
+      router.push(`${pathname}?${params.toString()}`, { scroll: false })
+    })
+  }
+
+  const applyCompare = () => {
+    if (!compareFrom || !compareTo || compareFrom > compareTo) return
+    const params = new URLSearchParams(searchParams.toString())
+    params.set('compareFrom', compareFrom)
+    params.set('compareTo', compareTo)
+    setCompareDialogOpen(false)
+    startTransition(() => {
+      router.push(`${pathname}?${params.toString()}`, { scroll: false })
+    })
+  }
+
+  const clearCompare = () => {
+    const params = new URLSearchParams(searchParams.toString())
+    params.delete('compareFrom')
+    params.delete('compareTo')
+    setCompareFrom('')
+    setCompareTo('')
+    setCompareDialogOpen(false)
     startTransition(() => {
       router.push(`${pathname}?${params.toString()}`, { scroll: false })
     })
@@ -325,9 +361,106 @@ function DateRangeMenu({
               />
               Tuỳ chỉnh…
             </DropdownMenu.Item>
+
+            {/* So sánh áp dụng ĐỘC LẬP với preset chính — mọi kênh (Tổng
+                quan, và về sau các trang khác) đọc `previousStart`/
+                `previousEnd` từ `resolveDateRange` để tính delta, không
+                quan tâm preset chính là gì, nên đặt lựa chọn này ngay trong
+                cùng menu thay vì phải mở lại "Tuỳ chỉnh…". */}
+            <DropdownMenu.Item
+              onSelect={(event) => {
+                event.preventDefault()
+                setCompareDialogOpen(true)
+              }}
+              className={cn(
+                'flex cursor-pointer items-center gap-2 rounded-[var(--radius-sm)] px-2 py-1.5',
+                'text-[length:var(--text-sm)] text-[var(--color-ink)] outline-none',
+                'data-[highlighted]:bg-[var(--color-paper-3)]',
+              )}
+            >
+              <GitCompare
+                aria-hidden
+                className={cn('size-3.5 shrink-0', compareRange ? 'text-[var(--color-signal)]' : 'text-[var(--color-ink-3)]')}
+              />
+              {compareRange ? 'Đổi kỳ so sánh…' : 'So sánh với…'}
+            </DropdownMenu.Item>
           </DropdownMenu.Content>
         </DropdownMenu.Portal>
       </DropdownMenu.Root>
+
+      {compareRange ? (
+        <button
+          type="button"
+          onClick={clearCompare}
+          className={cn(
+            'hidden items-center gap-1.5 rounded-[var(--radius-full)] px-2.5 py-1 lg:inline-flex',
+            'border border-[var(--color-signal)]/30 bg-[var(--color-signal-soft)]',
+            'text-[length:var(--text-2xs)] font-medium text-[var(--color-signal)]',
+          )}
+          title="Bỏ kỳ so sánh"
+        >
+          <GitCompare aria-hidden className="size-3" />
+          So với {formatDateRange(compareRange.start, compareRange.end)}
+          <X aria-hidden className="size-3" />
+        </button>
+      ) : null}
+
+      <DialogRoot open={compareDialogOpen} onOpenChange={setCompareDialogOpen}>
+        <DialogContent
+          title="Chọn kỳ so sánh"
+          description="Mặc định app tự so với kỳ liền trước cùng độ dài — chọn ở đây nếu muốn so với một khoảng ngày khác, ví dụ cùng kỳ năm ngoái."
+        >
+          <div className="flex flex-col gap-4">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="flex flex-col gap-1.5">
+                <label className="text-[length:var(--text-sm)] font-medium text-[var(--color-ink)]">
+                  Từ ngày
+                </label>
+                <DatePickerField
+                  name="compareFrom"
+                  defaultValue={compareFrom}
+                  onValueChange={setCompareFrom}
+                />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <label className="text-[length:var(--text-sm)] font-medium text-[var(--color-ink)]">
+                  Đến ngày
+                </label>
+                <DatePickerField
+                  name="compareTo"
+                  defaultValue={compareTo}
+                  minDate={compareFrom || undefined}
+                  onValueChange={setCompareTo}
+                />
+              </div>
+            </div>
+
+            {compareFrom && compareTo && compareFrom > compareTo ? (
+              <p className="text-[length:var(--text-xs)] text-[var(--color-negative)]">
+                Ngày kết thúc phải sau ngày bắt đầu.
+              </p>
+            ) : null}
+
+            <div className="flex gap-2">
+              {compareRange ? (
+                <Button type="button" variant="secondary" size="md" className="flex-1" onClick={clearCompare}>
+                  Bỏ so sánh
+                </Button>
+              ) : null}
+              <Button
+                type="button"
+                variant="primary"
+                size="md"
+                className="flex-1"
+                disabled={!compareFrom || !compareTo || compareFrom > compareTo}
+                onClick={applyCompare}
+              >
+                Áp dụng
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </DialogRoot>
 
       <DialogRoot open={customDialogOpen} onOpenChange={setCustomDialogOpen}>
         <DialogContent
