@@ -107,6 +107,34 @@ function ChannelHeadline({
     )
   }
 
+  // Klaviyo KHÔNG có `MetricsAdapter` ghi `metrics_daily` (Reporting API giới
+  // hạn 225 request/ngày — xem header `providers/klaviyo.ts`) nên
+  // `summary.hasData` cũ (nghĩa "có hàng metrics_daily") không áp dụng được.
+  // `data/site-channels.ts::getChannelSummaries` giờ live-fetch riêng cho
+  // Klaviyo và set `hasData=true` ngay khi thành công — nhánh này đọc đúng
+  // field đó, đặt TRƯỚC gate `!summary.hasData` chung bên dưới, cùng lý do
+  // Facebook/Instagram đã tách riêng phía trên.
+  if (provider === 'klaviyo') {
+    if (!summary.hasData) {
+      return (
+        <p className="text-[length:var(--text-sm)] text-[var(--color-ink-3)]">
+          Đang đồng bộ lần đầu…
+        </p>
+      )
+    }
+    const { extra } = summary
+    return (
+      <HeadlineBlock
+        label="Doanh thu"
+        value={formatCurrencyCompact(extra.revenueMicros ?? 0, summary.currency ?? currency)}
+        secondary={[
+          { label: 'Campaign', value: formatCompact(extra.campaignCount ?? 0) },
+          { label: 'Flow', value: formatCompact(extra.flowCount ?? 0) },
+        ]}
+      />
+    )
+  }
+
   // Instagram/Facebook có MỘT nguồn số liệu THỨ HAI ngoài `metrics_daily`:
   // follower count gọi trực tiếp Graph API (xem
   // `data/site-channels.ts::getChannelSummaries`), không phụ thuộc

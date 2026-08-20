@@ -4,7 +4,12 @@ import { unstable_cache } from 'next/cache'
 import { hasUsableData, type ConnectionStatus } from '@/lib/domain/connection'
 import { PROVIDERS, isProviderId, type ProviderId } from '@/lib/domain/providers'
 import { fetchMetaFollowerCount } from '@/lib/providers/meta-discovery'
-import { resolvePageAccessToken } from '@/lib/sync/access-token'
+import {
+  fetchKlaviyoInventory,
+  fetchKlaviyoNewProfileCount,
+  fetchKlaviyoPerformance,
+} from '@/lib/providers/klaviyo'
+import { resolveKlaviyoApiKey, resolvePageAccessToken } from '@/lib/sync/access-token'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
 
@@ -32,8 +37,17 @@ export interface ChannelSummary {
   readonly totals: ChannelTotals
   /** Gộp cộng dồn cột `extra` (jsonb) qua mọi ngày — vd. views/watchTime của
    * YouTube. NGOẠI LỆ: nền tảng trong `SNAPSHOT_PROVIDERS` không cộng dồn,
-   * chỉ giữ hàng mới nhất — xem định nghĩa bên dưới. */
+   * chỉ giữ hàng mới nhất — xem định nghĩa bên dưới. Klaviyo (không nằm
+   * trong `metrics_daily`, xem field `currency` bên dưới) dùng field này
+   * cho `campaignCount`/`flowCount`/`newProfileCount`/`revenueMicros` —
+   * live-fetch, không cộng dồn qua ngày như các nền tảng khác. */
   readonly extra: Readonly<Record<string, number>>
+  /** Đơn vị tiền THẬT của `extra.revenueMicros` — CHỈ Klaviyo set field này
+   * (tài khoản Klaviyo có `preferred_currency` riêng, không nhất thiết
+   * trùng `site.currency` — cùng bug đã sửa ở trang chi tiết kênh/Khám phá).
+   * `null` cho mọi provider khác: `totals.costMicros`/`conversionValueMicros`
+   * của họ ĐÚNG LÀ `site.currency`, không cần override. */
+  readonly currency: string | null
 }
 
 /** Nền tảng mà `extra` là TRẠNG THÁI TẠI THỜI ĐIỂM đồng bộ (snapshot), không
@@ -204,6 +218,7 @@ export const getChannelSummaries = async (
       hasData: false,
       totals: EMPTY_TOTALS,
       extra: {},
+      currency: null,
     })
   }
 
@@ -283,6 +298,57 @@ export const getChannelSummaries = async (
         extra: { ...current.extra, followerCount: (current.extra.followerCount ?? 0) + result.followerCount },
       })
     }
+  }
+
+  // Klaviyo: cùng lý do Facebook/Instagram ở trên — không có `MetricsAdapter`
+  // ghi `metrics_daily` (Reporting API giới hạn 225 request/ngày, không đủ
+  // đồng bộ hằng ngày mỗi connection, xem header `providers/klaviyo.ts`), nên
+  // `hasData` ở trên PHẢI mãi là `false` cho Klaviyo — không phải lỗi. Trước
+  // đây `ChannelCard`/`ChannelTrendCard` chỉ đọc `hasData` chung nên hiện
+  // "Đang đồng bộ lần đầu…" VĨNH VIỄN dù trang chi tiết kênh vẫn lấy được số
+  // liệu thật (live-fetch). Live-fetch NGAY TẠI ĐÂY bằng đúng 3 hàm trang chi
+  // tiết kênh đã dùng — cả 3 đã TỰ CACHE 6 giờ theo apiKey/apiKey+range bên
+  // trong `providers/klaviyo.ts`, nên không cần một lớp `unstable_cache` bọc
+  // ngoài như `fetchMetaFollowerCounts` (Graph API follower KHÔNG tự cache).
+  const klaviyoConnectionIds = connectionsByProvider.get('klaviyo') ?? []
+  if (klaviyoConnectionIds.length > 0) {
+    const admin = createAdminClient()
+    const klaviyoRange = { startDate: range.start, endDate: range.end }
+
+    await Promise.all(
+      klaviyoConnectionIds.map(async (connectionId) => {
+        const tokenResult = await resolveKlaviyoApiKey(admin, connectionId)
+        if (!tokenResult.ok) return
+
+        const [inventory, performance, newProfiles] = await Promise.all([
+          fetchKlaviyoInventory(tokenResult.accessToken),
+          fetchKlaviyoPerformance(tokenResult.accessToken, klaviyoRange),
+          fetchKlaviyoNewProfileCount(tokenResult.accessToken, klaviyoRange),
+        ])
+
+        const revenueMicros =
+          (performance.campaignPerformance ?? []).reduce((sum, row) => sum + row.conversionValueMicros, 0) +
+          (performance.flowPerformance ?? []).reduce((sum, row) => sum + row.conversionValueMicros, 0)
+
+        const current = summaries.get('klaviyo') as ChannelSummary
+        summaries.set('klaviyo', {
+          ...current,
+          // KHÔNG dùng `hasData` (nghĩa cũ: "có hàng metrics_daily") —
+          // đúng bản chất Klaviyo là "đã lấy được số liệu live", nên set
+          // `true` ngay khi resolve token/fetch thành công, không đợi một
+          // pipeline sync không tồn tại.
+          hasData: true,
+          extra: {
+            ...current.extra,
+            campaignCount: (current.extra.campaignCount ?? 0) + (performance.campaignPerformance?.length ?? 0),
+            flowCount: (current.extra.flowCount ?? 0) + (performance.flowPerformance?.length ?? 0),
+            newProfileCount: (current.extra.newProfileCount ?? 0) + (newProfiles.error ? 0 : newProfiles.count),
+            revenueMicros: (current.extra.revenueMicros ?? 0) + revenueMicros,
+          },
+          currency: inventory.accountCurrency ?? current.currency ?? 'USD',
+        })
+      }),
+    )
   }
 
   return summaries

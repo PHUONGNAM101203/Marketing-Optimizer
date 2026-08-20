@@ -255,6 +255,8 @@ export default async function OverviewPage({
                 connected={summary.connected}
                 hasData={summary.hasData}
                 series={dailySeriesByProvider.get(provider) ?? []}
+                extra={summary.extra}
+                currency={summary.currency}
                 compact
               />
             )
@@ -468,6 +470,8 @@ function FamilyPanel({
             connected={summary?.connected ?? false}
             hasData={summary?.hasData ?? false}
             series={dailySeriesByProvider.get(provider) ?? []}
+            extra={summary?.extra}
+            currency={summary?.currency}
           />
         )
       })}

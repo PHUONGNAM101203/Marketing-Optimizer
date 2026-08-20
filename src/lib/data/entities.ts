@@ -219,6 +219,11 @@ export const getChannelSummariesForAgent = async (
       hasData: false,
       totals: AGENT_SUMMARY_EMPTY_TOTALS,
       extra: {},
+      // Agent tool KHÔNG live-fetch Klaviyo (khác `getChannelSummaries` ở
+      // `site-channels.ts`) — phạm vi field này chỉ phục vụ hiển thị UI
+      // (`ChannelCard`/`ChannelTrendCard`), agent chưa cần tới doanh thu
+      // Klaviyo. `null` giữ đúng hành vi cũ, chỉ thêm field cho khớp type.
+      currency: null,
     })
   }
 
