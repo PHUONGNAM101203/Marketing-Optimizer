@@ -12,13 +12,13 @@ import { formatDateRange } from '@/lib/format'
 export const metadata = { title: 'Khám phá' }
 
 const EMPTY_SOURCE: ExploreSource = {
-  ga4: null,
-  gsc: null,
-  youtube: null,
-  instagram: null,
-  facebook: null,
-  tiktok: null,
-  klaviyo: null,
+  ga4: [],
+  gsc: [],
+  youtube: [],
+  instagram: [],
+  facebook: [],
+  tiktok: [],
+  klaviyo: [],
 }
 
 /** Tách theo ĐÚNG `ProviderFamily` app đã dùng khắp nơi khác (`domain/providers.ts`:
@@ -47,15 +47,13 @@ const familySource = (
 }
 
 const hasData = (source: ExploreSource): boolean =>
-  Boolean(
-    source.ga4 ||
-      source.gsc ||
-      source.youtube ||
-      source.instagram ||
-      source.facebook ||
-      source.tiktok ||
-      source.klaviyo,
-  )
+  source.ga4.length > 0 ||
+  source.gsc.length > 0 ||
+  source.youtube.length > 0 ||
+  source.instagram.length > 0 ||
+  source.facebook.length > 0 ||
+  source.tiktok.length > 0 ||
+  source.klaviyo.length > 0
 
 export default async function ExplorePage({
   params,

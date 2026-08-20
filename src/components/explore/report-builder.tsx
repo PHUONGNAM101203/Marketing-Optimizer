@@ -23,7 +23,7 @@ import {
   formatPercent,
 } from '@/lib/format'
 import { colorTokenOf } from '@/mock/metrics'
-import type { ExploreSource } from '@/lib/data/site-explore'
+import type { ExploreConnectionEntry, ExploreSource } from '@/lib/data/site-explore'
 import {
   DEFAULT_GA4_EXPLORE_DIMENSION,
   DEFAULT_GSC_EXPLORE_DIMENSION,
@@ -120,6 +120,14 @@ const DEFAULT_METRICS: readonly MetricKey[] = [
   'revenueMicros',
 ]
 
+/** Nhãn "Kênh" cho một connection — chỉ gắn thêm tên tài khoản khi provider
+ * đó có TỪ 2 CONNECTION TRỞ LÊN trên site (vd. 2 tài khoản TikTok). Trường
+ * hợp phổ biến nhất (1 connection/provider) giữ nguyên nhãn gọn cũ
+ * ('TikTok', không phải 'TikTok · Tên tài khoản') — không làm rối bảng cho
+ * đa số người dùng chỉ có một tài khoản mỗi nền tảng. */
+const groupLabel = (providerLabel: string, accountName: string, connectionCount: number): string =>
+  connectionCount > 1 ? `${providerLabel} · ${accountName}` : providerLabel
+
 /** `impressions` đứng thay cho "lượt xem/sessions" của GA4/YouTube — không
  * có cột riêng cho views trong `ReportRow` (schema đó vốn dành cho ads), và
  * "được nhìn thấy bao nhiêu lần" là đúng bản chất impressions diễn tả. */
@@ -131,21 +139,23 @@ const buildExploreRows = (
 ): readonly ReportRow[] => {
   const rows: ReportRow[] = []
 
-  if (source.ga4) {
+  for (const entry of source.ga4) {
+    const ga4 = entry.data
+    const group = groupLabel('GA4', entry.accountName, source.ga4.length)
     const ga4Rows: readonly { readonly label: string; readonly value: number }[] =
       ga4Dimension === 'channel'
-        ? source.ga4.channels.map((row) => ({ label: row.channel, value: row.sessions }))
+        ? ga4.channels.map((row) => ({ label: row.channel, value: row.sessions }))
         : ga4Dimension === 'device'
-          ? source.ga4.devices.map((row) => ({ label: row.device, value: row.sessions }))
+          ? ga4.devices.map((row) => ({ label: row.device, value: row.sessions }))
           : ga4Dimension === 'country'
-            ? source.ga4.countries.map((row) => ({ label: row.country, value: row.sessions }))
-            : source.ga4.topPages.map((row) => ({ label: row.path, value: row.views }))
+            ? ga4.countries.map((row) => ({ label: row.country, value: row.sessions }))
+            : ga4.topPages.map((row) => ({ label: row.path, value: row.views }))
     rows.push(
       ...ga4Rows.slice(0, rowLimit).map(
         (row): ReportRow => ({
-          key: `ga4:${ga4Dimension}:${row.label}`,
+          key: `ga4:${entry.connectionId}:${ga4Dimension}:${row.label}`,
           dimension: row.label,
-          group: 'GA4',
+          group,
           colorToken: colorTokenOf('ga4'),
           impressions: row.value,
           clicks: null,
@@ -164,7 +174,9 @@ const buildExploreRows = (
     )
   }
 
-  if (source.gsc) {
+  for (const entry of source.gsc) {
+    const gsc = entry.data
+    const group = groupLabel('Search Console', entry.accountName, source.gsc.length)
     // Chỉ Truy vấn/Trang có sẵn impressions+CTR — Quốc gia/Thiết bị của
     // Search Console chỉ trả về clicks (xem `GscExplore` trong
     // `google-explore.ts`), nên hai cột kia hợp lệ là `null`, không phải
@@ -175,18 +187,18 @@ const buildExploreRows = (
       readonly impressions: number | null
     }[] =
       gscDimension === 'page'
-        ? source.gsc.topPages.map((row) => ({ label: row.page, clicks: row.clicks, impressions: row.impressions }))
+        ? gsc.topPages.map((row) => ({ label: row.page, clicks: row.clicks, impressions: row.impressions }))
         : gscDimension === 'country'
-          ? source.gsc.countries.map((row) => ({ label: row.country, clicks: row.clicks, impressions: null }))
+          ? gsc.countries.map((row) => ({ label: row.country, clicks: row.clicks, impressions: null }))
           : gscDimension === 'device'
-            ? source.gsc.devices.map((row) => ({ label: row.device, clicks: row.clicks, impressions: null }))
-            : source.gsc.topQueries.map((row) => ({ label: row.query, clicks: row.clicks, impressions: row.impressions }))
+            ? gsc.devices.map((row) => ({ label: row.device, clicks: row.clicks, impressions: null }))
+            : gsc.topQueries.map((row) => ({ label: row.query, clicks: row.clicks, impressions: row.impressions }))
     rows.push(
       ...gscRows.slice(0, rowLimit).map(
         (row): ReportRow => ({
-          key: `gsc:${gscDimension}:${row.label}`,
+          key: `gsc:${entry.connectionId}:${gscDimension}:${row.label}`,
           dimension: row.label,
-          group: 'Search Console',
+          group,
           colorToken: colorTokenOf('gsc'),
           impressions: row.impressions,
           clicks: row.clicks,
@@ -205,13 +217,14 @@ const buildExploreRows = (
     )
   }
 
-  if (source.youtube) {
+  for (const entry of source.youtube) {
+    const group = groupLabel('YouTube', entry.accountName, source.youtube.length)
     rows.push(
-      ...source.youtube.topVideos.slice(0, rowLimit).map(
+      ...entry.data.topVideos.slice(0, rowLimit).map(
         (video): ReportRow => ({
-          key: `youtube:${video.title}`,
+          key: `youtube:${entry.connectionId}:${video.title}`,
           dimension: video.title,
-          group: 'YouTube',
+          group,
           colorToken: colorTokenOf('youtube'),
           impressions: video.views,
           clicks: null,
@@ -230,13 +243,14 @@ const buildExploreRows = (
     )
   }
 
-  if (source.instagram) {
+  for (const entry of source.instagram) {
+    const group = groupLabel('Instagram', entry.accountName, source.instagram.length)
     rows.push(
-      ...source.instagram.topPosts.slice(0, rowLimit).map(
+      ...entry.data.topPosts.slice(0, rowLimit).map(
         (post): ReportRow => ({
-          key: `instagram:${post.caption}`,
+          key: `instagram:${entry.connectionId}:${post.caption}`,
           dimension: post.caption,
-          group: 'Instagram',
+          group,
           colorToken: colorTokenOf('instagram'),
           impressions: null,
           clicks: null,
@@ -257,13 +271,14 @@ const buildExploreRows = (
     )
   }
 
-  if (source.facebook) {
+  for (const entry of source.facebook) {
+    const group = groupLabel('Facebook', entry.accountName, source.facebook.length)
     rows.push(
-      ...source.facebook.topPosts.slice(0, rowLimit).map(
+      ...entry.data.topPosts.slice(0, rowLimit).map(
         (post): ReportRow => ({
-          key: `facebook:${post.message}`,
+          key: `facebook:${entry.connectionId}:${post.message}`,
           dimension: post.message,
-          group: 'Facebook',
+          group,
           colorToken: colorTokenOf('facebook'),
           impressions: null,
           clicks: null,
@@ -282,13 +297,14 @@ const buildExploreRows = (
     )
   }
 
-  if (source.tiktok) {
+  for (const entry of source.tiktok) {
+    const group = groupLabel('TikTok', entry.accountName, source.tiktok.length)
     rows.push(
-      ...source.tiktok.topVideos.slice(0, rowLimit).map(
+      ...entry.data.topVideos.slice(0, rowLimit).map(
         (video): ReportRow => ({
-          key: `tiktok:${video.title}`,
+          key: `tiktok:${entry.connectionId}:${video.title}`,
           dimension: video.title,
-          group: 'TikTok',
+          group,
           colorToken: colorTokenOf('tiktok'),
           impressions: video.views,
           clicks: null,
@@ -307,8 +323,15 @@ const buildExploreRows = (
     )
   }
 
-  if (source.klaviyo) {
-    const klaviyo = source.klaviyo
+  for (const entry of source.klaviyo) {
+    const klaviyo = entry.data
+    // 'Campaign'/'Flow' làm phụ-nhóm bên trong Klaviyo — người xem cần phân
+    // biệt ngay một dòng chi phí gửi thủ công (campaign) hay tự động lặp lại
+    // (flow), hai bản chất khác hẳn nhau dù cùng chỉ số. `baseGroup` gắn
+    // thêm tên tài khoản khi có ≥2 connection Klaviyo, giống mọi provider
+    // khác — trường hợp phổ biến (1 connection) vẫn ra đúng 'Klaviyo ·
+    // Campaign'/'Klaviyo · Flow' như trước.
+    const baseGroup = groupLabel('Klaviyo', entry.accountName, source.klaviyo.length)
     // Campaign + flow gộp CHUNG một mảng ở tầng data (`site-explore.ts`) —
     // cắt `rowLimit` trên mảng gộp đó khiến 58 campaign (đứng trước trong
     // mảng) chiếm hết `rowLimit`, flow không bao giờ lọt vào dù đã tick
@@ -317,12 +340,9 @@ const buildExploreRows = (
     // trên MỘT mảng đồng nhất của riêng nó — Klaviyo là provider DUY NHẤT
     // trộn hai "loại" khác nhau vào một nguồn, nên cần xử lý khác một chút.
     const buildRow = (item: (typeof klaviyo.items)[number]): ReportRow => ({
-      key: `klaviyo:${item.kind}:${item.id}`,
+      key: `klaviyo:${entry.connectionId}:${item.kind}:${item.id}`,
       dimension: item.name,
-      // 'Campaign'/'Flow' làm phụ-nhóm bên trong Klaviyo — người xem cần
-      // phân biệt ngay một dòng chi phí gửi thủ công (campaign) hay tự
-      // động lặp lại (flow), hai bản chất khác hẳn nhau dù cùng chỉ số.
-      group: item.kind === 'campaign' ? 'Klaviyo · Campaign' : 'Klaviyo · Flow',
+      group: `${baseGroup} · ${item.kind === 'campaign' ? 'Campaign' : 'Flow'}`,
       colorToken: colorTokenOf('klaviyo'),
       impressions: item.recipients,
       clicks: item.clicks,
@@ -359,19 +379,26 @@ const PAGE_SIZE = 50
 export function ReportBuilder({ source, currency }: ReportBuilderProps) {
   const groups = useMemo(() => {
     const list: string[] = []
-    if (source.ga4) list.push('GA4')
-    if (source.gsc) list.push('Search Console')
-    if (source.youtube) list.push('YouTube')
-    if (source.instagram) list.push('Instagram')
-    if (source.facebook) list.push('Facebook')
-    if (source.tiktok) list.push('TikTok')
-    // Klaviyo tách 'group' thành hai giá trị (Campaign/Flow, xem
-    // `buildExploreRows`) — cả hai phải có mặt ở đây để chip lọc kênh bắt
-    // được đúng giá trị đang thật sự nằm trong `rows`, không chỉ tên nền
-    // tảng chung chung.
-    if (source.klaviyo) {
-      list.push('Klaviyo · Campaign', 'Klaviyo · Flow')
+    // Mỗi connection góp MỘT giá trị group riêng (xem `groupLabel`) — site
+    // có 2 tài khoản TikTok thì đây phải liệt kê cả 'TikTok · Kênh A' lẫn
+    // 'TikTok · Kênh B', không chỉ 'TikTok' chung chung, để chip lọc khớp
+    // đúng giá trị `row.group` thật sự nằm trong `rows`.
+    const pushProviderGroups = <T,>(providerLabel: string, entries: readonly ExploreConnectionEntry<T>[]) => {
+      entries.forEach((entry) => list.push(groupLabel(providerLabel, entry.accountName, entries.length)))
     }
+    pushProviderGroups('GA4', source.ga4)
+    pushProviderGroups('Search Console', source.gsc)
+    pushProviderGroups('YouTube', source.youtube)
+    pushProviderGroups('Instagram', source.instagram)
+    pushProviderGroups('Facebook', source.facebook)
+    pushProviderGroups('TikTok', source.tiktok)
+    // Klaviyo tách 'group' thêm một tầng nữa (Campaign/Flow, xem
+    // `buildExploreRows`) — cả hai phải có mặt ở đây để chip lọc kênh bắt
+    // được đúng giá trị đang thật sự nằm trong `rows`.
+    source.klaviyo.forEach((entry) => {
+      const baseGroup = groupLabel('Klaviyo', entry.accountName, source.klaviyo.length)
+      list.push(`${baseGroup} · Campaign`, `${baseGroup} · Flow`)
+    })
     return list
   }, [source])
 
@@ -451,7 +478,7 @@ export function ReportBuilder({ source, currency }: ReportBuilderProps) {
           </div>
         </fieldset>
 
-        {source.ga4 ? (
+        {source.ga4.length > 0 ? (
           <fieldset className="mb-5">
             <legend className="mb-2 text-[length:var(--text-2xs)] tracking-[var(--tracking-label)] text-[var(--color-ink-3)] uppercase">
               GA4 theo
@@ -469,7 +496,7 @@ export function ReportBuilder({ source, currency }: ReportBuilderProps) {
           </fieldset>
         ) : null}
 
-        {source.gsc ? (
+        {source.gsc.length > 0 ? (
           <fieldset className="mb-5">
             <legend className="mb-2 text-[length:var(--text-2xs)] tracking-[var(--tracking-label)] text-[var(--color-ink-3)] uppercase">
               Search Console theo

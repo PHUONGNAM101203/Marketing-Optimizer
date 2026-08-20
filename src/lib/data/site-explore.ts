@@ -60,14 +60,25 @@ export interface KlaviyoExplore {
   readonly currency: string
 }
 
+/** Một nguồn dữ liệu gắn với ĐÚNG MỘT connection — `accountName` (cột
+ * `account_name`, ghi một lần lúc kết nối, xem `connections.sql`) là nhãn
+ * phân biệt khi site có từ 2 connection cùng provider trở lên (vd. 2 tài
+ * khoản TikTok). `ReportBuilder` dùng field này để hiện "TikTok · Kênh A" /
+ * "TikTok · Kênh B" thay vì gộp lẫn hai tài khoản vào một dòng "TikTok". */
+export interface ExploreConnectionEntry<T> {
+  readonly connectionId: string
+  readonly accountName: string
+  readonly data: T
+}
+
 export interface ExploreSource {
-  readonly ga4: Ga4Explore | null
-  readonly gsc: GscExplore | null
-  readonly youtube: YoutubeExplore | null
-  readonly instagram: InstagramExplore | null
-  readonly facebook: FacebookExplore | null
-  readonly tiktok: TiktokExplore | null
-  readonly klaviyo: KlaviyoExplore | null
+  readonly ga4: readonly ExploreConnectionEntry<Ga4Explore>[]
+  readonly gsc: readonly ExploreConnectionEntry<GscExplore>[]
+  readonly youtube: readonly ExploreConnectionEntry<YoutubeExplore>[]
+  readonly instagram: readonly ExploreConnectionEntry<InstagramExplore>[]
+  readonly facebook: readonly ExploreConnectionEntry<FacebookExplore>[]
+  readonly tiktok: readonly ExploreConnectionEntry<TiktokExplore>[]
+  readonly klaviyo: readonly ExploreConnectionEntry<KlaviyoExplore>[]
 }
 
 export const getExploreSource = async (
@@ -77,20 +88,27 @@ export const getExploreSource = async (
   const supabase = await createClient()
   const { data: connections } = await supabase
     .from('connections')
-    .select('id, provider, external_account_id')
+    .select('id, provider, external_account_id, account_name')
     .eq('site_id', siteId)
     .in('provider', ['ga4', 'gsc', 'youtube', 'instagram', 'facebook', 'tiktok', 'klaviyo'])
 
   const admin = createAdminClient()
+  // MẢNG, không phải field đơn — trước đây field đơn (`ga4: Ga4Explore | null`)
+  // khiến site có 2 connection CÙNG provider (vd. 2 tài khoản TikTok, ràng
+  // buộc unique key `(site_id, provider, external_account_id)` trong
+  // `connections.sql` CHO PHÉP việc này) bị connection chạy xong SAU ghi đè
+  // mất connection chạy xong TRƯỚC — mất dữ liệu ngẫu nhiên theo thứ tự
+  // Promise.all trả về, không phải lỗi hiển thị. `push` vào mảng thay vì gán
+  // đè giữ lại TẤT CẢ connection.
   const source: {
-    ga4: Ga4Explore | null
-    gsc: GscExplore | null
-    youtube: YoutubeExplore | null
-    instagram: InstagramExplore | null
-    facebook: FacebookExplore | null
-    tiktok: TiktokExplore | null
-    klaviyo: KlaviyoExplore | null
-  } = { ga4: null, gsc: null, youtube: null, instagram: null, facebook: null, tiktok: null, klaviyo: null }
+    ga4: ExploreConnectionEntry<Ga4Explore>[]
+    gsc: ExploreConnectionEntry<GscExplore>[]
+    youtube: ExploreConnectionEntry<YoutubeExplore>[]
+    instagram: ExploreConnectionEntry<InstagramExplore>[]
+    facebook: ExploreConnectionEntry<FacebookExplore>[]
+    tiktok: ExploreConnectionEntry<TiktokExplore>[]
+    klaviyo: ExploreConnectionEntry<KlaviyoExplore>[]
+  } = { ga4: [], gsc: [], youtube: [], instagram: [], facebook: [], tiktok: [], klaviyo: [] }
 
   await Promise.all(
     (connections ?? []).map(async (connection): Promise<void> => {
@@ -110,40 +128,46 @@ export const getExploreSource = async (
       if (!tokenResult.ok) return
 
       if (connection.provider === 'ga4') {
-        source.ga4 = await fetchGa4Explore(
+        const data = await fetchGa4Explore(
           tokenResult.accessToken,
           connection.external_account_id,
           range,
           MAX_EXPLORE_FETCH_LIMIT,
         )
+        source.ga4.push({ connectionId: connection.id, accountName: connection.account_name, data })
       } else if (connection.provider === 'gsc') {
-        source.gsc = await fetchGscExplore(
+        const data = await fetchGscExplore(
           tokenResult.accessToken,
           connection.external_account_id,
           range,
           MAX_EXPLORE_FETCH_LIMIT,
         )
+        source.gsc.push({ connectionId: connection.id, accountName: connection.account_name, data })
       } else if (connection.provider === 'youtube') {
-        source.youtube = await fetchYoutubeExplore(
+        const data = await fetchYoutubeExplore(
           tokenResult.accessToken,
           connection.external_account_id,
           range,
           MAX_EXPLORE_FETCH_LIMIT,
         )
+        source.youtube.push({ connectionId: connection.id, accountName: connection.account_name, data })
       } else if (connection.provider === 'instagram') {
-        source.instagram = await fetchInstagramExplore(
+        const data = await fetchInstagramExplore(
           tokenResult.accessToken,
           connection.external_account_id,
           range,
         )
+        source.instagram.push({ connectionId: connection.id, accountName: connection.account_name, data })
       } else if (connection.provider === 'facebook') {
-        source.facebook = await fetchFacebookContentExplore(
+        const data = await fetchFacebookContentExplore(
           tokenResult.accessToken,
           connection.external_account_id,
           range,
         )
+        source.facebook.push({ connectionId: connection.id, accountName: connection.account_name, data })
       } else if (connection.provider === 'tiktok') {
-        source.tiktok = await fetchTiktokContentExplore(tokenResult.accessToken, range)
+        const data = await fetchTiktokContentExplore(tokenResult.accessToken, range)
+        source.tiktok.push({ connectionId: connection.id, accountName: connection.account_name, data })
       } else if (connection.provider === 'klaviyo') {
         // `fetchKlaviyoInventory` ĐÃ CACHE (6 giờ, không phụ thuộc `range`) —
         // trước đây trang Khám phá gọi `fetchKlaviyoCampaigns`/`fetchKlaviyoFlows`
@@ -160,7 +184,7 @@ export const getExploreSource = async (
         )
         const flowPerformanceById = new Map((performance.flowPerformance ?? []).map((row) => [row.groupId, row]))
 
-        source.klaviyo = {
+        const klaviyoData: KlaviyoExplore = {
           items: [
             ...inventory.campaigns.items.map((campaign) => {
               const stats = campaignPerformanceById.get(campaign.id)
@@ -192,6 +216,11 @@ export const getExploreSource = async (
           performanceError: performance.error,
           currency: inventory.accountCurrency ?? 'USD',
         }
+        source.klaviyo.push({
+          connectionId: connection.id,
+          accountName: connection.account_name,
+          data: klaviyoData,
+        })
       }
     }),
   )
