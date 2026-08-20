@@ -6,6 +6,7 @@ import { Check, ChevronDown } from 'lucide-react'
 import { DropdownMenu } from 'radix-ui'
 import { Button } from '@/components/ui/button'
 import { ChannelAvatar } from '@/components/channels/channel-avatar'
+import { rememberChannelConnection } from '@/lib/actions/channel-preference'
 import type { ChannelConnectionOption } from '@/lib/data/site-channel-detail'
 import type { ProviderId } from '@/lib/domain/providers'
 
@@ -20,12 +21,20 @@ import type { ProviderId } from '@/lib/domain/providers'
  * "filter/view state thuộc searchParams". `router.push` bọc `useTransition`
  * để nút trigger tự hiện trạng thái loading, không chớp trắng trang khi
  * server re-render.
+ *
+ * Mỗi lượt chọn còn ghi nhớ qua cookie (`rememberChannelConnection`) — thoát
+ * trang rồi quay lại (hoặc mở tab mới) tự về đúng tài khoản vừa chọn thay vì
+ * luôn rơi về tài khoản kết nối ĐẦU TIÊN như mặc định cũ. `?connection=` trên
+ * URL vẫn được ưu tiên hơn cookie khi có — giữ đúng ngữ nghĩa "link chia sẻ
+ * luôn hiện đúng kênh trong link", xem `channels/[provider]/page.tsx`.
  */
 export function ChannelSwitcher({
+  siteId,
   provider,
   connections,
   activeConnectionId,
 }: {
+  readonly siteId: string
   readonly provider: ProviderId
   readonly connections: readonly ChannelConnectionOption[]
   readonly activeConnectionId: string
@@ -45,6 +54,9 @@ export function ChannelSwitcher({
     startTransition(() => {
       router.push(`${pathname}?${params.toString()}`, { scroll: false })
     })
+    // Không chặn điều hướng chờ ghi cookie xong — chỉ là ghi nhớ tiện lợi,
+    // không phải trạng thái bắt buộc phải có trước khi trang đổi kênh.
+    void rememberChannelConnection(siteId, provider, connectionId)
   }
 
   return (

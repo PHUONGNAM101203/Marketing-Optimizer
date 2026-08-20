@@ -583,6 +583,7 @@ export function ChannelDetailBody({
                   rangeStats={detail.rangeStats}
                   trending={detail.trending}
                   rangeLabel={DATE_RANGE_LABELS[preset]}
+                  videoSnapshotsLikelyBroken={detail.videoSnapshotsLikelyBroken}
                 />
               ),
             },

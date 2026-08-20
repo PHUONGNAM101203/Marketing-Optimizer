@@ -66,10 +66,18 @@ export function SideRail({
         'transition-[width] duration-[var(--dur-base)] ease-[var(--ease-out)]',
       )}
     >
-      <div className="flex items-center gap-2 px-4 pt-5 pb-4">
+      <div
+        className={cn(
+          'flex items-center gap-2 px-4 pt-5 pb-4',
+          collapsed && 'justify-center',
+        )}
+      >
         <Link
           href={`/${siteId}/overview`}
-          className="flex min-w-0 flex-1 items-center gap-2.5 rounded-[var(--radius-sm)]"
+          className={cn(
+            'flex min-w-0 items-center gap-2.5 rounded-[var(--radius-sm)]',
+            !collapsed && 'flex-1',
+          )}
         >
           <SiteFavicon domain={siteDomain} className="size-6 shrink-0" />
           {collapsed ? null : (
@@ -189,7 +197,12 @@ export function SideRail({
       <div
         className={cn(
           'flex items-center gap-2.5 border-t border-[var(--color-rule)] px-4 py-3',
-          collapsed && 'justify-center',
+          // Hàng ngang (avatar + nút đăng xuất cạnh nhau) khi thu gọn khiến
+          // `justify-center` canh giữa CẢ CẶP thay vì riêng avatar — avatar
+          // bị lệch trái so với các icon điều hướng phía trên (mỗi icon đó
+          // tự canh giữa một mình). Xếp DỌC khi thu gọn để avatar VÀ nút đăng
+          // xuất đều tự canh giữa riêng, khớp trục với icon điều hướng.
+          collapsed ? 'flex-col justify-center gap-2' : 'justify-start',
         )}
       >
         <span

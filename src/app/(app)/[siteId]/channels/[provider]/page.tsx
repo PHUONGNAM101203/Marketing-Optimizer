@@ -1,4 +1,5 @@
 import { notFound } from 'next/navigation'
+import { cookies } from 'next/headers'
 import Link from 'next/link'
 import { ChevronLeft, Plug } from 'lucide-react'
 import { PageHeader, PageShell } from '@/components/layout/page-header'
@@ -12,6 +13,7 @@ import { ExternalChannelLink } from '@/components/connections/external-channel-l
 import { TiktokChannelHeader } from '@/components/channels/tiktok/tiktok-channel-header'
 import { MetaChannelHeader } from '@/components/channels/meta/meta-channel-header'
 import { ChannelSwitcher } from '@/components/channels/channel-switcher'
+import { channelConnectionCookieName } from '@/lib/domain/channel-connection-cookie'
 import { getSite } from '@/lib/data/sites'
 import { getChannelDetail, listChannelConnections } from '@/lib/data/site-channel-detail'
 import { getChannelDailySeries, getChannelSummaries } from '@/lib/data/site-channels'
@@ -79,12 +81,20 @@ export default async function ChannelDetailPage({
   const summary = summaries.get(provider)
 
   // `?connection=` chỉ đáng tin khi đúng là một trong các connection THẬT của
-  // provider này — id lạ/đã bị xoá thì coi như không có param, để
-  // `getChannelDetail`/`getChannelDailySeries` tự rơi về kênh kết nối đầu
-  // tiên (xem `site-channel-detail.ts`).
+  // provider này — id lạ/đã bị xoá thì coi như không có param. Không có/không
+  // hợp lệ → thử cookie đã nhớ từ lượt chọn trước (`ChannelSwitcher`, xem
+  // `rememberChannelConnection`) — cùng điều kiện hợp lệ (phải khớp một
+  // connection thật, tránh cookie cũ trỏ tới connection đã xoá). Vẫn không có
+  // gì hợp lệ thì để `getChannelDetail`/`getChannelDailySeries` tự rơi về kênh
+  // kết nối ĐẦU TIÊN (xem `site-channel-detail.ts`). `?connection=` trên URL
+  // LUÔN thắng cookie — một link chia sẻ phải hiện đúng kênh trong link, bất
+  // kể người xem đã từng chọn kênh nào khác trước đó.
+  const rememberedConnectionId = (await cookies()).get(channelConnectionCookieName(site.id, provider))?.value
   const validatedConnectionId = connections.some((option) => option.id === connectionParam)
     ? connectionParam
-    : undefined
+    : connections.some((option) => option.id === rememberedConnectionId)
+      ? rememberedConnectionId
+      : undefined
 
   const [detail, dailySeries] = await Promise.all([
     getChannelDetail(
@@ -100,7 +110,12 @@ export default async function ChannelDetailPage({
   const activeConnectionId = detail && detail.kind !== 'unsupported' ? detail.connectionId : connections[0]?.id
   const channelSwitcher =
     connections.length > 1 && activeConnectionId ? (
-      <ChannelSwitcher provider={provider} connections={connections} activeConnectionId={activeConnectionId} />
+      <ChannelSwitcher
+        siteId={site.id}
+        provider={provider}
+        connections={connections}
+        activeConnectionId={activeConnectionId}
+      />
     ) : null
 
   return (

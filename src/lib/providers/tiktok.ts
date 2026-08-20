@@ -266,19 +266,29 @@ export interface TiktokVideoSnapshot {
 // tài khoản thật, chặn ở đây rẻ hơn để cron treo.
 const MAX_VIDEO_LIST_PAGES = 50
 
+export interface TiktokAllVideosOutcome {
+  readonly videos: readonly TiktokVideoSnapshot[]
+  /** Lỗi THẬT ở trang đầu (HTTP hoặc mã lỗi thân JSON của TikTok) — trước đây
+   * hàm này chỉ `break` im lặng, khiến "0 video vì tài khoản chưa có video
+   * nào" và "0 video vì API từ chối request (vd. thiếu quyền `video.list`)"
+   * nhìn giống hệt nhau ở mọi nơi gọi. Chỉ set khi trang ĐẦU TIÊN lỗi — lỗi ở
+   * một trang giữa chừng (vd. cursor hết hạn) vẫn giữ nguyên các video đã lấy
+   * được, không đáng coi là "lỗi toàn bộ". */
+  readonly error: string | null
+}
+
 /**
  * TOÀN BỘ video của tài khoản, tự phân trang bằng `cursor`/`has_more` —
  * khác `fetchTiktokContentExplore` bên trên (chỉ 1 trang 20 video mới nhất,
  * dùng để hiển thị trực tiếp ở tab Khám phá). Hàm này dùng để ghi snapshot
  * hằng ngày vào `video_metrics_daily`, không hiển thị trực tiếp.
  */
-export const fetchAllTiktokVideos = async (
-  accessToken: string,
-): Promise<readonly TiktokVideoSnapshot[]> => {
+export const fetchAllTiktokVideos = async (accessToken: string): Promise<TiktokAllVideosOutcome> => {
   const videos: TiktokVideoSnapshot[] = []
   let cursor: number | undefined
   let hasMore = true
   let pages = 0
+  let error: string | null = null
 
   while (hasMore && pages < MAX_VIDEO_LIST_PAGES) {
     pages += 1
@@ -296,7 +306,10 @@ export const fetchAllTiktokVideos = async (
       },
       body: JSON.stringify(cursor === undefined ? { max_count: 20 } : { max_count: 20, cursor }),
     })
-    if (!response.ok) break
+    if (!response.ok) {
+      if (pages === 1) error = `TikTok trả lỗi HTTP ${response.status} khi lấy danh sách video`
+      break
+    }
 
     const body = (await response.json()) as {
       readonly data?: {
@@ -304,12 +317,17 @@ export const fetchAllTiktokVideos = async (
         readonly cursor?: number
         readonly has_more?: boolean
       }
-      readonly error?: { readonly code?: string }
+      readonly error?: { readonly code?: string; readonly message?: string }
     }
 
     // HTTP 200 không đảm bảo thành công — xem docblock của TiktokExplore
     // phía trên, TikTok nhét mã lỗi vào thân JSON.
-    if (body.error && body.error.code && body.error.code !== 'ok') break
+    if (body.error && body.error.code && body.error.code !== 'ok') {
+      if (pages === 1) {
+        error = body.error.message ?? `TikTok từ chối yêu cầu danh sách video (${body.error.code})`
+      }
+      break
+    }
 
     for (const video of body.data?.videos ?? []) {
       if (!video.id) continue
@@ -332,5 +350,5 @@ export const fetchAllTiktokVideos = async (
     cursor = nextCursor
   }
 
-  return videos
+  return { videos, error }
 }

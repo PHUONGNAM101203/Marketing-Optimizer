@@ -25,10 +25,12 @@ export function TiktokDashboard({
   rangeStats,
   trending,
   rangeLabel,
+  videoSnapshotsLikelyBroken,
 }: {
   readonly rangeStats: readonly VideoSummary[]
   readonly trending: VideoTrendingResult
   readonly rangeLabel: string
+  readonly videoSnapshotsLikelyBroken: boolean
 }) {
   const rankedInRange: VideoRankingItem[] = rangeStats.slice(0, RANKING_LIMIT).map((video) => ({
     title: video.title,
@@ -73,7 +75,11 @@ export function TiktokDashboard({
         />
       </section>
 
-      <VideoTrendingWidget trendingFast={trending.trendingFast} earliestSnapshotAt={trending.earliestSnapshotAt} />
+      <VideoTrendingWidget
+        trendingFast={trending.trendingFast}
+        earliestSnapshotAt={trending.earliestSnapshotAt}
+        likelyBroken={videoSnapshotsLikelyBroken}
+      />
 
       <section className="flex flex-col gap-3">
         <SectionHead label="Tổng quan tương tác" title={`Thống kê — ${rangeLabel}`} />

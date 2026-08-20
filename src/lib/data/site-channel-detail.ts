@@ -201,6 +201,17 @@ export type ChannelDetail =
        * không refetch mỗi lần tải trang. `null` cho các nền tảng không có khái
        * niệm "kênh" (Ads/Analytics/Search Console/Tag Manager/Merchant Center). */
       readonly avatarUrl: string | null
+      /** `true` khi connection đã kết nối đủ lâu (≥3 ngày — dư dả hơn nhiều
+       * lần chu kỳ đồng bộ hằng giờ) mà `trending.earliestSnapshotAt` vẫn
+       * `null` — dấu hiệu snapshot video đang LỖI THẬT (thiếu quyền
+       * `video.list`, token hỏng...) chứ không phải "chưa đủ thời gian tích
+       * luỹ". Tính SẴN ở đây (server, có `new Date()` xài thoải mái) thay vì
+       * để `VideoTrendingWidget` tự tính `Date.now()` lúc render — component
+       * đó là Client Component dùng hook, gọi hàm bất định (`Date.now()`)
+       * ngay trong thân render vi phạm rule "render phải thuần" của
+       * react-hooks (đã xác nhận qua lint), phải đẩy phép tính này ra khỏi
+       * render. */
+      readonly videoSnapshotsLikelyBroken: boolean
       readonly data: TiktokExplore
       readonly trending: VideoTrendingResult
       /** Tăng trưởng views/likes/comments/shares TRONG khoảng ngày đang chọn,
@@ -366,7 +377,7 @@ export const getChannelDetail = async (
   const baseConnectionSelect = () =>
     supabase
       .from('connections')
-      .select('id, external_account_id, account_name, avatar_url')
+      .select('id, external_account_id, account_name, avatar_url, connected_at')
       .eq('site_id', siteId)
       .eq('provider', provider)
 
@@ -400,6 +411,7 @@ export const getChannelDetail = async (
   const accountName = connection.account_name
   const externalAccountId = connection.external_account_id
   const avatarUrl = connection.avatar_url
+  const connectedAt = connection.connected_at
 
   switch (provider) {
     case 'ga4': {
@@ -595,7 +607,18 @@ export const getChannelDetail = async (
         // docblock `rangeStats` trên `ChannelDetail`.
         getTiktokVideoRangeStats(connection.id, range),
       ])
-      return { kind: 'tiktok', connectionId: resolvedConnectionId, accountName, externalAccountId, avatarUrl, data, trending, rangeStats }
+      const daysSinceConnected = Math.floor((Date.now() - new Date(connectedAt).getTime()) / 86_400_000)
+      return {
+        kind: 'tiktok',
+        connectionId: resolvedConnectionId,
+        accountName,
+        externalAccountId,
+        avatarUrl,
+        videoSnapshotsLikelyBroken: trending.earliestSnapshotAt === null && daysSinceConnected >= 3,
+        data,
+        trending,
+        rangeStats,
+      }
     }
     case 'instagram': {
       // `Promise.all` chứ không await nối tiếp: hai lượt đọc độc lập nhau,

@@ -85,6 +85,12 @@ export function DatePickerField({
   const selected = fromIsoDate(value)
   const minDateValue = fromIsoDate(minDate)
 
+  // Chỉ tính khi popover THẬT SỰ mở (calendar mount lúc đó, không phải lúc
+  // SSR) nên không có rủi ro lệch giờ server/client — biên cho dropdown năm
+  // quick-jump bên dưới, không giới hạn số liệu có thể chọn (chỉ giới hạn
+  // danh sách năm hiện trong dropdown cho gọn thay vì cuộn vô hạn).
+  const today = new Date()
+
   const handleSelect = (date: Date | undefined): void => {
     const next = date ? toIsoDate(date) : ''
     setValue(next)
@@ -124,6 +130,13 @@ export function DatePickerField({
             defaultMonth={selected}
             onSelect={handleSelect}
             disabled={minDateValue ? { before: minDateValue } : undefined}
+            // Nhãn "Tháng Tám 2026" tĩnh đổi thành 2 dropdown bấm-chọn-nhanh
+            // riêng (tháng/năm) — react-day-picker v10 đã có sẵn chế độ này
+            // (`captionLayout="dropdown"`, xem `MonthCaption`/`Dropdown` trong
+            // node_modules), không cần tự dựng picker tháng/năm từ đầu.
+            captionLayout="dropdown"
+            startMonth={new Date(today.getFullYear() - 10, 0)}
+            endMonth={new Date(today.getFullYear() + 5, 11)}
             classNames={{
               root: 'text-[var(--color-ink)]',
               // `relative` để `nav` (render TRƯỚC month, không lồng trong
@@ -134,7 +147,17 @@ export function DatePickerField({
               month: 'flex flex-col gap-3',
               nav: 'absolute inset-x-0 top-0 z-10 flex items-center justify-between',
               month_caption: 'flex items-center justify-center px-9 py-1',
-              caption_label: 'text-[length:var(--text-sm)] font-medium capitalize',
+              caption_label:
+                'flex items-center gap-1 rounded-[var(--radius-xs)] text-[length:var(--text-sm)] font-medium capitalize peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-[var(--color-focus)]',
+              // Mỗi dropdown (tháng/năm) là một `<select>` VÔ HÌNH (`opacity-0`,
+              // phủ kín `dropdown_root`) đè lên nhãn hiện chữ + mũi tên bên
+              // dưới — giữ đúng `<select>` gốc để có picker gốc hệ điều hành/
+              // bàn phím/a11y sẵn có, chỉ đổi phần NHÌN THẤY bằng token
+              // Hallmark, không tự vẽ lại dropdown.
+              dropdowns: 'flex items-center gap-1.5',
+              dropdown_root:
+                'relative inline-flex items-center rounded-[var(--radius-xs)] px-1.5 py-0.5 transition-colors duration-[var(--dur-fast)] ease-[var(--ease-out)] hover:bg-[var(--color-paper-3)]',
+              dropdown: 'peer absolute inset-0 z-10 cursor-pointer appearance-none opacity-0',
               button_previous: navButtonClass,
               button_next: navButtonClass,
               chevron: 'size-4 fill-current',

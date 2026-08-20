@@ -20,7 +20,12 @@ export const syncTiktokVideoSnapshots = async (
   accessToken: string,
 ): Promise<void> => {
   const admin = createAdminClient()
-  const videos = await fetchAllTiktokVideos(accessToken)
+  const { videos, error: fetchError } = await fetchAllTiktokVideos(accessToken)
+  // Log lỗi THẬT (quyền bị từ chối, token hỏng...) — trước đây "0 video vì
+  // lỗi API" và "0 video vì tài khoản chưa đăng gì" im lặng giống hệt nhau,
+  // khiến trending/tổng quan tương tác kẹt mãi ở "Đang tích lũy dữ liệu" dù
+  // đã đủ lịch sử kết nối, không có cách nào biết đây là lỗi thật từ log.
+  if (fetchError) console.error(`Không lấy được danh sách video TikTok (connection ${connectionId}): ${fetchError}`)
   if (videos.length === 0) return
 
   // Khử trùng theo `externalVideoId` TRƯỚC khi upsert: nếu cùng bộ khóa

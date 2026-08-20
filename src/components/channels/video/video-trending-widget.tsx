@@ -30,9 +30,20 @@ const WINDOW_KEYS = Object.keys(WINDOW_LABELS) as readonly (keyof VideoTrendingW
 export function VideoTrendingWidget({
   trendingFast,
   earliestSnapshotAt,
+  likelyBroken = false,
 }: {
   readonly trendingFast: VideoTrendingWindows
   readonly earliestSnapshotAt: string | null
+  /** `true` khi kết nối đã đủ lâu mà vẫn không có snapshot nào — dấu hiệu
+   * lỗi ghi THẬT (thiếu quyền, token hỏng...) bị nuốt im lặng trước đây,
+   * KHÁC "chưa đủ thời gian tích luỹ". Tính sẵn phía server (xem
+   * `ChannelDetail.videoSnapshotsLikelyBroken` trong `site-channel-detail.ts`)
+   * — không tính `Date.now()` ở đây vì component này là Client Component
+   * dùng hook, gọi hàm bất định ngay trong thân render vi phạm rule "render
+   * phải thuần" của react-hooks. CHỈ TikTok truyền field này (snapshot của
+   * nó có thể lỗi âm thầm phía ghi); YouTube không truyền — mặc định `false`
+   * giữ nguyên thông điệp "đang tích luỹ" cũ. */
+  readonly likelyBroken?: boolean
 }) {
   const [activeWindow, setActiveWindow] = useState<keyof VideoTrendingWindows>('week')
 
@@ -67,11 +78,19 @@ export function VideoTrendingWidget({
       <div className="flex flex-col gap-3 px-5 pb-5">
         {positiveEntries.length === 0 ? (
           <EmptyState
-            title={enoughHistory ? 'Chưa có video tăng trưởng tích cực' : 'Đang tích lũy dữ liệu'}
+            title={
+              likelyBroken
+                ? 'Không lấy được video'
+                : enoughHistory
+                  ? 'Chưa có video tăng trưởng tích cực'
+                  : 'Đang tích lũy dữ liệu'
+            }
             description={
-              enoughHistory
-                ? `Chưa có video nào tăng trưởng tích cực trong ${WINDOW_LABELS[activeWindow].toLowerCase()} này.`
-                : `Kết nối chưa đủ lịch sử cho khung ${WINDOW_LABELS[activeWindow].toLowerCase()} — quay lại sau khi đồng bộ thêm.`
+              likelyBroken
+                ? 'Kết nối đã đủ lâu nhưng vẫn chưa có snapshot video nào — có thể quyền truy cập video đã bị thu hồi hoặc chưa được cấp. Thử ngắt kết nối và kết nối lại.'
+                : enoughHistory
+                  ? `Chưa có video nào tăng trưởng tích cực trong ${WINDOW_LABELS[activeWindow].toLowerCase()} này.`
+                  : `Kết nối chưa đủ lịch sử cho khung ${WINDOW_LABELS[activeWindow].toLowerCase()} — quay lại sau khi đồng bộ thêm.`
             }
           />
         ) : (

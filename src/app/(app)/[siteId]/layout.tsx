@@ -49,7 +49,20 @@ export default async function SiteLayout({
   }
 
   return (
-    <div className="flex min-h-dvh">
+    // `h-dvh overflow-hidden` (không phải `min-h-dvh` cũ) — bắt buộc để
+    // `<main>` bên dưới là vùng cuộn ĐỘC LẬP thay vì cả trang cuộn chung một
+    // `window`. Trước đây sidebar (`sticky top-0`, `side-rail.tsx`) bám theo
+    // chiều cao của CHÍNH container này — container này lại co giãn theo nội
+    // dung `<main>` (không giới hạn). Bất kỳ tương tác nào làm nội dung
+    // `<main>` NGẮN LẠI đột ngột trong khi đang cuộn sâu (đổi tab `UrlTabs`,
+    // đổi khoảng ngày, đổi kênh — tất cả đều cố tình `scroll: false`/tự
+    // `pushState` để tránh giật trang) khiến trình duyệt tự kẹp `scrollY` về
+    // mức cao nhất mới, kéo luôn "cửa sổ dính" của sidebar theo — sidebar
+    // trông như chỉ còn hiện phần cuối (mấy mục Kết nối/Cài đặt) và avatar
+    // trôi giữa trang. Cố định chiều cao container ở viewport rồi cho
+    // `<main>` tự cuộn riêng loại bỏ hẳn cơ chế lỗi này, bất kể control nào
+    // gây co ngót nội dung.
+    <div className="flex h-dvh overflow-hidden">
       <SideRail
         siteId={site.id}
         siteName={site.name}
@@ -68,7 +81,7 @@ export default async function SiteLayout({
           // phải so với giờ THẬT, không phải ngày neo của dữ liệu mock.
           now={new Date()}
         />
-        <main className="min-w-0 flex-1">{children}</main>
+        <main className="min-w-0 flex-1 overflow-y-auto">{children}</main>
       </div>
     </div>
   )
