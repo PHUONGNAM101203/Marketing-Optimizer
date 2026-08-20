@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { Card, CardHeader } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { EmptyState } from '@/components/ui/feedback'
-import { formatCompact, formatNumber } from '@/lib/format'
+import { formatCompact, formatDate, formatNumber } from '@/lib/format'
 import {
   hasEnoughHistory,
   type VideoGrowthSummary,
@@ -125,9 +125,16 @@ function TrendingRow({ rank, entry }: { readonly rank: number; readonly entry: V
       ) : (
         <div className="size-10 shrink-0 rounded-[var(--radius-sm)] bg-[var(--color-paper-3)]" />
       )}
-      <p className="min-w-0 flex-1 truncate text-[length:var(--text-sm)] text-[var(--color-ink)]" title={entry.title}>
-        {entry.title}
-      </p>
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-[length:var(--text-sm)] text-[var(--color-ink)]" title={entry.title}>
+          {entry.title}
+        </p>
+        {entry.createdAt ? (
+          <p className="mt-0.5 text-[length:var(--text-2xs)] text-[var(--color-ink-3)]">
+            {formatDate(entry.createdAt.slice(0, 10))}
+          </p>
+        ) : null}
+      </div>
       <div className="flex shrink-0 flex-col items-end">
         <span data-numeric className="text-[length:var(--text-sm)] font-semibold text-[var(--color-positive)]">
           +{formatNumber(Math.round((entry.growthPct ?? 0) * 100))}%

@@ -259,6 +259,14 @@ export interface TiktokVideoSnapshot {
   readonly likes: number
   readonly comments: number
   readonly shares: number
+  /** ISO 8601, dựng từ `create_time` (Unix giây) — cùng field/kiểu đã xác
+   * nhận qua tài liệu TikTok Video Object cho `TiktokExplore.topVideos`
+   * phía trên, giờ lấy thêm ở lượt fetch toàn bộ video (ghi vào
+   * `video_metrics_daily.posted_at`) để "ngày đăng" hiện được trên MỌI thẻ
+   * video, không chỉ 20 video gần nhất của tab Khám phá. */
+  readonly createdAt: string | null
+  /** `share_url` — cùng field đã dùng cho `TiktokExplore.topVideos[].shareUrl`. */
+  readonly permalinkUrl: string | null
 }
 
 // Chặn vòng lặp phân trang chạy vô hạn nếu TikTok trả `has_more: true` kèm
@@ -295,7 +303,7 @@ export const fetchAllTiktokVideos = async (accessToken: string): Promise<TiktokA
     const url = new URL(VIDEO_LIST_ENDPOINT)
     url.searchParams.set(
       'fields',
-      'id,title,video_description,cover_image_url,view_count,like_count,comment_count,share_count',
+      'id,title,video_description,cover_image_url,view_count,like_count,comment_count,share_count,create_time,share_url',
     )
 
     const response = await fetch(url.toString(), {
@@ -339,6 +347,8 @@ export const fetchAllTiktokVideos = async (accessToken: string): Promise<TiktokA
         likes: video.like_count ?? 0,
         comments: video.comment_count ?? 0,
         shares: video.share_count ?? 0,
+        createdAt: video.create_time ? new Date(video.create_time * 1000).toISOString() : null,
+        permalinkUrl: video.share_url ?? null,
       })
     }
 

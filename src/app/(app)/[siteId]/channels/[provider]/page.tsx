@@ -17,7 +17,12 @@ import { ChannelComparisonPanel } from '@/components/channels/channel-comparison
 import { channelConnectionCookieName } from '@/lib/domain/channel-connection-cookie'
 import { getSite } from '@/lib/data/sites'
 import { getChannelDetail, listChannelConnections } from '@/lib/data/site-channel-detail'
-import { getChannelDailySeries, getChannelSummaries, snapshotUpperBound } from '@/lib/data/site-channels'
+import {
+  getChannelDailySeries,
+  getChannelSummaries,
+  snapshotUpperBound,
+  type ChannelSummary,
+} from '@/lib/data/site-channels'
 import { aggregateVideoRangeGrowth, getTiktokVideoRangeStats } from '@/lib/data/video-trending'
 import {
   parseCompareRangeParams,
@@ -25,7 +30,7 @@ import {
   parseRangeParam,
 } from '@/lib/domain/date-range-param'
 import { resolveDateRange } from '@/mock/dates'
-import { PROVIDER_META, isProviderId } from '@/lib/domain/providers'
+import { PROVIDER_META, isProviderId, type ProviderId } from '@/lib/domain/providers'
 import { formatDateRange } from '@/lib/format'
 
 export async function generateMetadata({
@@ -87,13 +92,15 @@ export default async function ChannelDetailPage({
 
   const [summaries, compareSummaries, connections] = await Promise.all([
     getChannelSummaries(site.id, range),
-    // `range.previousStart`/`previousEnd` LUÔN có giá trị (kỳ liền trước tự
-    // động nếu không tự chọn "So sánh với…", xem `resolveDateRange`) — panel
-    // so sánh vì vậy luôn có dữ liệu để hiện, không chỉ khi người dùng bấm
-    // chọn kỳ so sánh tuỳ chỉnh. Cùng bảng `metrics_daily`/live-fetch,
-    // KHÔNG thêm nguồn dữ liệu mới — chỉ gọi lại `getChannelSummaries` với
-    // khoảng ngày khác.
-    getChannelSummaries(site.id, { start: range.previousStart, end: range.previousEnd }),
+    // Chỉ fetch/hiện bảng so sánh khi người dùng CHỦ ĐỘNG bấm "So sánh với…"
+    // (`range.isCustomCompare`, xem `resolveDateRange`) — trước đây always-on
+    // bằng kỳ liền trước tự động, nhưng người dùng phản hồi rõ: tắt so sánh
+    // (không chọn kỳ so sánh) phải ẩn hẳn bảng, không tự so với kỳ trước.
+    // Bỏ qua truy vấn này khi tắt — không lãng phí một lượt gọi Supabase mỗi
+    // lần tải trang chỉ để tính ra dữ liệu sẽ không hiển thị.
+    range.isCustomCompare
+      ? getChannelSummaries(site.id, { start: range.previousStart, end: range.previousEnd })
+      : Promise.resolve(new Map<ProviderId, ChannelSummary>()),
     listChannelConnections(site.id, provider),
   ])
   const summary = summaries.get(provider)
@@ -233,7 +240,7 @@ export default async function ChannelDetailPage({
         </div>
       )}
 
-      {summary?.connected && comparisonSummary && comparisonCompareSummary ? (
+      {range.isCustomCompare && summary?.connected && comparisonSummary && comparisonCompareSummary ? (
         <ChannelComparisonPanel
           provider={provider}
           summary={comparisonSummary}

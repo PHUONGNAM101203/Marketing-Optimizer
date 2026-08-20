@@ -672,7 +672,14 @@ interface YoutubeReportRow {
   readonly rows?: readonly (readonly (string | number)[])[]
 }
 
-type YoutubeVideoMeta = { readonly title: string; readonly thumbnailUrl: string | null }
+type YoutubeVideoMeta = {
+  readonly title: string
+  readonly thumbnailUrl: string | null
+  /** ISO 8601, từ `snippet.publishedAt` — cùng field `fetchYoutubeExplore`'s
+   * `VideoMeta` đã dùng, thêm vào đây để `VideoSummary.createdAt` (trending/
+   * top-mọi-thời-gian) có ngày đăng thật thay vì `null` cố định. */
+  readonly publishedAt: string | null
+}
 
 /** `videos.list` chỉ nhận tối đa 50 ID mỗi request — giới hạn cứng của
  * YouTube Data API v3, trong khi `MAX_TRENDING_VIDEOS` (200) vượt xa mức đó.
@@ -706,6 +713,7 @@ const fetchYoutubeMetaBatch = async (
         readonly id?: string
         readonly snippet?: {
           readonly title?: string
+          readonly publishedAt?: string
           readonly thumbnails?: {
             readonly medium?: { readonly url?: string }
             readonly default?: { readonly url?: string }
@@ -719,6 +727,7 @@ const fetchYoutubeMetaBatch = async (
         title: item.snippet?.title ?? item.id,
         thumbnailUrl:
           item.snippet?.thumbnails?.medium?.url ?? item.snippet?.thumbnails?.default?.url ?? null,
+        publishedAt: item.snippet?.publishedAt ?? null,
       })
     }
   } catch (error) {
@@ -816,6 +825,12 @@ const fetchYoutubeAllTimeMetrics = async (
       likes: valueAt(row, 'likes') ?? 0,
       comments: valueAt(row, 'comments') ?? 0,
       shares: valueAt(row, 'shares'),
+      createdAt: meta?.publishedAt ?? null,
+      // Hàm thuần của `externalVideoId`, không cần lưu riêng — cùng cách
+      // `YOUTUBE_WATCH_URL` trong `youtube-dashboard.tsx` tự dựng, chỉ khác
+      // chỗ dựng (ở đây để field không rỗng trên `VideoSummary` — UI vẫn tự
+      // dựng lại ở nơi hiện, không đọc field này).
+      permalinkUrl: `https://www.youtube.com/watch?v=${id}`,
     })
   }
   return result

@@ -861,6 +861,8 @@ export type Database = {
           date: string
           external_video_id: string
           likes: number
+          permalink_url: string | null
+          posted_at: string | null
           shares: number
           synced_at: string
           title: string | null
@@ -873,6 +875,8 @@ export type Database = {
           date: string
           external_video_id: string
           likes?: number
+          permalink_url?: string | null
+          posted_at?: string | null
           shares?: number
           synced_at?: string
           title?: string | null
@@ -885,6 +889,8 @@ export type Database = {
           date?: string
           external_video_id?: string
           likes?: number
+          permalink_url?: string | null
+          posted_at?: string | null
           shares?: number
           synced_at?: string
           title?: string | null
@@ -1281,6 +1287,8 @@ export type Database = {
           external_video_id: string
           title: string | null
           cover_image_url: string | null
+          posted_at: string | null
+          permalink_url: string | null
           end_date: string
           end_views: number
           end_likes: number
@@ -1302,6 +1310,8 @@ export type Database = {
           external_video_id: string
           title: string | null
           cover_image_url: string | null
+          posted_at: string | null
+          permalink_url: string | null
           latest_date: string
           latest_views: number
           latest_likes: number

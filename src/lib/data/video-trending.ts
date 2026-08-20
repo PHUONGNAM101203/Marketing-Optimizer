@@ -16,6 +16,8 @@ interface VideoTrendingRow {
   readonly external_video_id: string
   readonly title: string | null
   readonly cover_image_url: string | null
+  readonly posted_at: string | null
+  readonly permalink_url: string | null
   readonly latest_date: string
   readonly latest_views: number
   readonly latest_likes: number
@@ -39,6 +41,8 @@ const toSummary = (row: VideoTrendingRow): VideoSummary => ({
   likes: row.latest_likes,
   comments: row.latest_comments,
   shares: row.latest_shares,
+  createdAt: row.posted_at,
+  permalinkUrl: row.permalink_url,
 })
 
 const toIsoDate = (date: Date): string => date.toISOString().slice(0, 10)
@@ -150,6 +154,8 @@ interface VideoRangeRow {
   readonly external_video_id: string
   readonly title: string | null
   readonly cover_image_url: string | null
+  readonly posted_at: string | null
+  readonly permalink_url: string | null
   readonly end_date: string
   readonly end_views: number
   readonly end_likes: number
@@ -211,6 +217,8 @@ export const getTiktokVideoRangeStats = async (
         likes: Math.max(0, row.end_likes - (row.baseline_likes ?? 0)),
         comments: Math.max(0, row.end_comments - (row.baseline_comments ?? 0)),
         shares: Math.max(0, row.end_shares - (row.baseline_shares ?? 0)),
+        createdAt: row.posted_at,
+        permalinkUrl: row.permalink_url,
       }),
     )
     .filter((summary) => summary.views > 0)

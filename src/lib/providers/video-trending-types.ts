@@ -15,6 +15,17 @@ export interface VideoSummary {
   /** `null` = không đọc được (khác 0 chia sẻ thật) — YouTube Analytics chưa
    * chắc luôn trả cột này, xem `YoutubeExplore.topVideos[].shares`. */
   readonly shares: number | null
+  /** ISO 8601 — ngày đăng THẬT của video (TikTok: `posted_at` lưu từ
+   * `create_time`; YouTube: gán ở nơi gọi từ `YoutubeExplore.topVideos[].createdAt`).
+   * `null` khi nguồn dữ liệu chưa lưu được (vd. dòng snapshot TikTok ghi
+   * TRƯỚC khi cột `posted_at` tồn tại — xem
+   * `20260820000001_video_metrics_posted_at.sql` — chỉ trống tạm đến lần
+   * đồng bộ tiếp theo, không phải lỗi). */
+  readonly createdAt: string | null
+  /** Link gốc xem video trên nền tảng — TikTok: `share_url` lưu sẵn (không
+   * suy ra được chỉ từ ID vì cần username); YouTube: dựng thuần từ
+   * `externalVideoId`. `null` cùng điều kiện với `createdAt`. */
+  readonly permalinkUrl: string | null
 }
 
 export interface VideoGrowthSummary extends VideoSummary {

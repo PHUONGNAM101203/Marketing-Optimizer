@@ -16,10 +16,12 @@ const RANKING_LIMIT = 5
  * `detail.data.topVideos` (Display API live, 20 video gần nhất lọc theo NGÀY
  * ĐĂNG) — cách cũ trả rỗng cho mọi video cũ hơn 20-video-gần-nhất dù video đó
  * vẫn còn hoạt động trong khoảng ngày chọn (xem docblock `rangeStats` trên
- * `ChannelDetail`). Vì vậy cả `rankedInRange` lẫn `rankedAllTime` đều thiếu
- * `createdAt`/`permalinkUrl` — bảng snapshot chưa lưu link gốc —
- * `VideoDetailDialog` tự ẩn nút link khi `permalinkUrl` null, không phải lỗi
- * hiển thị.
+ * `ChannelDetail`). `createdAt`/`permalinkUrl` giờ lấy thẳng từ
+ * `VideoSummary` (cột `posted_at`/`permalink_url` của `video_metrics_daily`,
+ * xem `20260820000001_video_metrics_posted_at.sql`) — `null` chỉ còn xảy ra
+ * với các dòng snapshot ghi TRƯỚC khi hai cột này tồn tại, tự lấp đầy ở lần
+ * đồng bộ kế tiếp. `VideoDetailDialog` tự ẩn nút link khi `permalinkUrl`
+ * null.
  */
 export function TiktokDashboard({
   rangeStats,
@@ -39,8 +41,8 @@ export function TiktokDashboard({
     likes: video.likes,
     comments: video.comments,
     shares: video.shares,
-    createdAt: null,
-    permalinkUrl: null,
+    createdAt: video.createdAt,
+    permalinkUrl: video.permalinkUrl,
   }))
   const rankedAllTime: VideoRankingItem[] = trending.topAllTime.slice(0, RANKING_LIMIT).map((video) => ({
     title: video.title,
@@ -49,8 +51,8 @@ export function TiktokDashboard({
     likes: video.likes,
     comments: video.comments,
     shares: video.shares,
-    createdAt: null,
-    permalinkUrl: null,
+    createdAt: video.createdAt,
+    permalinkUrl: video.permalinkUrl,
   }))
 
   return (

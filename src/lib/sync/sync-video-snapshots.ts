@@ -48,6 +48,8 @@ export const syncTiktokVideoSnapshots = async (
       shares: video.shares,
       title: video.title,
       cover_image_url: video.coverImageUrl,
+      posted_at: video.createdAt,
+      permalink_url: video.permalinkUrl,
       synced_at: new Date().toISOString(),
     })),
     { onConflict: 'connection_id,external_video_id,date' },

@@ -70,13 +70,27 @@ const toIsoDate = (date: Date): string => date.toISOString().slice(0, 10)
 
 /** Cận trên THẬT của khoảng ngày cho nền tảng snapshot — không phải
  * `range.end`. Mọi preset (trừ "Hôm nay") cố tình chốt `end` ở HÔM QUA vì dữ
- * liệu hôm nay của GA4/GSC/Ads chưa xử lý xong. Merchant Center không có độ
- * trễ đó — hàng snapshot ghi đúng lúc đồng bộ, thường là HÔM NAY. Giữ nguyên
- * `range.end` sẽ khiến snapshot vừa đồng bộ xong không bao giờ lọt vào bất kỳ
- * preset nào — "Đang đồng bộ lần đầu…" hiện vĩnh viễn dù đã có dữ liệu thật. */
+ * liệu hôm nay của GA4/GSC/Ads chưa xử lý xong. Merchant Center/TikTok không
+ * có độ trễ đó — hàng snapshot ghi đúng lúc đồng bộ, thường là HÔM NAY. Giữ
+ * nguyên `range.end` sẽ khiến snapshot vừa đồng bộ xong không bao giờ lọt vào
+ * bất kỳ preset nào — "Đang đồng bộ lần đầu…" hiện vĩnh viễn dù đã có dữ liệu
+ * thật.
+ *
+ * CHỈ nới cận trên khi `rangeEnd` ĐÚNG BẰNG "hôm qua" — tức đây chính là cái
+ * mốc bị preset tự động chốt xuống, không phải một ngày quá khứ THẬT SỰ được
+ * chọn có chủ đích. Bản trước viết `rangeEnd >= todayIso ? rangeEnd :
+ * todayIso` — biểu thức này ép MỌI ngày quá khứ (không chỉ "hôm qua") thành
+ * "hôm nay", kể cả `range.previousEnd` của kỳ so sánh (vd. 8 ngày trước) hay
+ * một khoảng tuỳ chỉnh thật sự kết thúc trong quá khứ xa. Hậu quả: truy vấn
+ * kỳ so sánh luôn đọc SNAPSHOT MỚI NHẤT giống hệt kỳ hiện tại thay vì đúng
+ * trạng thái tại thời điểm kỳ đó — bảng so sánh TikTok/Merchant Center ra
+ * đúng MỘT bộ số cho cả hai cột (chênh lệch 0,0% giả) dù dữ liệu thật khác
+ * nhau. Phát hiện qua đối chiếu số liệu người dùng báo cáo với hành vi hàm
+ * này trên khoảng so sánh 06-08–12-08 khi khoảng hiện tại là 13-08–19-08. */
 export const snapshotUpperBound = (rangeEnd: string): string => {
   const todayIso = toIsoDate(new Date())
-  return rangeEnd >= todayIso ? rangeEnd : todayIso
+  const yesterdayIso = toIsoDate(new Date(Date.now() - 86_400_000))
+  return rangeEnd === yesterdayIso ? todayIso : rangeEnd
 }
 
 const EMPTY_TOTALS: ChannelTotals = {
