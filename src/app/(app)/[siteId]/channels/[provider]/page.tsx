@@ -13,11 +13,16 @@ import { ExternalChannelLink } from '@/components/connections/external-channel-l
 import { TiktokChannelHeader } from '@/components/channels/tiktok/tiktok-channel-header'
 import { MetaChannelHeader } from '@/components/channels/meta/meta-channel-header'
 import { ChannelSwitcher } from '@/components/channels/channel-switcher'
+import { ChannelComparisonPanel } from '@/components/channels/channel-comparison-panel'
 import { channelConnectionCookieName } from '@/lib/domain/channel-connection-cookie'
 import { getSite } from '@/lib/data/sites'
 import { getChannelDetail, listChannelConnections } from '@/lib/data/site-channel-detail'
 import { getChannelDailySeries, getChannelSummaries } from '@/lib/data/site-channels'
-import { parseCustomRangeParams, parseRangeParam } from '@/lib/domain/date-range-param'
+import {
+  parseCompareRangeParams,
+  parseCustomRangeParams,
+  parseRangeParam,
+} from '@/lib/domain/date-range-param'
 import { resolveDateRange } from '@/mock/dates'
 import { PROVIDER_META, isProviderId } from '@/lib/domain/providers'
 import { formatDateRange } from '@/lib/format'
@@ -48,6 +53,8 @@ export default async function ChannelDetailPage({
     readonly range?: string
     readonly from?: string
     readonly to?: string
+    readonly compareFrom?: string
+    readonly compareTo?: string
     readonly status?: string
     readonly page?: string
     readonly connection?: string
@@ -58,6 +65,8 @@ export default async function ChannelDetailPage({
     range: rangeParam,
     from,
     to,
+    compareFrom,
+    compareTo,
     status: statusParam,
     page: pageParam,
     connection: connectionParam,
@@ -70,15 +79,24 @@ export default async function ChannelDetailPage({
     parseRangeParam(rangeParam),
     new Date(),
     parseCustomRangeParams(from, to) ?? undefined,
+    parseCompareRangeParams(compareFrom, compareTo) ?? undefined,
   )
   const productFilter = statusParam && isProductStatusFilter(statusParam) ? statusParam : undefined
   const page = Math.max(1, Number(pageParam) || 1)
 
-  const [summaries, connections] = await Promise.all([
+  const [summaries, compareSummaries, connections] = await Promise.all([
     getChannelSummaries(site.id, range),
+    // `range.previousStart`/`previousEnd` LUÔN có giá trị (kỳ liền trước tự
+    // động nếu không tự chọn "So sánh với…", xem `resolveDateRange`) — panel
+    // so sánh vì vậy luôn có dữ liệu để hiện, không chỉ khi người dùng bấm
+    // chọn kỳ so sánh tuỳ chỉnh. Cùng bảng `metrics_daily`/live-fetch,
+    // KHÔNG thêm nguồn dữ liệu mới — chỉ gọi lại `getChannelSummaries` với
+    // khoảng ngày khác.
+    getChannelSummaries(site.id, { start: range.previousStart, end: range.previousEnd }),
     listChannelConnections(site.id, provider),
   ])
   const summary = summaries.get(provider)
+  const compareSummary = compareSummaries.get(provider)
 
   // `?connection=` chỉ đáng tin khi đúng là một trong các connection THẬT của
   // provider này — id lạ/đã bị xoá thì coi như không có param. Không có/không
@@ -186,6 +204,17 @@ export default async function ChannelDetailPage({
           />
         </div>
       )}
+
+      {summary?.connected && compareSummary ? (
+        <ChannelComparisonPanel
+          provider={provider}
+          summary={summary}
+          compareSummary={compareSummary}
+          currency={site.currency}
+          currentLabel={formatDateRange(range.start, range.end)}
+          compareLabel={formatDateRange(range.previousStart, range.previousEnd)}
+        />
+      ) : null}
 
       {!summary?.connected ? (
         <EmptyState
