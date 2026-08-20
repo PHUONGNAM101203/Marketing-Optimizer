@@ -60,7 +60,11 @@ export function SideRail({
     <nav
       aria-label="Điều hướng chính"
       className={cn(
-        'flex h-dvh w-[var(--rail-w)] shrink-0 flex-col',
+        // Ẩn hẳn dưới `lg:` — rail cố định 264px không có chế độ mobile nào,
+        // chiếm 82% một màn 320px nếu cứ hiện. Điều hướng mobile chuyển hẳn
+        // sang `MobileNavDrawer` (trượt từ trái, mở qua nút hamburger ở
+        // Topbar) thay vì cố nhồi rail này vào màn hẹp.
+        'hidden h-dvh w-[var(--rail-w)] shrink-0 flex-col lg:flex',
         'border-r border-[var(--color-rule)] bg-[var(--color-paper-2)]',
         'sticky top-0',
         'transition-[width] duration-[var(--dur-base)] ease-[var(--ease-out)]',

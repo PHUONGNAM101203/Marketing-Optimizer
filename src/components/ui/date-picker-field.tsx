@@ -111,7 +111,9 @@ export function DatePickerField({
             !selected && 'text-[var(--color-ink-3)]',
           )}
         >
-          {selected ? format(selected, 'd MMM yyyy', { locale: vi }) : placeholder}
+          <span className="min-w-0 truncate">
+            {selected ? format(selected, 'd MMM yyyy', { locale: vi }) : placeholder}
+          </span>
           <CalendarDays aria-hidden className="size-4 shrink-0 text-[var(--color-ink-3)]" />
         </button>
       </PopoverPrimitive.Trigger>
@@ -120,7 +122,8 @@ export function DatePickerField({
         <PopoverPrimitive.Content
           align="start"
           sideOffset={6}
-          className="z-50 rounded-[var(--radius-lg)] border border-[var(--color-rule)] bg-[var(--color-paper)] p-3 shadow-[var(--shadow-lift)]"
+          collisionPadding={16}
+          className="z-50 max-w-[calc(100vw-2rem)] rounded-[var(--radius-lg)] border border-[var(--color-rule)] bg-[var(--color-paper)] p-3 shadow-[var(--shadow-lift)]"
         >
           <DayPicker
             mode="single"

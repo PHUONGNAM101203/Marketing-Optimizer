@@ -52,7 +52,11 @@ export function CardHeader({
   return (
     <header
       className={cn(
-        'flex items-start justify-between gap-4 px-5 pt-5 pb-4',
+        // `flex-wrap`: `action` (nhiều nút/badge, `shrink-0`) rơi xuống HÀNG
+        // RIÊNG khi không đủ chỗ cạnh `title` — không có nó, hàng này ép
+        // tràn viewport ở 320-375px thay vì xuống dòng (vd. header có badge +
+        // select + 2 nút của trang Kế hoạch). Cùng cách `PageHeader` đã làm.
+        'flex flex-wrap items-start justify-between gap-4 px-5 pt-5 pb-4',
         ruled && 'border-b border-[var(--color-rule)]',
         className,
       )}
@@ -110,7 +114,7 @@ export function SectionHead({
   className,
 }: SectionHeadProps) {
   return (
-    <div className={cn('flex items-end justify-between gap-4', className)}>
+    <div className={cn('flex flex-wrap items-end justify-between gap-4', className)}>
       <div className="min-w-0">
         {label ? (
           <p className="mb-1.5 text-[length:var(--text-2xs)] font-medium tracking-[var(--tracking-label)] text-[var(--color-ink-3)] uppercase">

@@ -271,17 +271,28 @@ function PlanSection({
                         0,
                       )}
                     </TD>
-                    <TD>
+                    <TD className="whitespace-nowrap">
                       {formatDateTime(item.startDate)} – {formatDateTime(item.endDate)}
                     </TD>
-                    <TD>
-                      {item.kpiTargets
-                        .map((target) =>
-                          target.unit === 'ratio'
-                            ? `${target.metric} ≥ ${target.target}x`
-                            : `${target.metric} ≥ ${new Intl.NumberFormat('vi-VN').format(target.target)}`,
-                        )
-                        .join(' · ')}
+                    <TD className="max-w-[16rem]">
+                      <span
+                        className="block truncate"
+                        title={item.kpiTargets
+                          .map((target) =>
+                            target.unit === 'ratio'
+                              ? `${target.metric} ≥ ${target.target}x`
+                              : `${target.metric} ≥ ${new Intl.NumberFormat('vi-VN').format(target.target)}`,
+                          )
+                          .join(' · ')}
+                      >
+                        {item.kpiTargets
+                          .map((target) =>
+                            target.unit === 'ratio'
+                              ? `${target.metric} ≥ ${target.target}x`
+                              : `${target.metric} ≥ ${new Intl.NumberFormat('vi-VN').format(target.target)}`,
+                          )
+                          .join(' · ')}
+                      </span>
                     </TD>
                     <TD>
                       <form action={deletePlanItemAction}>

@@ -3,6 +3,8 @@ import { after } from 'next/server'
 import type { ReactNode } from 'react'
 import { SideRail } from '@/components/layout/side-rail'
 import { Topbar } from '@/components/layout/topbar'
+import { MobileNavDrawer } from '@/components/layout/mobile-nav-drawer'
+import { MobileNavProvider } from '@/components/layout/mobile-nav-context'
 import { getCurrentProfile, getSite, listSites, setLastSiteId } from '@/lib/data/sites'
 import { getConnectionSummary } from '@/lib/data/connections'
 import { createClient } from '@/lib/supabase/server'
@@ -62,27 +64,36 @@ export default async function SiteLayout({
     // trôi giữa trang. Cố định chiều cao container ở viewport rồi cho
     // `<main>` tự cuộn riêng loại bỏ hẳn cơ chế lỗi này, bất kể control nào
     // gây co ngót nội dung.
-    <div className="flex h-dvh overflow-hidden">
-      <SideRail
-        siteId={site.id}
-        siteName={site.name}
-        siteDomain={site.domain}
-        userName={profile.displayName}
-        userEmail={profile.email}
-      />
-
-      <div className="flex min-w-0 flex-1 flex-col">
-        <Topbar
-          site={site}
-          sites={sites}
-          lastSyncedAt={connections.lastSyncedAt}
-          hasConnections={!connections.isEmpty}
-          // Giờ đồng bộ là dữ liệu THẬT (connections.lastSyncedAt từ Supabase) —
-          // phải so với giờ THẬT, không phải ngày neo của dữ liệu mock.
-          now={new Date()}
+    <MobileNavProvider>
+      <div className="flex h-dvh overflow-hidden">
+        <SideRail
+          siteId={site.id}
+          siteName={site.name}
+          siteDomain={site.domain}
+          userName={profile.displayName}
+          userEmail={profile.email}
         />
-        <main className="min-w-0 flex-1 overflow-y-auto">{children}</main>
+        <MobileNavDrawer
+          siteId={site.id}
+          siteName={site.name}
+          siteDomain={site.domain}
+          userName={profile.displayName}
+          userEmail={profile.email}
+        />
+
+        <div className="flex min-w-0 flex-1 flex-col">
+          <Topbar
+            site={site}
+            sites={sites}
+            lastSyncedAt={connections.lastSyncedAt}
+            hasConnections={!connections.isEmpty}
+            // Giờ đồng bộ là dữ liệu THẬT (connections.lastSyncedAt từ Supabase) —
+            // phải so với giờ THẬT, không phải ngày neo của dữ liệu mock.
+            now={new Date()}
+          />
+          <main className="min-w-0 flex-1 overflow-y-auto">{children}</main>
+        </div>
       </div>
-    </div>
+    </MobileNavProvider>
   )
 }

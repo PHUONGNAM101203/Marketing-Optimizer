@@ -167,7 +167,7 @@ function StatsDonutTooltip({
   const slice = payload[0].payload
 
   return (
-    <div className="rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-paper)] px-3 py-2 shadow-[0_8px_28px_-12px_rgb(0_0_0/0.18)]">
+    <div className="max-w-[calc(100vw-2rem)] rounded-[var(--radius-md)] border border-[var(--color-rule)] bg-[var(--color-paper)] px-3 py-2 shadow-[0_8px_28px_-12px_rgb(0_0_0/0.18)]">
       <p className="flex items-center gap-1.5 text-[length:var(--text-xs)] text-[var(--color-ink-2)]">
         <span
           aria-hidden

@@ -4,7 +4,7 @@ import Link from 'next/link'
 import dynamic from 'next/dynamic'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { useActionState, useState, useTransition } from 'react'
-import { Calendar, Check, ChevronDown, GitCompare, Plus, RefreshCw, Search, X } from 'lucide-react'
+import { Calendar, Check, ChevronDown, GitCompare, Menu, Plus, RefreshCw, Search, X } from 'lucide-react'
 import { DropdownMenu } from 'radix-ui'
 import { cn } from '@/lib/cn'
 import { Button } from '@/components/ui/button'
@@ -12,6 +12,7 @@ import { StatusDot } from '@/components/ui/badge'
 import { DialogContent, DialogRoot } from '@/components/ui/dialog'
 import { ThemeToggle } from '@/components/layout/theme-toggle'
 import { SiteFavicon } from '@/components/brand/site-favicon'
+import { useMobileNav } from '@/components/layout/mobile-nav-context'
 import { resyncSiteAction, type ResyncState } from '@/lib/actions/sync'
 import { parseCompareRangeParams, parseCustomRangeParams, parseRangeParam } from '@/lib/domain/date-range-param'
 import { DATE_RANGE_LABELS, type DateRangePreset, type Site } from '@/lib/domain/site'
@@ -67,13 +68,31 @@ export function Topbar({ site, sites, lastSyncedAt, hasConnections, now }: Topba
     searchParams.get('compareFrom') ?? undefined,
     searchParams.get('compareTo') ?? undefined,
   )
+  const { setOpen } = useMobileNav()
+
   return (
     <header
       className={cn(
-        'sticky top-0 z-20 flex h-[var(--topbar-h)] items-center gap-3',
-        'border-b border-[var(--color-rule)] bg-[var(--color-paper)]/85 px-5 backdrop-blur',
+        'sticky top-0 z-20 flex h-[var(--topbar-h)] items-center gap-2 sm:gap-3',
+        'border-b border-[var(--color-rule)] bg-[var(--color-paper)]/85 px-3 backdrop-blur sm:px-5',
+        // Notch/Dynamic Island trên iOS landscape — no-op ở mọi nơi khác vì
+        // `env(safe-area-inset-top)` = 0 khi không có vùng che (cần
+        // `viewport-fit=cover` khai báo ở `app/layout.tsx`).
+        'pt-[env(safe-area-inset-top)]',
       )}
     >
+      {/* Thay `SideRail` trên mobile (ẩn dưới `lg:`, xem side-rail.tsx) — mở
+          `MobileNavDrawer` cùng cấp, chia sẻ state qua `MobileNavProvider`. */}
+      <Button
+        variant="ghost"
+        size="icon"
+        aria-label="Mở menu điều hướng"
+        className="shrink-0 lg:hidden"
+        onClick={() => setOpen(true)}
+      >
+        <Menu aria-hidden className="size-5" />
+      </Button>
+
       <SiteSwitcher site={site} sites={sites} />
 
       <div className="relative hidden min-w-0 flex-1 md:block">
@@ -117,9 +136,13 @@ export function Topbar({ site, sites, lastSyncedAt, hasConnections, now }: Topba
 
         <DateRangeMenu preset={preset} customRange={customRange} compareRange={compareRange} />
 
-        <SyncAllButton siteId={site.id} />
-
-        <ThemeToggle />
+        {/* Chuyển vào chân `MobileNavDrawer` trên mobile — nhường chỗ cho
+            SiteSwitcher/DateRangeMenu, hai control người dùng chạm thường
+            xuyên hơn hẳn. Vẫn ở đây nguyên trạng từ `lg:` trở lên. */}
+        <div className="hidden lg:flex lg:items-center lg:gap-2">
+          <SyncAllButton siteId={site.id} />
+          <ThemeToggle />
+        </div>
       </div>
     </header>
   )
@@ -143,7 +166,7 @@ function SiteSwitcher({
     // một menu điều hướng đơn giản.
     <DropdownMenu.Root modal={false}>
       <DropdownMenu.Trigger asChild>
-        <Button variant="ghost" size="sm" className="max-w-[14rem] gap-1.5">
+        <Button variant="ghost" size="sm" className="min-w-0 max-w-[8rem] gap-1.5 sm:max-w-[11rem] lg:max-w-[14rem]">
           <span className="truncate">{site.name}</span>
           <ChevronDown aria-hidden className="size-3.5 shrink-0" />
         </Button>
@@ -299,8 +322,13 @@ function DateRangeMenu({
             size="sm"
             className="gap-1.5"
             state={isPending ? 'loading' : 'idle'}
+            aria-label={`Khoảng ngày: ${triggerLabel}`}
           >
-            {triggerLabel}
+            {/* Chỉ icon dưới `sm:` — nhãn preset ("7 ngày qua"…) cùng
+                SiteSwitcher/hamburger không đủ chỗ trên 320-375px, xem audit
+                mobile. `aria-label` bù lại tên đầy đủ cho screen reader. */}
+            <Calendar aria-hidden className="size-3.5 sm:hidden" />
+            <span className="hidden sm:inline">{triggerLabel}</span>
             <ChevronDown aria-hidden className="size-3.5" />
           </Button>
         </DropdownMenu.Trigger>

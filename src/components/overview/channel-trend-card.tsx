@@ -50,7 +50,12 @@ export function ChannelTrendCard({
   const detailHref = `/${siteId}/channels/${provider}`
 
   return (
-    <Card className="flex flex-col overflow-hidden">
+    // KHÔNG `overflow-hidden` — nội dung (chart, quick-stat) đã tự nằm trong
+    // padding của thẻ nên không tràn ra ngoài viền bo tròn, nhưng
+    // `overflow-hidden` từng cắt cả tooltip hover của Recharts (đứng ngoài
+    // luồng, absolute) khi nó đẩy lên gần mép trên ở biến thể `compact`
+    // (140px, margin trên chỉ 4px) trên lưới 1 cột mobile.
+    <Card className="flex flex-col">
       <div className="flex items-center justify-between gap-3 p-4 pb-0">
         <div className="flex min-w-0 items-center gap-2">
           <ProviderMark provider={provider} size="sm" />
@@ -230,7 +235,7 @@ function TiktokStatChip({
       <p
         data-numeric
         className={cn(
-          'leading-none font-semibold text-[var(--color-ink)]',
+          'w-full truncate leading-none font-semibold text-[var(--color-ink)]',
           compact ? 'text-[length:var(--text-sm)]' : 'text-[length:var(--text-lg)]',
         )}
       >
@@ -283,7 +288,7 @@ function QuickStat({
 
   return (
     <div className="flex flex-col items-center gap-0.5 rounded-[var(--radius-md)] bg-[var(--color-paper-2)] px-2 py-2.5 text-center">
-      <p data-numeric className={`text-[length:var(--text-lg)] leading-none font-semibold ${toneClass}`}>
+      <p data-numeric className={`w-full truncate text-[length:var(--text-lg)] leading-none font-semibold ${toneClass}`}>
         {format(value)}
       </p>
       <p className="text-[length:var(--text-2xs)] tracking-[var(--tracking-label)] text-[var(--color-ink-3)] uppercase">

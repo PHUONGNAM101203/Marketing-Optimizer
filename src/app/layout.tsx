@@ -1,4 +1,4 @@
-import type { Metadata } from 'next'
+import type { Metadata, Viewport } from 'next'
 import { Be_Vietnam_Pro, Inter } from 'next/font/google'
 import './globals.css'
 import { ThemeScript } from '@/components/layout/theme-script'
@@ -23,6 +23,17 @@ const body = Inter({
   subsets: ['latin', 'latin-ext', 'vietnamese'],
   display: 'swap',
 })
+
+// `viewportFit: 'cover'` là điều kiện BẮT BUỘC để `env(safe-area-inset-*)`
+// trả về giá trị khác 0 trên iOS (notch/Dynamic Island/home-indicator) —
+// thiếu dòng này thì mọi `padding: env(...)` trong CSS chỉ là no-op. Topbar
+// dính đỉnh (`sticky top-0`) và menu điều hướng trượt từ trái trên mobile
+// (`MobileNavDrawer`) đều dựa vào biến này.
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  viewportFit: 'cover',
+}
 
 export const metadata: Metadata = {
   title: {

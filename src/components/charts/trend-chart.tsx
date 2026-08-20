@@ -109,7 +109,11 @@ export function TrendChart({
         <ResponsiveContainer width="100%" height="100%">
           <ComposedChart
             data={data as TrendPoint[]}
-            margin={{ top: 4, right: 8, bottom: 0, left: 0 }}
+            // top/right nới hơn bản gốc (4/8px) — chừa chỗ cho tooltip hover
+            // (không portal, chỉ là div nằm trong luồng) khi nó đẩy lên gần
+            // mép trên ở biến thể `compact` (140px), và cho activeDot/nhãn
+            // trục cuối cùng không dính sát mép phải ở chart hẹp trên mobile.
+            margin={{ top: 12, right: 12, bottom: 0, left: 0 }}
           >
             <defs>
               {series
@@ -159,7 +163,7 @@ export function TrendChart({
               tickLine={false}
               axisLine={false}
               tick={{ fill: 'var(--color-ink-3)', fontSize: 12 }}
-              width={62}
+              width={72}
             />
 
             <Tooltip
@@ -223,7 +227,7 @@ function TrendTooltip({
   return (
     <div
       className={cn(
-        'rounded-[var(--radius-md)] border border-[var(--color-rule)]',
+        'max-w-[calc(100vw-2rem)] rounded-[var(--radius-md)] border border-[var(--color-rule)]',
         'bg-[var(--color-paper)] px-3 py-2',
         'shadow-[0_8px_28px_-12px_rgb(0_0_0/0.18)]',
       )}
