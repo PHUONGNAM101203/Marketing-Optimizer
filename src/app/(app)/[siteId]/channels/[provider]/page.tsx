@@ -17,7 +17,8 @@ import { ChannelComparisonPanel } from '@/components/channels/channel-comparison
 import { channelConnectionCookieName } from '@/lib/domain/channel-connection-cookie'
 import { getSite } from '@/lib/data/sites'
 import { getChannelDetail, listChannelConnections } from '@/lib/data/site-channel-detail'
-import { getChannelDailySeries, getChannelSummaries } from '@/lib/data/site-channels'
+import { getChannelDailySeries, getChannelSummaries, snapshotUpperBound } from '@/lib/data/site-channels'
+import { aggregateVideoRangeGrowth, getTiktokVideoRangeStats } from '@/lib/data/video-trending'
 import {
   parseCompareRangeParams,
   parseCustomRangeParams,
@@ -126,6 +127,33 @@ export default async function ChannelDetailPage({
   ])
 
   const activeConnectionId = detail && detail.kind !== 'unsupported' ? detail.connectionId : connections[0]?.id
+
+  // Bảng so sánh dùng SỐ THẬT theo ĐÚNG khoảng ngày đang so cho TikTok —
+  // `ChannelSummary.extra.followerCount`/`likesCount`/`videoCount` là
+  // SNAPSHOT trạng thái, hai kỳ dễ trỏ về đúng một dòng khi connection còn ít
+  // lịch sử (so ra 0% chênh lệch giả, xem `channelComparisonMetrics`). Tính
+  // tăng trưởng view/like/comment THẬT trong từng khoảng bằng
+  // `getTiktokVideoRangeStats` (cùng nguồn "Video xem nhiều nhất" đã dùng,
+  // chỉ gọi thêm một lần cho khoảng so sánh) rồi ghép vào bản sao `extra` —
+  // không đụng tới `summary`/`compareSummary` gốc (vẫn dùng nguyên cho mọi
+  // chỗ khác trên trang).
+  let comparisonSummary = summary
+  let comparisonCompareSummary = compareSummary
+  if (provider === 'tiktok' && detail && detail.kind === 'tiktok' && summary && compareSummary) {
+    const compareRangeStats = await getTiktokVideoRangeStats(detail.connectionId, {
+      startDate: range.previousStart,
+      endDate: snapshotUpperBound(range.previousEnd),
+    })
+    comparisonSummary = {
+      ...summary,
+      extra: { ...summary.extra, ...aggregateVideoRangeGrowth(detail.rangeStats) },
+    }
+    comparisonCompareSummary = {
+      ...compareSummary,
+      extra: { ...compareSummary.extra, ...aggregateVideoRangeGrowth(compareRangeStats) },
+    }
+  }
+
   const channelSwitcher =
     connections.length > 1 && activeConnectionId ? (
       <ChannelSwitcher
@@ -205,11 +233,11 @@ export default async function ChannelDetailPage({
         </div>
       )}
 
-      {summary?.connected && compareSummary ? (
+      {summary?.connected && comparisonSummary && comparisonCompareSummary ? (
         <ChannelComparisonPanel
           provider={provider}
-          summary={summary}
-          compareSummary={compareSummary}
+          summary={comparisonSummary}
+          compareSummary={comparisonCompareSummary}
           currency={site.currency}
           currentLabel={formatDateRange(range.start, range.end)}
           compareLabel={formatDateRange(range.previousStart, range.previousEnd)}

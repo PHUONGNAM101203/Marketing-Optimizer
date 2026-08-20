@@ -56,16 +56,24 @@ export const channelComparisonMetrics = (provider: ProviderId): readonly Compari
     ]
   }
 
-  // TikTok là SNAPSHOT (xem `SNAPSHOT_PROVIDERS` ở `site-channels.ts`) —
-  // follower/like/video count là TRẠNG THÁI TẠI THỜI ĐIỂM đồng bộ, không
-  // phải phát sinh trong kỳ. So sánh hai trạng thái NGAY TẠI cuối mỗi kỳ vẫn
-  // có nghĩa ("kênh lớn nhanh cỡ nào từ kỳ trước tới kỳ này"), chỉ khác cách
-  // đọc — không phải tổng cộng dồn.
+  // TikTok: follower/like/video TỔNG (`extra.followerCount`/`likesCount`/
+  // `videoCount`) là SNAPSHOT trạng thái tại lúc đồng bộ — với connection còn
+  // ít lịch sử, hai kỳ dễ trỏ về ĐÚNG một dòng snapshot duy nhất, so ra 0%
+  // chênh lệch dù kênh có hoạt động thật trong kỳ (gây hiểu lầm "không đổi
+  // gì"). Bốn dòng dưới đây đọc từ `viewsGrowth`/`likesGrowth`/`commentsGrowth`
+  // /`activeVideoCount` — SỐ THẬT ĐÃ TÍNH SẴN cho ĐÚNG khoảng ngày đang so
+  // (`aggregateVideoRangeGrowth` trên `getTiktokVideoRangeStats`, ghép vào
+  // `ChannelSummary.extra` ở `channels/[provider]/page.tsx`), không phải suy
+  // ra từ tổng cộng dồn — đúng yêu cầu "lấy đúng số liệu thực tế mà khoảng đó
+  // trả về". `followerCount` vẫn giữ lại (trạng thái CUỐI kỳ vẫn có nghĩa để
+  // theo dõi kênh lớn dần), chỉ bỏ `likesCount`/`videoCount` tổng cộng dồn.
   if (provider === 'tiktok') {
     return [
-      { key: 'followerCount', label: 'Follower', formatter: 'compact', getValue: (s) => s.extra.followerCount ?? 0 },
-      { key: 'likesCount', label: 'Lượt thích', formatter: 'compact', getValue: (s) => s.extra.likesCount ?? 0 },
-      { key: 'videoCount', label: 'Số video', formatter: 'compact', getValue: (s) => s.extra.videoCount ?? 0 },
+      { key: 'viewsGrowth', label: 'Lượt xem tăng thêm', formatter: 'compact', getValue: (s) => s.extra.viewsGrowth ?? null },
+      { key: 'activeVideoCount', label: 'Video có hoạt động', formatter: 'number', getValue: (s) => s.extra.activeVideoCount ?? null },
+      { key: 'likesGrowth', label: 'Lượt thích tăng thêm', formatter: 'compact', getValue: (s) => s.extra.likesGrowth ?? null },
+      { key: 'commentsGrowth', label: 'Bình luận tăng thêm', formatter: 'compact', getValue: (s) => s.extra.commentsGrowth ?? null },
+      { key: 'followerCount', label: 'Follower (cuối kỳ)', formatter: 'compact', getValue: (s) => s.extra.followerCount ?? 0 },
     ]
   }
 

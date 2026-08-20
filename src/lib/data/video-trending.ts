@@ -217,3 +217,35 @@ export const getTiktokVideoRangeStats = async (
     .sort((a, b) => b.views - a.views)
     .slice(0, MAX_RANGE_RESULTS)
 }
+
+export interface VideoRangeGrowthTotals {
+  readonly viewsGrowth: number
+  readonly likesGrowth: number
+  readonly commentsGrowth: number
+  readonly sharesGrowth: number
+  /** Số video CÓ tăng trưởng views trong khoảng — khác `extra.videoCount`
+   * (tổng số video account từng đăng, snapshot cộng dồn) — đây là "bao nhiêu
+   * video thật sự hoạt động trong đúng khoảng ngày này". */
+  readonly activeVideoCount: number
+}
+
+/**
+ * Cộng dồn `getTiktokVideoRangeStats` thành tổng MỘT con số — dùng cho bảng
+ * so sánh hai khoảng ngày (`ChannelComparisonPanel`), nơi cần "view tăng
+ * thêm bao nhiêu trong kỳ" chứ không phải xếp hạng từng video. LƯU Ý: kế
+ * thừa đúng giới hạn `MAX_RANGE_RESULTS` (top 50) của `getTiktokVideoRangeStats`
+ * — tài khoản có trên 50 video tăng trưởng trong cùng một khoảng sẽ bị đếm
+ * thiếu phần đuôi, chấp nhận được vì đây là con số THAM KHẢO đối chiếu hai kỳ,
+ * không phải báo cáo tài chính cần chính xác tuyệt đối.
+ */
+export const aggregateVideoRangeGrowth = (stats: readonly VideoSummary[]): VideoRangeGrowthTotals =>
+  stats.reduce(
+    (totals, video) => ({
+      viewsGrowth: totals.viewsGrowth + video.views,
+      likesGrowth: totals.likesGrowth + video.likes,
+      commentsGrowth: totals.commentsGrowth + video.comments,
+      sharesGrowth: totals.sharesGrowth + (video.shares ?? 0),
+      activeVideoCount: totals.activeVideoCount + 1,
+    }),
+    { viewsGrowth: 0, likesGrowth: 0, commentsGrowth: 0, sharesGrowth: 0, activeVideoCount: 0 },
+  )

@@ -20,6 +20,7 @@ import type { VideoSummary, VideoTrendingResult } from '@/lib/providers/video-tr
 import type { ContentTrendingResult } from '@/lib/providers/content-trending-types'
 import { getTiktokVideoTrending, getTiktokVideoRangeStats } from '@/lib/data/video-trending'
 import { getContentTrending } from '@/lib/data/content-trending'
+import { snapshotUpperBound } from '@/lib/data/site-channels'
 import { fetchGoogleAdsCampaignMetrics } from '@/lib/providers/google-ads'
 import {
   fetchMerchantCenterProducts,
@@ -604,8 +605,18 @@ export const getChannelDetail = async (
         // với khoảng ngày trang đang chọn (xem Task 4/5 trong plan này).
         getTiktokVideoTrending(connection.id),
         // Đọc riêng từ snapshot đã lưu, không phải `data.topVideos` — xem
-        // docblock `rangeStats` trên `ChannelDetail`.
-        getTiktokVideoRangeStats(connection.id, range),
+        // docblock `rangeStats` trên `ChannelDetail`. `snapshotUpperBound`
+        // (không phải `range.endDate` suông): mọi preset (trừ "Hôm nay") cố
+        // tình chốt `endDate` ở HÔM QUA (dữ liệu GA4/GSC/Ads hôm nay chưa xử
+        // lý xong), nhưng snapshot TikTok ghi đúng lúc đồng bộ — THƯỜNG LÀ
+        // HÔM NAY. Giữ nguyên `range.endDate` khiến snapshot vừa đồng bộ
+        // xong không bao giờ lọt vào `get_video_range_snapshots` (điều kiện
+        // `date <= p_range_end`), "Video xem nhiều nhất" trống mãi dù đã có
+        // dữ liệu thật — xác nhận qua truy vấn DB thật (106 dòng, toàn bộ
+        // ngày hôm nay, trong khi mọi preset chốt endDate ở hôm qua). Cùng
+        // hàm `getChannelSummaries`/`getChannelDailySeries*` đã dùng cho
+        // metrics_daily, giờ áp thêm cho video_metrics_daily.
+        getTiktokVideoRangeStats(connection.id, { ...range, endDate: snapshotUpperBound(range.endDate) }),
       ])
       const daysSinceConnected = Math.floor((Date.now() - new Date(connectedAt).getTime()) / 86_400_000)
       return {

@@ -74,7 +74,7 @@ const toIsoDate = (date: Date): string => date.toISOString().slice(0, 10)
  * trễ đó — hàng snapshot ghi đúng lúc đồng bộ, thường là HÔM NAY. Giữ nguyên
  * `range.end` sẽ khiến snapshot vừa đồng bộ xong không bao giờ lọt vào bất kỳ
  * preset nào — "Đang đồng bộ lần đầu…" hiện vĩnh viễn dù đã có dữ liệu thật. */
-const snapshotUpperBound = (rangeEnd: string): string => {
+export const snapshotUpperBound = (rangeEnd: string): string => {
   const todayIso = toIsoDate(new Date())
   return rangeEnd >= todayIso ? rangeEnd : todayIso
 }
