@@ -572,10 +572,9 @@ export function ChannelDetailBody({
               label: 'Tổng quan',
               panel: (
                 <div className="flex flex-col gap-6">
-                  {siteId && startDate && endDate ? (
+                  {startDate && endDate ? (
                     <Suspense fallback={<TiktokExploreGridSkeleton />}>
                       <TiktokExploreSection
-                        siteId={siteId}
                         connectionId={detail.connectionId}
                         startDate={startDate}
                         endDate={endDate}
@@ -593,12 +592,6 @@ export function ChannelDetailBody({
                   rangeStats={detail.rangeStats}
                   trending={detail.trending}
                   rangeLabel={DATE_RANGE_LABELS[preset]}
-                  // Trang cha (`channels/[provider]/page.tsx`) luôn truyền
-                  // `startDate` cho MỌI provider — `?? ''` chỉ là fallback
-                  // kiểu học (prop khai báo optional để dùng chung được cho
-                  // provider khác không cần nó), không phải nhánh thật sẽ
-                  // chạy.
-                  rangeStartDate={startDate ?? ''}
                   videoSnapshotsLikelyBroken={detail.videoSnapshotsLikelyBroken}
                 />
               ),

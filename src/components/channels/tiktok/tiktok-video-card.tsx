@@ -25,9 +25,9 @@ export function TiktokVideoCard({ video }: { readonly video: TiktokVideoCardData
             'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-focus)]',
           )}
         >
-          {video.coverImageUrl ? (
+          {video.thumbnailUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={video.coverImageUrl} alt="" loading="lazy" className="size-full object-cover" />
+            <img src={video.thumbnailUrl} alt="" loading="lazy" className="size-full object-cover" />
           ) : (
             <div className="flex size-full items-center justify-center">
               <Eye aria-hidden className="size-6 text-[var(--color-ink-3)]" />
@@ -50,13 +50,13 @@ export function TiktokVideoCard({ video }: { readonly video: TiktokVideoCardData
       <VideoDetailDialog
         video={{
           title: video.title,
-          thumbnailUrl: video.coverImageUrl,
+          thumbnailUrl: video.thumbnailUrl,
           views: video.views,
           likes: video.likes,
           comments: video.comments,
           shares: video.shares,
           createdAt: video.createdAt,
-          permalinkUrl: video.shareUrl,
+          permalinkUrl: video.permalinkUrl,
         }}
         platformLabel="TikTok"
       />

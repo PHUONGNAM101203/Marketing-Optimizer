@@ -37,7 +37,6 @@ import {
   type FacebookExplore,
 } from '@/lib/providers/meta-explore'
 import { fetchMetaFollowerCount } from '@/lib/providers/meta-discovery'
-import { fetchTiktokContentExplore, type TiktokExplore } from '@/lib/providers/tiktok'
 import { getGoogleAdsDeveloperToken } from './site-oauth-apps'
 import { resolveAccessToken, resolveKlaviyoApiKey, resolvePageAccessToken } from '@/lib/sync/access-token'
 import {
@@ -213,12 +212,12 @@ export type ChannelDetail =
        * react-hooks (đã xác nhận qua lint), phải đẩy phép tính này ra khỏi
        * render. */
       readonly videoSnapshotsLikelyBroken: boolean
-      /** KHÔNG còn `data: TiktokExplore` ở đây — 20 video gần nhất (Display
-       * API sống) giờ tự fetch trong `TiktokExploreSection`
-       * (`channel-detail-body.tsx`, bọc `<Suspense>` riêng) qua
-       * `getTiktokExploreVideos` bên dưới, không còn nằm trên đường chặn
-       * TTFB của toàn trang. Xem docblock case `'tiktok'` trong
-       * `getChannelDetail`. */
+      /** KHÔNG còn `data: TiktokExplore` ở đây — tab "Tổng quan" giờ tự fetch
+       * trong `TiktokExploreSection` (`channel-detail-body.tsx`, bọc
+       * `<Suspense>` riêng) qua `getTiktokVideosPostedInRange`
+       * (`video-trending.ts`) — đọc thẳng `video_metrics_daily` theo
+       * `posted_at`, không còn gọi Display API sống mỗi lần đổi khoảng ngày,
+       * không còn nằm trên đường chặn TTFB của toàn trang. */
       readonly trending: VideoTrendingResult
       /** Tăng trưởng views/likes/comments/shares TRONG khoảng ngày đang chọn,
        * tính từ snapshot đã lưu (`video_metrics_daily`) — KHÁC `data.topVideos`
@@ -364,29 +363,6 @@ export const listChannelConnections = async (
     avatarUrl: row.avatar_url,
     externalAccountId: row.external_account_id,
   }))
-}
-
-/**
- * 20 video gần nhất của MỘT connection TikTok đã biết trước (Display API
- * sống) — tách khỏi `getChannelDetail` để gọi được từ một Server Component
- * con bọc `<Suspense>` riêng (`TiktokExploreSection`), không còn nằm trên
- * đường chặn TTFB của cả trang chi tiết kênh (xem docblock case `'tiktok'`
- * trong `getChannelDetail`). Nhận thẳng `connectionId` đã resolve sẵn — KHÔNG
- * tự truy vấn lại bảng `connections` để tìm đúng connection (trang cha đã
- * làm việc đó một lần trong `getChannelDetail`), tránh lặp lại logic chọn
- * connection mặc định/theo `?connection=`.
- */
-export const getTiktokExploreVideos = async (
-  siteId: string,
-  connectionId: string,
-  range: { readonly startDate: string; readonly endDate: string },
-): Promise<TiktokExplore> => {
-  const admin = createAdminClient()
-  const tokenResult = await resolveAccessToken(admin, connectionId, siteId, 'tiktok')
-  if (!tokenResult.ok) {
-    return { topVideos: [], fetchError: 'Không lấy được token TikTok — thử ngắt kết nối và kết nối lại.' }
-  }
-  return fetchTiktokContentExplore(tokenResult.accessToken, range)
 }
 
 export const getChannelDetail = async (
@@ -628,10 +604,11 @@ export const getChannelDetail = async (
       // đây mọi lần đổi khoảng ngày phải đợi lượt gọi này xong dù tab đang
       // xem là "Dashboard" (chỉ cần `rangeStats`/`trending`, hai RPC Supabase
       // nhanh hơn nhiều) — cảm giác "bấm đổi khoảng ngày load lâu" người
-      // dùng báo cáo. Danh sách 20 video gần nhất (tab "Tổng quan") giờ tự
-      // fetch trong `TiktokExploreSection` (Client boundary `<Suspense>`
-      // riêng, xem `channel-detail-body.tsx`), qua `getTiktokExploreVideos`
-      // bên dưới — không chặn phần còn lại của trang.
+      // dùng báo cáo. Video theo ngày đăng (tab "Tổng quan") giờ tự fetch
+      // trong `TiktokExploreSection` (`<Suspense>` riêng, xem
+      // `channel-detail-body.tsx`) qua `getTiktokVideosPostedInRange`
+      // (`video-trending.ts`, đọc `video_metrics_daily` theo `posted_at`,
+      // không gọi Display API sống nữa) — không chặn phần còn lại của trang.
       const [trending, rangeStats] = await Promise.all([
         // Không truyền `range` — trending có 3 cửa sổ cố định riêng, độc lập
         // với khoảng ngày trang đang chọn (xem Task 4/5 trong plan này).

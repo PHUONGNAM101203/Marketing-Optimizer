@@ -1,6 +1,4 @@
-import { Info } from 'lucide-react'
 import { SectionHead } from '@/components/ui/card'
-import { Callout } from '@/components/ui/feedback'
 import { VideoRankingList, type VideoRankingItem } from '@/components/channels/video/video-ranking-list'
 import { VideoTrendingWidget } from '@/components/channels/video/video-trending-widget'
 import { VideoStatsSummary } from '@/components/channels/video/video-stats-summary'
@@ -24,32 +22,28 @@ const RANKING_LIMIT = 5
  * với các dòng snapshot ghi TRƯỚC khi hai cột này tồn tại, tự lấp đầy ở lần
  * đồng bộ kế tiếp. `VideoDetailDialog` tự ẩn nút link khi `permalinkUrl`
  * null.
+ *
+ * `get_video_range_snapshots` (RPC nguồn của `rangeStats`) giờ CHỈ trả về
+ * video có tăng trưởng ĐÁNG TIN — có baseline snapshot thật trước khoảng
+ * chọn, HOẶC biết chắc video đăng TRONG khoảng chọn (baseline=0 đúng về mặt
+ * logic, không phải lỗ hổng lịch sử — xem
+ * `20260820000003_video_range_verified_only.sql`). Video cũ hơn khoảng chọn
+ * mà lịch sử snapshot chưa đủ sâu để biết chắc bị LOẠI HẲN thay vì hiện số
+ * cộng dồn giả — mảng rỗng tự rơi về empty state của
+ * `VideoRankingList`/`VideoStatsSummary` bên dưới, không cần banner cảnh báo
+ * riêng nữa.
  */
 export function TiktokDashboard({
   rangeStats,
   trending,
   rangeLabel,
-  rangeStartDate,
   videoSnapshotsLikelyBroken,
 }: {
   readonly rangeStats: readonly VideoSummary[]
   readonly trending: VideoTrendingResult
   readonly rangeLabel: string
-  /** ISO — đầu khoảng ngày ĐANG chọn, so với `trending.earliestSnapshotAt` để
-   * biết "tăng trưởng trong khoảng" bên dưới có thật sự bị cắt bởi lịch sử
-   * snapshot còn mỏng hay không (xem `rangeScopeLikelyIncomplete`). */
-  readonly rangeStartDate: string
   readonly videoSnapshotsLikelyBroken: boolean
 }) {
-  // `get_video_range_snapshots` không tìm được dòng snapshot nào TRƯỚC
-  // `p_range_start` thì coi baseline = 0 (xem `getTiktokVideoRangeStats`) —
-  // "tăng trưởng trong khoảng" khi đó thật ra là TỔNG CỘNG DỒN từ lúc bắt đầu
-  // theo dõi, không phải đúng khoảng đã chọn. Với connection còn ít lịch sử,
-  // MỌI khoảng ngày (7 ngày hay 28 ngày) đều rơi vào tình huống này và ra
-  // đúng MỘT con số giống hệt nhau — không phải lỗi tính sai, mà vì chưa đủ
-  // dữ liệu quá khứ để phân biệt. Nói rõ thay vì để trông như bug im lặng.
-  const rangeScopeLikelyIncomplete =
-    trending.earliestSnapshotAt !== null && rangeStartDate < trending.earliestSnapshotAt
   const rankedInRange: VideoRankingItem[] = rangeStats.slice(0, RANKING_LIMIT).map((video) => ({
     title: video.title,
     thumbnailUrl: video.thumbnailUrl,
@@ -73,28 +67,13 @@ export function TiktokDashboard({
 
   return (
     <div className="flex flex-col gap-6">
-      {rangeScopeLikelyIncomplete ? (
-        <Callout
-          tone="signal"
-          icon={<Info aria-hidden className="size-5 text-[var(--color-signal)]" />}
-          title="Số liệu dưới đây là cộng dồn từ lúc bắt đầu theo dõi, chưa đúng hẳn khoảng đã chọn"
-        >
-          <p>
-            Kết nối chưa có snapshot nào trước {rangeLabel.toLowerCase()} — &quot;xem nhiều nhất&quot; và
-            &quot;tổng quan tương tác&quot; bên dưới vì vậy giống nhau dù đổi 7/28/90 ngày, vì đều đang tính từ
-            snapshot sớm nhất đang có, không phải đúng đầu khoảng đã chọn. Sẽ tự chính xác dần khi tích luỹ thêm
-            snapshot mỗi ngày.
-          </p>
-        </Callout>
-      ) : null}
-
       <section className="flex flex-col gap-3">
         <SectionHead label="Xếp hạng" title={`Video xem nhiều nhất — ${rangeLabel}`} />
         <VideoRankingList
           items={rankedInRange}
           platformLabel="TikTok"
-          emptyTitle="Chưa có video"
-          emptyDescription="Chưa có video công khai trong khoảng ngày này."
+          emptyTitle="Đang thu thập dữ liệu"
+          emptyDescription="Chưa đủ lịch sử snapshot để tính chính xác cho khoảng ngày này — quay lại sau khi đồng bộ thêm."
         />
       </section>
 

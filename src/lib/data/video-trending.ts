@@ -257,3 +257,54 @@ export const aggregateVideoRangeGrowth = (stats: readonly VideoSummary[]): Video
     }),
     { viewsGrowth: 0, likesGrowth: 0, commentsGrowth: 0, sharesGrowth: 0, activeVideoCount: 0 },
   )
+
+interface VideoPostedRow {
+  readonly external_video_id: string
+  readonly title: string | null
+  readonly cover_image_url: string | null
+  readonly posted_at: string | null
+  readonly permalink_url: string | null
+  readonly views: number
+  readonly likes: number
+  readonly comments: number
+  readonly shares: number
+}
+
+/**
+ * TOÀN BỘ video có ngày đăng (`posted_at`) rơi vào khoảng đang chọn — dùng
+ * cho tab "Tổng quan" của TikTok (`TiktokExploreSection`), sắp sẵn theo
+ * `posted_at` GIẢM DẦN (video đăng gần đây nhất trước, đủ độ chính xác
+ * giờ:phút:giây từ SQL — xem `get_videos_posted_in_range`). KHÔNG phải "xem
+ * nhiều nhất": trang chỉ lọc theo ngày đăng, không sắp theo views — mọi video
+ * trong khoảng đều hiện, không cắt còn "top" nào.
+ */
+export const getTiktokVideosPostedInRange = async (
+  connectionId: string,
+  range: { readonly startDate: string; readonly endDate: string },
+): Promise<readonly VideoSummary[]> => {
+  const supabase = await createClient()
+  const { data, error } = await supabase.rpc('get_videos_posted_in_range', {
+    p_connection_id: connectionId,
+    p_range_start: range.startDate,
+    p_range_end: range.endDate,
+  })
+
+  if (error) {
+    console.error(`Không đọc được video theo ngày đăng (connection ${connectionId}): ${error.message}`)
+    return []
+  }
+
+  return ((data ?? []) as readonly VideoPostedRow[]).map(
+    (row): VideoSummary => ({
+      externalVideoId: row.external_video_id,
+      title: row.title ?? '(không có chú thích)',
+      thumbnailUrl: row.cover_image_url,
+      views: row.views,
+      likes: row.likes,
+      comments: row.comments,
+      shares: row.shares,
+      createdAt: row.posted_at,
+      permalinkUrl: row.permalink_url,
+    }),
+  )
+}

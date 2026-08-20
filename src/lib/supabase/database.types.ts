@@ -1327,6 +1327,24 @@ export type Database = {
           cutoff2_views: number | null
         }[]
       }
+      get_videos_posted_in_range: {
+        Args: {
+          p_connection_id: string
+          p_range_start: string
+          p_range_end: string
+        }
+        Returns: {
+          external_video_id: string
+          title: string | null
+          cover_image_url: string | null
+          posted_at: string | null
+          permalink_url: string | null
+          views: number
+          likes: number
+          comments: number
+          shares: number
+        }[]
+      }
       has_site_role: {
         Args: {
           allowed: Database["public"]["Enums"]["site_role"][]
