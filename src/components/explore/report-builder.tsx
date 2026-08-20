@@ -74,9 +74,15 @@ export interface ReportRow {
    * khái niệm "chi phí" (không phải nền tảng quảng cáo) nên `costMicros`/
    * `cpaMicros`/`roas` không hợp nghĩa cho nó, cần cột riêng. */
   readonly revenueMicros: number | null
+  /** Đơn vị tiền THẬT để format `revenueMicros` của DÒNG NÀY — `null` dùng
+   * `currency` chung của trang (đúng cho Google/Meta/TikTok, vì `costMicros`/
+   * `cpaMicros` của họ THẬT SỰ là site.currency). Klaviyo set field này vì
+   * doanh thu của nó luôn ở đơn vị riêng của tài khoản Klaviyo
+   * (`preferred_currency`), không liên quan gì đến site.currency. */
+  readonly revenueCurrency: string | null
 }
 
-type MetricKey = Exclude<keyof ReportRow, 'key' | 'dimension' | 'group' | 'colorToken'>
+type MetricKey = Exclude<keyof ReportRow, 'key' | 'dimension' | 'group' | 'colorToken' | 'revenueCurrency'>
 
 type Formatter = 'compact' | 'number' | 'currency' | 'percent' | 'multiplier'
 
@@ -149,6 +155,7 @@ const buildExploreRows = (
           cpaMicros: null,
           roas: null,
           revenueMicros: null,
+          revenueCurrency: null,
           likes: null,
           comments: null,
           shares: null,
@@ -189,6 +196,7 @@ const buildExploreRows = (
           cpaMicros: null,
           roas: null,
           revenueMicros: null,
+          revenueCurrency: null,
           likes: null,
           comments: null,
           shares: null,
@@ -213,6 +221,7 @@ const buildExploreRows = (
           cpaMicros: null,
           roas: null,
           revenueMicros: null,
+          revenueCurrency: null,
           likes: video.likes,
           comments: video.comments,
           shares: video.shares,
@@ -237,6 +246,7 @@ const buildExploreRows = (
           cpaMicros: null,
           roas: null,
           revenueMicros: null,
+          revenueCurrency: null,
           likes: post.likes,
           comments: post.comments,
           // Instagram Graph API không trả shares cho bài đăng qua field cơ
@@ -263,6 +273,7 @@ const buildExploreRows = (
           cpaMicros: null,
           roas: null,
           revenueMicros: null,
+          revenueCurrency: null,
           likes: post.reactions,
           comments: post.comments,
           shares: post.shares,
@@ -287,6 +298,7 @@ const buildExploreRows = (
           cpaMicros: null,
           roas: null,
           revenueMicros: null,
+          revenueCurrency: null,
           likes: video.likes,
           comments: video.comments,
           shares: video.shares,
@@ -296,29 +308,38 @@ const buildExploreRows = (
   }
 
   if (source.klaviyo) {
+    const klaviyo = source.klaviyo
+    // Campaign + flow gộp CHUNG một mảng ở tầng data (`site-explore.ts`) —
+    // cắt `rowLimit` trên mảng gộp đó khiến 58 campaign (đứng trước trong
+    // mảng) chiếm hết `rowLimit`, flow không bao giờ lọt vào dù đã tick
+    // "Klaviyo · Flow" ở bộ lọc Kênh. Cắt RIÊNG từng loại, giống cách mọi
+    // provider khác (GA4/GSC/YouTube/Instagram/Facebook/TikTok) đều cắt
+    // trên MỘT mảng đồng nhất của riêng nó — Klaviyo là provider DUY NHẤT
+    // trộn hai "loại" khác nhau vào một nguồn, nên cần xử lý khác một chút.
+    const buildRow = (item: (typeof klaviyo.items)[number]): ReportRow => ({
+      key: `klaviyo:${item.kind}:${item.id}`,
+      dimension: item.name,
+      // 'Campaign'/'Flow' làm phụ-nhóm bên trong Klaviyo — người xem cần
+      // phân biệt ngay một dòng chi phí gửi thủ công (campaign) hay tự
+      // động lặp lại (flow), hai bản chất khác hẳn nhau dù cùng chỉ số.
+      group: item.kind === 'campaign' ? 'Klaviyo · Campaign' : 'Klaviyo · Flow',
+      colorToken: colorTokenOf('klaviyo'),
+      impressions: item.recipients,
+      clicks: item.clicks,
+      costMicros: null,
+      conversions: item.conversions,
+      ctr: item.recipients > 0 ? item.clicks / item.recipients : null,
+      cpaMicros: null,
+      roas: null,
+      revenueMicros: item.revenueMicros,
+      revenueCurrency: klaviyo.currency,
+      likes: null,
+      comments: null,
+      shares: null,
+    })
     rows.push(
-      ...source.klaviyo.items.slice(0, rowLimit).map(
-        (item): ReportRow => ({
-          key: `klaviyo:${item.kind}:${item.id}`,
-          dimension: item.name,
-          // 'Campaign'/'Flow' làm phụ-nhóm bên trong Klaviyo — người xem cần
-          // phân biệt ngay một dòng chi phí gửi thủ công (campaign) hay tự
-          // động lặp lại (flow), hai bản chất khác hẳn nhau dù cùng chỉ số.
-          group: item.kind === 'campaign' ? 'Klaviyo · Campaign' : 'Klaviyo · Flow',
-          colorToken: colorTokenOf('klaviyo'),
-          impressions: item.recipients,
-          clicks: item.clicks,
-          costMicros: null,
-          conversions: item.conversions,
-          ctr: item.recipients > 0 ? item.clicks / item.recipients : null,
-          cpaMicros: null,
-          roas: null,
-          revenueMicros: item.revenueMicros,
-          likes: null,
-          comments: null,
-          shares: null,
-        }),
-      ),
+      ...klaviyo.items.filter((item) => item.kind === 'campaign').slice(0, rowLimit).map(buildRow),
+      ...klaviyo.items.filter((item) => item.kind === 'flow').slice(0, rowLimit).map(buildRow),
     )
   }
 
@@ -394,10 +415,12 @@ export function ReportBuilder({ source, currency }: ReportBuilderProps) {
       ? list.filter((item) => item !== value)
       : [...list, value]
 
-  const format = (value: number | null, formatter: Formatter): string => {
+  const format = (value: number | null, formatter: Formatter, rowCurrency: string | null): string => {
     switch (formatter) {
       case 'currency':
-        return formatCurrencyCompact(value, currency)
+        // `rowCurrency` (Klaviyo) ghi đè `currency` chung của trang khi có —
+        // xem `ReportRow.revenueCurrency`.
+        return formatCurrencyCompact(value, rowCurrency ?? currency)
       case 'percent':
         return formatPercent(value, 2)
       case 'multiplier':
@@ -552,7 +575,11 @@ export function ReportBuilder({ source, currency }: ReportBuilderProps) {
                     </TD>
                     {visibleColumns.map((column) => (
                       <TD key={column.key} numeric>
-                        {format(row[column.key], column.formatter)}
+                        {format(
+                          row[column.key],
+                          column.formatter,
+                          column.key === 'revenueMicros' ? row.revenueCurrency : null,
+                        )}
                       </TD>
                     ))}
                   </TR>

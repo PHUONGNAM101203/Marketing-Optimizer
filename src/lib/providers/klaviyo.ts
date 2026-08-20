@@ -689,3 +689,72 @@ export const fetchKlaviyoPerformance = async (
     }
   }
 }
+
+// ─── "Inventory" ĐÃ CACHE — mọi thứ KHÔNG phụ thuộc khoảng ngày ───────────
+
+export interface KlaviyoInventory {
+  readonly campaigns: PaginatedOutcome<KlaviyoCampaign>
+  readonly flows: PaginatedOutcome<KlaviyoFlow>
+  readonly allTimeProfiles: KlaviyoProfileCount
+  readonly segments: PaginatedOutcome<KlaviyoSegment>
+  readonly lists: PaginatedOutcome<KlaviyoList>
+  readonly forms: PaginatedOutcome<KlaviyoForm>
+  readonly metrics: PaginatedOutcome<KlaviyoMetric>
+  readonly accountCurrency: string | null
+}
+
+const KLAVIYO_INVENTORY_REVALIDATE_SECONDS = 6 * 60 * 60
+
+/** Trước đây campaigns/flows/segments/lists/forms/metrics/currency/profile-
+ * count-toàn-thời-gian đều gọi TRỰC TIẾP (không cache) mỗi lần tải trang chi
+ * tiết kênh — cộng dồn với việc đếm profile giờ phân trang tới 200 trang,
+ * một lượt tải trang cold có thể tốn 10-40+ round-trip HTTP tuần tự tới
+ * Klaviyo, đúng nguyên nhân "load rất lâu và lag" (8/2026). KHÔNG phụ thuộc
+ * khoảng ngày đang chọn (campaigns/segments/lists... là inventory, không
+ * phải số liệu theo ngày) nên cache key CHỈ theo `apiKey` — đổi khoảng ngày
+ * ở đầu trang KHÔNG làm cache miss phần này, chỉ phần hiệu suất
+ * (`fetchKlaviyoPerformance`)/khách hàng mới (`fetchKlaviyoNewProfileCount`)
+ * bên dưới mới phụ thuộc khoảng ngày.
+ *
+ * KHÔNG throw khi một nhánh con lỗi (khác `fetchKlaviyoPerformanceCached`) —
+ * mỗi nhánh đã tự mang `.error`/`.truncated` riêng, hiện trung thực ở UI
+ * (cùng quy ước toàn file này), không cần chặn cache của TOÀN BỘ inventory
+ * chỉ vì một nhánh phụ (vd. forms) lỗi tạm thời. */
+export const fetchKlaviyoInventory = unstable_cache(
+  async (apiKey: string): Promise<KlaviyoInventory> => {
+    const [campaigns, flows, allTimeProfiles, segments, lists, forms, metrics, accountCurrency] = await Promise.all([
+      fetchKlaviyoCampaigns(apiKey),
+      fetchKlaviyoFlows(apiKey),
+      countKlaviyoProfiles(apiKey),
+      fetchKlaviyoSegments(apiKey),
+      fetchKlaviyoLists(apiKey),
+      fetchKlaviyoForms(apiKey),
+      fetchKlaviyoMetrics(apiKey),
+      fetchKlaviyoAccountCurrency(apiKey),
+    ])
+    return { campaigns, flows, allTimeProfiles, segments, lists, forms, metrics, accountCurrency }
+  },
+  ['klaviyo-inventory'],
+  { revalidate: KLAVIYO_INVENTORY_REVALIDATE_SECONDS },
+)
+
+/** Khách hàng MỚI (filter `created`) trong khoảng ngày đang chọn — tách
+ * riêng khỏi `fetchKlaviyoInventory` vì đây LÀ phụ thuộc khoảng ngày, cache
+ * key theo cả `apiKey` lẫn `range`. Biên trên LOẠI TRỪ (ngày SAU
+ * `range.endDate`) — Klaviyo chỉ có `less-than`, không có `less-or-equal`
+ * cho field `created`. */
+export const fetchKlaviyoNewProfileCount = unstable_cache(
+  async (
+    apiKey: string,
+    range: { readonly startDate: string; readonly endDate: string },
+  ): Promise<KlaviyoProfileCount> => {
+    const dayAfterEnd = new Date(`${range.endDate}T00:00:00Z`)
+    dayAfterEnd.setUTCDate(dayAfterEnd.getUTCDate() + 1)
+    return countKlaviyoProfiles(apiKey, {
+      createdAfterIso: `${range.startDate}T00:00:00Z`,
+      createdBeforeIso: `${dayAfterEnd.toISOString().slice(0, 10)}T00:00:00Z`,
+    })
+  },
+  ['klaviyo-new-profile-count'],
+  { revalidate: KLAVIYO_INVENTORY_REVALIDATE_SECONDS },
+)

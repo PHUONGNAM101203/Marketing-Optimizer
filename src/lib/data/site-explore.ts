@@ -16,11 +16,7 @@ import {
   type InstagramExplore,
 } from '@/lib/providers/meta-explore'
 import { fetchTiktokContentExplore, type TiktokExplore } from '@/lib/providers/tiktok'
-import {
-  fetchKlaviyoCampaigns,
-  fetchKlaviyoFlows,
-  fetchKlaviyoPerformance,
-} from '@/lib/providers/klaviyo'
+import { fetchKlaviyoInventory, fetchKlaviyoPerformance } from '@/lib/providers/klaviyo'
 import { resolveAccessToken, resolveKlaviyoApiKey, resolvePageAccessToken } from '@/lib/sync/access-token'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
@@ -56,6 +52,12 @@ export interface KlaviyoExplore {
   /** Lỗi thật từ report hiệu suất — campaign/flow vẫn liệt kê được (list
    * không phụ thuộc report), chỉ các cột số liệu sẽ trống. */
   readonly performanceError: string | null
+  /** Đơn vị tiền THẬT của tài khoản Klaviyo (`preferred_currency`) — KHÁC
+   * `site.currency` truyền cho `ReportBuilder`, cùng lý do đã sửa ở trang
+   * chi tiết kênh (`site-channel-detail.ts`). `ReportBuilder` dùng field
+   * này CHỈ cho cột `revenueMicros`, không áp cho `costMicros`/`cpaMicros`
+   * của Google/Meta/TikTok (những cột đó đúng là `site.currency`). */
+  readonly currency: string
 }
 
 export interface ExploreSource {
@@ -143,9 +145,14 @@ export const getExploreSource = async (
       } else if (connection.provider === 'tiktok') {
         source.tiktok = await fetchTiktokContentExplore(tokenResult.accessToken, range)
       } else if (connection.provider === 'klaviyo') {
-        const [campaigns, flows, performance] = await Promise.all([
-          fetchKlaviyoCampaigns(tokenResult.accessToken),
-          fetchKlaviyoFlows(tokenResult.accessToken),
+        // `fetchKlaviyoInventory` ĐÃ CACHE (6 giờ, không phụ thuộc `range`) —
+        // trước đây trang Khám phá gọi `fetchKlaviyoCampaigns`/`fetchKlaviyoFlows`
+        // TRỰC TIẾP mỗi lần tải trang, cùng nguyên nhân chậm đã sửa ở trang
+        // chi tiết kênh (`site-channel-detail.ts`). Cũng lấy `accountCurrency`
+        // ở đây luôn thay vì mặc định `site.currency` — bug thật khiến doanh
+        // thu Klaviyo hiện nhầm ký hiệu VND ở trang này.
+        const [inventory, performance] = await Promise.all([
+          fetchKlaviyoInventory(tokenResult.accessToken),
           fetchKlaviyoPerformance(tokenResult.accessToken, range),
         ])
         const campaignPerformanceById = new Map(
@@ -155,7 +162,7 @@ export const getExploreSource = async (
 
         source.klaviyo = {
           items: [
-            ...campaigns.items.map((campaign) => {
+            ...inventory.campaigns.items.map((campaign) => {
               const stats = campaignPerformanceById.get(campaign.id)
               return {
                 id: campaign.id,
@@ -168,7 +175,7 @@ export const getExploreSource = async (
                 revenueMicros: stats?.conversionValueMicros ?? 0,
               }
             }),
-            ...flows.items.map((flow) => {
+            ...inventory.flows.items.map((flow) => {
               const stats = flowPerformanceById.get(flow.id)
               return {
                 id: flow.id,
@@ -183,6 +190,7 @@ export const getExploreSource = async (
             }),
           ],
           performanceError: performance.error,
+          currency: inventory.accountCurrency ?? 'USD',
         }
       }
     }),

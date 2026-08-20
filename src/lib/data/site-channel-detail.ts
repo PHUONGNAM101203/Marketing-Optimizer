@@ -40,15 +40,9 @@ import { fetchTiktokContentExplore, type TiktokExplore } from '@/lib/providers/t
 import { getGoogleAdsDeveloperToken } from './site-oauth-apps'
 import { resolveAccessToken, resolveKlaviyoApiKey, resolvePageAccessToken } from '@/lib/sync/access-token'
 import {
-  countKlaviyoProfiles,
-  fetchKlaviyoAccountCurrency,
-  fetchKlaviyoCampaigns,
-  fetchKlaviyoFlows,
-  fetchKlaviyoForms,
-  fetchKlaviyoLists,
-  fetchKlaviyoMetrics,
+  fetchKlaviyoInventory,
+  fetchKlaviyoNewProfileCount,
   fetchKlaviyoPerformance,
-  fetchKlaviyoSegments,
   type KlaviyoCampaign,
   type KlaviyoFlow,
   type KlaviyoForm,
@@ -493,30 +487,16 @@ export const getChannelDetail = async (
       }
     }
     case 'klaviyo': {
-      // Biên trên LOẠI TRỪ (ngày SAU `range.endDate`) để không bỏ sót khách
-      // hàng tạo trong chính ngày cuối — Klaviyo chỉ có `less-than`, không có
-      // `less-or-equal` cho field `created`.
-      const rangeCreatedFilter = {
-        createdAfterIso: `${range.startDate}T00:00:00Z`,
-        createdBeforeIso: `${toIsoDate(addDays(new Date(`${range.endDate}T00:00:00Z`), 1))}T00:00:00Z`,
-      }
-
-      const [campaigns, flows, allTimeProfiles, rangeProfiles, segments, lists, forms, metrics, accountCurrency] =
-        await Promise.all([
-          fetchKlaviyoCampaigns(tokenResult.accessToken),
-          fetchKlaviyoFlows(tokenResult.accessToken),
-          // Không filter — TỔNG toàn thời gian, số CHÍNH XÁC (maxPages mặc
-          // định đã nâng lên 200 trang, xem `countKlaviyoProfiles`).
-          countKlaviyoProfiles(tokenResult.accessToken),
-          // Filter theo `created` — khách hàng MỚI trong khoảng ngày đang
-          // chọn, cho tab "Tổng quan".
-          countKlaviyoProfiles(tokenResult.accessToken, rangeCreatedFilter),
-          fetchKlaviyoSegments(tokenResult.accessToken),
-          fetchKlaviyoLists(tokenResult.accessToken),
-          fetchKlaviyoForms(tokenResult.accessToken),
-          fetchKlaviyoMetrics(tokenResult.accessToken),
-          fetchKlaviyoAccountCurrency(tokenResult.accessToken),
-        ])
+      // Cả 4 lượt gọi dưới đây ĐÃ CACHE (6 giờ) ở tầng provider — trang chi
+      // tiết kênh trước đây gọi TRỰC TIẾP 11 request rải rác (campaigns/
+      // flows/segments/lists/forms/metrics/currency/2×profile-count/2×report),
+      // một lượt tải cold có thể mất 10-40+ round-trip tuần tự tới Klaviyo
+      // (nguyên nhân "load rất lâu và lag", 8/2026). `fetchKlaviyoInventory`
+      // KHÔNG phụ thuộc khoảng ngày (cache theo apiKey) nên đổi khoảng ngày
+      // ở đầu trang không làm nó cache-miss; chỉ `fetchKlaviyoNewProfileCount`/
+      // `fetchKlaviyoPerformance` mới phụ thuộc `range`.
+      const inventory = await fetchKlaviyoInventory(tokenResult.accessToken)
+      const rangeProfiles = await fetchKlaviyoNewProfileCount(tokenResult.accessToken, range)
 
       // TUẦN TỰ, không Promise.all — cả hai lượt đều đụng Reporting API (giới
       // hạn ~1 request/giây, xem `fetchKlaviyoPerformance`); gọi song song sẽ
@@ -534,10 +514,10 @@ export const getChannelDetail = async (
         accountName,
         externalAccountId,
         avatarUrl,
-        campaigns: campaigns.items,
-        campaignsTruncated: campaigns.truncated,
-        flows: flows.items,
-        flowsTruncated: flows.truncated,
+        campaigns: inventory.campaigns.items,
+        campaignsTruncated: inventory.campaigns.truncated,
+        flows: inventory.flows.items,
+        flowsTruncated: inventory.flows.truncated,
         // Campaign/flow "đang có hoạt động" trong khoảng ngày đang chọn =
         // số dòng report cho khoảng đó (report chỉ trả về campaign/flow có
         // ít nhất một chỉ số trong khoảng ngày) — `null` khi report lỗi,
@@ -550,19 +530,19 @@ export const getChannelDetail = async (
         allTimeCampaignPerformance: allTimePerformance.campaignPerformance,
         allTimeFlowPerformance: allTimePerformance.flowPerformance,
         allTimePerformanceError: allTimePerformance.error,
-        currency: accountCurrency ?? 'USD',
+        currency: inventory.accountCurrency ?? 'USD',
         profileCount: rangeProfiles.error ? null : rangeProfiles.count,
         profileCountTruncated: rangeProfiles.truncated,
-        allTimeProfileCount: allTimeProfiles.error ? null : allTimeProfiles.count,
-        allTimeProfileCountTruncated: allTimeProfiles.truncated,
-        segments: segments.items,
-        segmentsTruncated: segments.truncated,
-        lists: lists.items,
-        listsTruncated: lists.truncated,
-        forms: forms.items,
-        formsTruncated: forms.truncated,
-        metrics: metrics.items,
-        metricsTruncated: metrics.truncated,
+        allTimeProfileCount: inventory.allTimeProfiles.error ? null : inventory.allTimeProfiles.count,
+        allTimeProfileCountTruncated: inventory.allTimeProfiles.truncated,
+        segments: inventory.segments.items,
+        segmentsTruncated: inventory.segments.truncated,
+        lists: inventory.lists.items,
+        listsTruncated: inventory.lists.truncated,
+        forms: inventory.forms.items,
+        formsTruncated: inventory.forms.truncated,
+        metrics: inventory.metrics.items,
+        metricsTruncated: inventory.metrics.truncated,
       }
     }
     case 'google-ads': {
