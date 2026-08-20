@@ -1,5 +1,6 @@
 import { TiktokVideoGrid } from './tiktok-video-grid'
 import { getTiktokVideosPostedInRange } from '@/lib/data/video-trending'
+import { snapshotUpperBound } from '@/lib/data/site-channels'
 
 /* Hallmark · component: tiktok-explore-section · theme: studied-DNA (Ink & Signal)
  *
@@ -19,6 +20,15 @@ export async function TiktokExploreSection({
   readonly startDate: string
   readonly endDate: string
 }) {
-  const videos = await getTiktokVideosPostedInRange(connectionId, { startDate, endDate })
+  // `endDate` mọi preset (trừ "Hôm nay") cố tình chốt ở HÔM QUA — cùng lý do
+  // `snapshotUpperBound` đã áp cho `getTiktokVideoRangeStats`
+  // (`site-channel-detail.ts`). Thiếu dòng này, video đăng HÔM NAY (snapshot
+  // ghi ngay lúc đồng bộ) bị lọc mất khỏi tab "Tổng quan" dù tab "Dashboard"
+  // (đã áp `snapshotUpperBound`) vẫn thấy — đúng lỗi người dùng phát hiện qua
+  // ảnh chụp (video "20-08" có ở Dashboard, thiếu ở Tổng quan).
+  const videos = await getTiktokVideosPostedInRange(connectionId, {
+    startDate,
+    endDate: snapshotUpperBound(endDate),
+  })
   return <TiktokVideoGrid videos={videos} fetchError={null} />
 }
