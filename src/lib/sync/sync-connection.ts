@@ -45,7 +45,28 @@ export async function syncConnection(connectionId: string): Promise<SyncResult> 
   }
 
   const metricsAdapter = METRICS_ADAPTERS[connection.provider]
-  if (!metricsAdapter) return { ok: false, error: 'metrics-not-ready' }
+  if (!metricsAdapter) {
+    // Nền tảng KHÔNG có `MetricsAdapter` (hiện chỉ GTM — cấu hình thẻ, không
+    // phải số liệu theo ngày) có thể tới hàm này qua NHIỀU đường: picker thủ
+    // công (`connectGtmContainer` trong `actions/gtm.ts`) đã tự set
+    // `status:'connected'` TRƯỚC khi gọi hàm này rồi, nhưng đường dò domain
+    // tự động (`google-discovery.ts` khớp `domainName` container, chạy
+    // trong vòng lặp OAuth callback chung) KHÔNG tự set — nếu cứ `return`
+    // suông như trước, connection đó kẹt nguyên `status:'syncing'` (giá trị
+    // lúc `insert` ban đầu) và `last_synced_at:null` VĨNH VIỄN, vì không có
+    // cron/pipeline nào khác đụng tới provider không-có-adapter. Trang Kết
+    // nối đọc thẳng `last_synced_at` để quyết định hiện "Đang đồng bộ lần
+    // đầu…" (`connections/page.tsx`), nên bug này hiện y hệt lớp lỗi Klaviyo
+    // đã sửa — connection ĐÃ kết nối thật nhưng UI nói mãi là đang đồng bộ.
+    // Set 'connected' NGAY TẠI ĐÂY (idempotent — vô hại nếu đã 'connected')
+    // để MỌI đường gọi `syncConnection` cho provider không-có-adapter đều tự
+    // thoát đúng trạng thái, không phải vá riêng từng nơi gọi.
+    await admin
+      .from('connections')
+      .update({ status: 'connected', last_synced_at: new Date().toISOString() })
+      .eq('id', connectionId)
+    return { ok: false, error: 'metrics-not-ready' }
+  }
 
   // facebook/instagram: mọi edge cấp Page (fetchDailyMetrics đọc /insights,
   // content snapshot đọc /published_posts và /media) cần Page access token,
