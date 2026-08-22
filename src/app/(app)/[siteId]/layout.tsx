@@ -4,6 +4,7 @@ import type { ReactNode } from 'react'
 import { SideRail } from '@/components/layout/side-rail'
 import { Topbar } from '@/components/layout/topbar'
 import { MobileNavDrawer } from '@/components/layout/mobile-nav-drawer'
+import { ConnectionsRealtime } from '@/components/realtime/connections-realtime'
 import { MobileNavProvider } from '@/components/layout/mobile-nav-context'
 import { getCurrentProfile, getSite, listSites, setLastSiteId } from '@/lib/data/sites'
 import { getConnectionSummary } from '@/lib/data/connections'
@@ -65,6 +66,17 @@ export default async function SiteLayout({
     // `<main>` tự cuộn riêng loại bỏ hẳn cơ chế lỗi này, bất kể control nào
     // gây co ngót nội dung.
     <MobileNavProvider>
+      {/* Chờ đồng bộ = có kết nối nhưng chưa kết nối nào ghi xong
+          `last_synced_at`, hoặc có kết nối đang ở trạng thái `syncing`. Chỉ
+          lúc đó mới cần nghe Realtime — xem lý do trong component. */}
+      <ConnectionsRealtime
+        siteId={site.id}
+        waiting={
+          !connections.isEmpty &&
+          (connections.lastSyncedAt === null ||
+            connections.all.some((connection) => connection.status === 'syncing'))
+        }
+      />
       <div className="flex h-dvh overflow-hidden">
         <SideRail
           siteId={site.id}

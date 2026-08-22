@@ -40,7 +40,7 @@ export default async function AuditPage({
 
   return (
     <PageShell>
-      <AuditRunningPoller isRunning={isRunning} />
+      <AuditRunningPoller isRunning={isRunning} siteId={site.id} />
 
       <PageHeader
         title="Kiểm tra SEO/GEO/AIO/AEO"
