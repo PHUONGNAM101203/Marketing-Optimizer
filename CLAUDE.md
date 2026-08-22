@@ -63,6 +63,16 @@ Every table follows the same split: normal tables (`connections`, `metrics_daily
 
 There are three cron jobs, declared in `vercel.json` (the Hobby-era one-cron-per-day limit no longer applies — the project is on Vercel Pro): `sync-hourly` (fresh-data providers), `run-agents` (agent dispatch, offset 20 minutes so it reads metrics the same hour's sync just wrote), and `sync-daily` (`LOW_FREQUENCY_PROVIDERS` + the AI model cache). All three cap at `maxDuration = 800`, the Pro/Fluid Compute ceiling. Connection syncing goes through `syncMany` (`src/lib/sync/sync-many.ts`), which runs provider families concurrently but keeps each family sequential — rate-limit quotas are per-platform, so this does not raise the concurrency any one platform sees. Time-sensitive work that must run for every connection (like the TikTok video snapshot) is wired into `syncConnection` itself rather than getting a separate schedule, and is wrapped in Next's `after()` where it doesn't need to block the caller's response (see the TikTok snapshot call site in `sync-connection.ts` for the pattern — `after()` needs to be called from live request scope, which every one of `syncConnection`'s six call sites provides).
 
+Each cron's provider list comes from `DAILY_PROVIDERS`/`HOURLY_PROVIDERS` in
+`src/lib/sync/cron-providers.ts`, derived from `PROVIDERS` split by
+`LOW_FREQUENCY_PROVIDERS`. Do **not** derive it from `Object.keys(METRICS_ADAPTERS)`
+instead — that registry only holds platforms with a daily-metrics adapter, so
+`gtm` and `klaviyo` fall out of it and end up in no cron at all. That exact bug
+left a gtm connection stuck at `status: 'syncing'` for eight days in production.
+`syncConnection` returns `metrics-not-ready` for adapter-less providers *after*
+correctly marking them connected, which is why `syncMany` counts it as `skipped`
+rather than `failed`.
+
 `vercel.json` also pins `regions: ["sin1"]`. This is not a preference: Supabase lives in `ap-southeast-1` and the users are in Vietnam, while Vercel's default `iad1` put every one of the many Supabase round trips per request (starting with `proxy.ts`'s `auth.getUser()`) across the Pacific and back. Don't drop it.
 
 ### Realtime
