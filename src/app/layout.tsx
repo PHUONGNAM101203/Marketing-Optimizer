@@ -1,6 +1,8 @@
 import type { Metadata, Viewport } from 'next'
 import { Be_Vietnam_Pro, Inter } from 'next/font/google'
 import './globals.css'
+import { Analytics } from '@vercel/analytics/next'
+import { SpeedInsights } from '@vercel/speed-insights/next'
 import { ThemeScript } from '@/components/layout/theme-script'
 import { SidebarScript } from '@/components/layout/sidebar-script'
 
@@ -63,6 +65,14 @@ export default function RootLayout({ children }: LayoutProps<'/'>) {
           React vẫn cảnh báo lệch hydrate nếu không khai báo trước. */}
       <body className="min-h-full" suppressHydrationWarning>
         {children}
+        {/* Cả hai đều nằm trong hạn mức đã trả của gói Vercel Pro và tự tắt
+            ngoài môi trường Vercel, nên chạy `next dev` không gửi gì đi đâu.
+            SpeedInsights đo Core Web Vitals THẬT của người dùng — cách duy
+            nhất kiểm chứng được việc chuyển vùng chạy hàm sang `sin1`
+            (xem `vercel.json`) có thực sự nhanh hơn hay không, thay vì tin
+            vào lý thuyết. */}
+        <SpeedInsights />
+        <Analytics />
       </body>
     </html>
   )
