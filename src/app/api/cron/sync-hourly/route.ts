@@ -1,10 +1,8 @@
 import { NextResponse, type NextRequest } from 'next/server'
-import { METRICS_ADAPTERS } from '@/lib/providers'
-import { LOW_FREQUENCY_PROVIDERS } from '@/lib/sync/cron-providers'
+import { HOURLY_PROVIDERS } from '@/lib/sync/cron-providers'
 import { syncMany, type SyncTarget } from '@/lib/sync/sync-many'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { cronEnv } from '@/lib/supabase/env'
-import type { ProviderId } from '@/lib/domain/providers'
 
 /**
  * Đồng bộ MỖI GIỜ (xem `vercel.json`) các connection thuộc nhóm "cần dữ liệu
@@ -27,14 +25,10 @@ export async function GET(request: NextRequest) {
   // Đủ sớm hơn 1 giờ một chút để lịch chạy có trễ vài phút cũng không bỏ sót.
   const staleBefore = new Date(Date.now() - 55 * 60 * 1000).toISOString()
 
-  const hourlyProviders = Object.keys(METRICS_ADAPTERS).filter(
-    (provider) => !LOW_FREQUENCY_PROVIDERS.has(provider as ProviderId),
-  )
-
   const { data: connections } = await admin
     .from('connections')
     .select('id, provider')
-    .in('provider', hourlyProviders)
+    .in('provider', HOURLY_PROVIDERS)
     .or(`last_synced_at.is.null,last_synced_at.lt.${staleBefore}`)
 
   const result = await syncMany((connections ?? []) as SyncTarget[])

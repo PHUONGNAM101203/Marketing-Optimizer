@@ -1,16 +1,12 @@
 import 'server-only'
 
-import { unstable_cache } from 'next/cache'
 import { hasUsableData, type ConnectionStatus } from '@/lib/domain/connection'
 import { PROVIDERS, isProviderId, type ProviderId } from '@/lib/domain/providers'
-import { fetchMetaFollowerCount } from '@/lib/providers/meta-discovery'
 import {
-  fetchKlaviyoInventory,
-  fetchKlaviyoNewProfileCount,
-  fetchKlaviyoPerformance,
-} from '@/lib/providers/klaviyo'
-import { resolveKlaviyoApiKey, resolvePageAccessToken } from '@/lib/sync/access-token'
-import { createAdminClient } from '@/lib/supabase/admin'
+  collectKlaviyoExtras,
+  collectMetaFollowerCounts,
+  type MetaFollowerTarget,
+} from './channel-live-extras'
 import { createClient } from '@/lib/supabase/server'
 
 export interface ChannelTotals {
@@ -127,51 +123,6 @@ const splitConnectionsBySnapshot = (
   return { connectionsByProvider, connectionIdToProvider, snapshotConnectionIds, regularConnectionIds }
 }
 
-/** Tóm tắt số liệu thật của TỪNG nền tảng — dùng cho lưới thẻ ở trang Kênh. */
-/** Số phút coi follower count còn "đủ mới" trước khi gọi lại Graph API thật
- * — follower count là một con số dạng "hiển thị tham khảo", không phải chỉ
- * số cần chính xác tới từng phút. Không cache thì `getChannelSummaries` gọi
- * Meta Graph API SỐNG trên MỌI lần tải trang Overview/Channels (đã xác nhận
- * qua điều tra hiệu năng 8/2026 là nguồn trễ tải trang lớn nhất) — cache 5
- * phút cắt gần hết số lượt gọi đó mà vẫn đủ mới cho một con số hiển thị.
- */
-const FOLLOWER_COUNT_REVALIDATE_SECONDS = 300
-
-interface MetaFollowerTarget {
-  readonly connectionId: string
-  readonly provider: 'facebook' | 'instagram'
-  readonly externalAccountId: string
-}
-
-/** Tách riêng để `unstable_cache` bọc ĐÚNG phần I/O bên ngoài (gọi Graph API
- * thật) — không cache phần đọc `connections`/`metrics_daily` phía trên (đã đủ
- * rẻ, và cache y nguyên response tới tận connection info sẽ làm connection
- * mới thêm/xoá không phản ánh kịp). `targets` (không phải `siteId` suông)
- * quyết định luôn cache key qua tham số hàm — connection đổi (thêm/xoá/đổi
- * external_account_id) tự động ra cache key khác, không cần tự tay bump tag.
- */
-const fetchMetaFollowerCounts = unstable_cache(
-  async (
-    siteId: string,
-    targets: readonly MetaFollowerTarget[],
-  ): Promise<readonly { readonly provider: 'facebook' | 'instagram'; readonly followerCount: number }[]> => {
-    const admin = createAdminClient()
-    const results = await Promise.all(
-      targets.map(async ({ connectionId, provider, externalAccountId }) => {
-        const tokenResult = await resolvePageAccessToken(admin, connectionId, siteId, provider)
-        if (!tokenResult.ok) return null
-        const followerCount = await fetchMetaFollowerCount(tokenResult.accessToken, externalAccountId)
-        return followerCount === null ? null : { provider, followerCount }
-      }),
-    )
-    return results.filter(
-      (result): result is { provider: 'facebook' | 'instagram'; followerCount: number } => result !== null,
-    )
-  },
-  ['meta-follower-counts'],
-  { revalidate: FOLLOWER_COUNT_REVALIDATE_SECONDS },
-)
-
 export const getChannelSummaries = async (
   siteId: string,
   range: { readonly start: string; readonly end: string },
@@ -277,92 +228,54 @@ export const getChannelSummaries = async (
     })
   }
 
-  // Follower count: KHÔNG có trong `metrics_daily` — Facebook/Instagram chỉ
-  // ghi lại chỉ số phát sinh theo ngày ở đó (`page_post_engagements`/
-  // reach/impressions, xem `facebook-metrics.ts`/`meta-metrics.ts`), số
-  // người theo dõi là trạng thái NGAY LÚC gọi. Gọi thẳng Graph API cùng cách
-  // trang chi tiết kênh đã làm (`getChannelDetail`, xem `fetchMetaFollowerCount`)
-  // thay vì đợi một lượt sync ghi lại — cache qua `fetchMetaFollowerCounts`
-  // (5 phút, xem định nghĩa phía trên) thay vì gọi sống mỗi lần tải trang.
-  // Lỗi ở đây KHÔNG được chặn cả trang Kênh — mỗi lượt tự nuốt lỗi (xem
-  // `fetchMetaFollowerCount`), thiếu follower count chỉ khiến thẻ thiếu một
-  // con số, không phải cả trang trắng.
-  const metaFollowerConnectionIds = (['facebook', 'instagram'] as const).flatMap(
-    (provider) => connectionsByProvider.get(provider) ?? [],
-  )
-  if (metaFollowerConnectionIds.length > 0) {
-    const connectionsById = new Map((connections ?? []).map((row) => [row.id, row]))
+  // Cả hai nguồn dưới đây gọi API NGOÀI và hoàn toàn độc lập nhau, nên chạy
+  // trong CÙNG một `Promise.all`. Trước đây chúng nối tiếp: mỗi lần cache lạnh
+  // là độ trễ Meta Graph API cộng thẳng vào độ trễ Klaviyo Reporting API rồi
+  // cả tổng đó cộng vào thời gian render trang, dù không bên nào cần kết quả
+  // của bên kia. Xem `channel-live-extras.ts` để biết vì sao hai số liệu này
+  // không nằm trong `metrics_daily`.
+  const connectionsById = new Map((connections ?? []).map((row) => [row.id, row]))
+  const metaTargets: readonly MetaFollowerTarget[] = (['facebook', 'instagram'] as const)
+    .flatMap((provider) => connectionsByProvider.get(provider) ?? [])
+    .map((connectionId): MetaFollowerTarget | null => {
+      const provider = connectionIdToProvider.get(connectionId)
+      const connectionRow = connectionsById.get(connectionId)
+      if (provider !== 'facebook' && provider !== 'instagram') return null
+      if (!connectionRow?.external_account_id) return null
+      return { connectionId, provider, externalAccountId: connectionRow.external_account_id }
+    })
+    .filter((target): target is MetaFollowerTarget => target !== null)
 
-    const targets: readonly MetaFollowerTarget[] = metaFollowerConnectionIds
-      .map((connectionId): MetaFollowerTarget | null => {
-        const provider = connectionIdToProvider.get(connectionId)
-        const connectionRow = connectionsById.get(connectionId)
-        if (provider !== 'facebook' && provider !== 'instagram') return null
-        if (!connectionRow?.external_account_id) return null
-        return { connectionId, provider, externalAccountId: connectionRow.external_account_id }
-      })
-      .filter((target): target is MetaFollowerTarget => target !== null)
+  const [followerResults, klaviyo] = await Promise.all([
+    collectMetaFollowerCounts(siteId, metaTargets),
+    collectKlaviyoExtras(connectionsByProvider.get('klaviyo') ?? [], range),
+  ])
 
-    const followerResults = targets.length > 0 ? await fetchMetaFollowerCounts(siteId, targets) : []
-
-    for (const result of followerResults) {
-      const current = summaries.get(result.provider) as ChannelSummary
-      summaries.set(result.provider, {
-        ...current,
-        extra: { ...current.extra, followerCount: (current.extra.followerCount ?? 0) + result.followerCount },
-      })
-    }
+  for (const result of followerResults) {
+    const current = summaries.get(result.provider) as ChannelSummary
+    summaries.set(result.provider, {
+      ...current,
+      extra: { ...current.extra, followerCount: (current.extra.followerCount ?? 0) + result.followerCount },
+    })
   }
 
-  // Klaviyo: cùng lý do Facebook/Instagram ở trên — không có `MetricsAdapter`
-  // ghi `metrics_daily` (Reporting API giới hạn 225 request/ngày, không đủ
-  // đồng bộ hằng ngày mỗi connection, xem header `providers/klaviyo.ts`), nên
-  // `hasData` ở trên PHẢI mãi là `false` cho Klaviyo — không phải lỗi. Trước
-  // đây `ChannelCard`/`ChannelTrendCard` chỉ đọc `hasData` chung nên hiện
-  // "Đang đồng bộ lần đầu…" VĨNH VIỄN dù trang chi tiết kênh vẫn lấy được số
-  // liệu thật (live-fetch). Live-fetch NGAY TẠI ĐÂY bằng đúng 3 hàm trang chi
-  // tiết kênh đã dùng — cả 3 đã TỰ CACHE 6 giờ theo apiKey/apiKey+range bên
-  // trong `providers/klaviyo.ts`, nên không cần một lớp `unstable_cache` bọc
-  // ngoài như `fetchMetaFollowerCounts` (Graph API follower KHÔNG tự cache).
-  const klaviyoConnectionIds = connectionsByProvider.get('klaviyo') ?? []
-  if (klaviyoConnectionIds.length > 0) {
-    const admin = createAdminClient()
-    const klaviyoRange = { startDate: range.start, endDate: range.end }
-
-    await Promise.all(
-      klaviyoConnectionIds.map(async (connectionId) => {
-        const tokenResult = await resolveKlaviyoApiKey(admin, connectionId)
-        if (!tokenResult.ok) return
-
-        const [inventory, performance, newProfiles] = await Promise.all([
-          fetchKlaviyoInventory(tokenResult.accessToken),
-          fetchKlaviyoPerformance(tokenResult.accessToken, klaviyoRange),
-          fetchKlaviyoNewProfileCount(tokenResult.accessToken, klaviyoRange),
-        ])
-
-        const revenueMicros =
-          (performance.campaignPerformance ?? []).reduce((sum, row) => sum + row.conversionValueMicros, 0) +
-          (performance.flowPerformance ?? []).reduce((sum, row) => sum + row.conversionValueMicros, 0)
-
-        const current = summaries.get('klaviyo') as ChannelSummary
-        summaries.set('klaviyo', {
-          ...current,
-          // KHÔNG dùng `hasData` (nghĩa cũ: "có hàng metrics_daily") —
-          // đúng bản chất Klaviyo là "đã lấy được số liệu live", nên set
-          // `true` ngay khi resolve token/fetch thành công, không đợi một
-          // pipeline sync không tồn tại.
-          hasData: true,
-          extra: {
-            ...current.extra,
-            campaignCount: (current.extra.campaignCount ?? 0) + (performance.campaignPerformance?.length ?? 0),
-            flowCount: (current.extra.flowCount ?? 0) + (performance.flowPerformance?.length ?? 0),
-            newProfileCount: (current.extra.newProfileCount ?? 0) + (newProfiles.error ? 0 : newProfiles.count),
-            revenueMicros: (current.extra.revenueMicros ?? 0) + revenueMicros,
-          },
-          currency: inventory.accountCurrency ?? current.currency ?? 'USD',
-        })
-      }),
-    )
+  if (klaviyo.hasData) {
+    const current = summaries.get('klaviyo') as ChannelSummary
+    summaries.set('klaviyo', {
+      ...current,
+      // KHÔNG suy từ `metrics_daily` như các nền tảng khác — đúng bản chất
+      // Klaviyo là "đã lấy được số liệu live", không đợi một pipeline sync
+      // vốn không tồn tại.
+      hasData: true,
+      extra: {
+        ...current.extra,
+        campaignCount: (current.extra.campaignCount ?? 0) + klaviyo.campaignCount,
+        flowCount: (current.extra.flowCount ?? 0) + klaviyo.flowCount,
+        newProfileCount: (current.extra.newProfileCount ?? 0) + klaviyo.newProfileCount,
+        revenueMicros: (current.extra.revenueMicros ?? 0) + klaviyo.revenueMicros,
+      },
+      currency: klaviyo.currency ?? current.currency ?? 'USD',
+    })
   }
 
   return summaries

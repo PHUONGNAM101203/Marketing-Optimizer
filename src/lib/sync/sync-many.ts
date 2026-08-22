@@ -11,6 +11,12 @@ export interface SyncTarget {
 export interface SyncManyResult {
   readonly synced: number
   readonly failed: number
+  /** Provider KHÔNG có `MetricsAdapter` (`gtm`, `klaviyo`). `syncConnection`
+   * trả `metrics-not-ready` cho chúng SAU KHI đã set `status:'connected'` +
+   * `last_synced_at` — tức là đã làm đúng việc cần làm, không phải hỏng. Đếm
+   * riêng để báo cáo cron không hiện `failed` cố định mỗi lượt chạy, che mất
+   * lỗi thật. */
+  readonly skipped: number
   readonly total: number
 }
 
@@ -44,6 +50,7 @@ export const syncMany = async (targets: readonly SyncTarget[]): Promise<SyncMany
     [...byFamily.values()].map(async (bucket) => {
       let synced = 0
       let failed = 0
+      let skipped = 0
       for (const target of bucket) {
         // Một connection lỗi không được kéo sập cả family — `syncConnection`
         // đã trả `{ ok: false }` thay vì throw cho lỗi nghiệp vụ, nhưng vẫn
@@ -51,6 +58,7 @@ export const syncMany = async (targets: readonly SyncTarget[]): Promise<SyncMany
         try {
           const result = await syncConnection(target.id)
           if (result.ok) synced += 1
+          else if (result.error === 'metrics-not-ready') skipped += 1
           else failed += 1
         } catch (error) {
           console.error(
@@ -59,13 +67,14 @@ export const syncMany = async (targets: readonly SyncTarget[]): Promise<SyncMany
           failed += 1
         }
       }
-      return { synced, failed }
+      return { synced, failed, skipped }
     }),
   )
 
   return {
     synced: perFamily.reduce((sum, entry) => sum + entry.synced, 0),
     failed: perFamily.reduce((sum, entry) => sum + entry.failed, 0),
+    skipped: perFamily.reduce((sum, entry) => sum + entry.skipped, 0),
     total: targets.length,
   }
 }
