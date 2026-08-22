@@ -61,7 +61,22 @@ Every table follows the same split: normal tables (`connections`, `metrics_daily
 
 ### Background sync
 
-`src/app/api/cron/sync-all/route.ts` is the only cron job (Vercel Hobby plan = one cron job, run once daily — do not add a second cron; extend `syncConnection` or gate new work behind a flag instead). It loops every connection and calls `syncConnection`. Time-sensitive work that must run for every connection (like the TikTok video snapshot) is wired into `syncConnection` itself rather than getting a separate schedule, and is wrapped in Next's `after()` where it doesn't need to block the caller's response (see the TikTok snapshot call site in `sync-connection.ts` for the pattern — `after()` needs to be called from live request scope, which every one of `syncConnection`'s six call sites provides).
+There are three cron jobs, declared in `vercel.json` (the Hobby-era one-cron-per-day limit no longer applies — the project is on Vercel Pro): `sync-hourly` (fresh-data providers), `run-agents` (agent dispatch, offset 20 minutes so it reads metrics the same hour's sync just wrote), and `sync-daily` (`LOW_FREQUENCY_PROVIDERS` + the AI model cache). All three cap at `maxDuration = 800`, the Pro/Fluid Compute ceiling. Connection syncing goes through `syncMany` (`src/lib/sync/sync-many.ts`), which runs provider families concurrently but keeps each family sequential — rate-limit quotas are per-platform, so this does not raise the concurrency any one platform sees. Time-sensitive work that must run for every connection (like the TikTok video snapshot) is wired into `syncConnection` itself rather than getting a separate schedule, and is wrapped in Next's `after()` where it doesn't need to block the caller's response (see the TikTok snapshot call site in `sync-connection.ts` for the pattern — `after()` needs to be called from live request scope, which every one of `syncConnection`'s six call sites provides).
+
+`vercel.json` also pins `regions: ["sin1"]`. This is not a preference: Supabase lives in `ap-southeast-1` and the users are in Vietnam, while Vercel's default `iad1` put every one of the many Supabase round trips per request (starting with `proxy.ts`'s `auth.getUser()`) across the Pacific and back. Don't drop it.
+
+### Realtime
+
+`connections` and `audit_runs` are in the `supabase_realtime` publication
+(migration `20260822000001`). Subscribe through
+`useRealtimeRefresh` (`src/components/realtime/use-realtime-refresh.ts`)
+rather than polling with `setInterval(router.refresh, …)` — a poll is a full
+RSC re-render, i.e. a Vercel invocation plus a dozen Supabase queries, per
+tick. RLS applies per subscriber, so a stream is scoped by the table's
+existing `is_site_member` SELECT policy and needs no new policy. Keep
+subscriptions gated on "something is actually pending": an always-on listener
+on a table the hourly cron writes turns every sync into a refresh burst across
+every open tab.
 
 ### Code conventions specific to this repo
 
