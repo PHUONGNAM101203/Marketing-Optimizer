@@ -73,3 +73,24 @@ export interface SyncRun {
   readonly finishedAt: string | null
   readonly error: string | null
 }
+
+/** Cửa sổ mà một connection vừa tạo còn được coi là "đang đồng bộ lần đầu".
+ * Lượt đồng bộ đầu tiên chạy ngay trong OAuth callback và mất vài chục giây;
+ * 15 phút là rộng rãi kể cả khi job nền bị xếp hàng. */
+const FIRST_SYNC_GRACE_MS = 15 * 60 * 1000
+
+/**
+ * Connection có ĐANG thật sự chạy lượt đồng bộ đầu tiên không.
+ *
+ * KHÔNG chỉ nhìn `status === 'syncing'`: đó là giá trị lúc `insert`, và một
+ * connection có thể kẹt nguyên trạng thái đó vĩnh viễn nếu lượt đồng bộ đầu
+ * chết giữa chừng — production đang có đúng một hàng như vậy (gtm, kẹt từ
+ * 13/8/2026). Ai dựa vào cờ đó để quyết định "còn phải chờ nữa không" sẽ chờ
+ * mãi mãi: nghe Realtime không bao giờ ngắt, hoặc quay vòng polling không có
+ * điểm dừng.
+ *
+ * Chốt chặn thật là thời gian: chưa từng đồng bộ xong VÀ mới kết nối gần đây.
+ */
+export const isAwaitingFirstSync = (connection: Connection, now: Date): boolean =>
+  connection.lastSyncedAt === null &&
+  now.getTime() - new Date(connection.connectedAt).getTime() < FIRST_SYNC_GRACE_MS

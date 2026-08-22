@@ -8,6 +8,7 @@ import { ConnectionsRealtime } from '@/components/realtime/connections-realtime'
 import { MobileNavProvider } from '@/components/layout/mobile-nav-context'
 import { getCurrentProfile, getSite, listSites, setLastSiteId } from '@/lib/data/sites'
 import { getConnectionSummary } from '@/lib/data/connections'
+import { isAwaitingFirstSync } from '@/lib/domain/connection'
 import { createClient } from '@/lib/supabase/server'
 
 /**
@@ -66,16 +67,15 @@ export default async function SiteLayout({
     // `<main>` tự cuộn riêng loại bỏ hẳn cơ chế lỗi này, bất kể control nào
     // gây co ngót nội dung.
     <MobileNavProvider>
-      {/* Chờ đồng bộ = có kết nối nhưng chưa kết nối nào ghi xong
-          `last_synced_at`, hoặc có kết nối đang ở trạng thái `syncing`. Chỉ
-          lúc đó mới cần nghe Realtime — xem lý do trong component. */}
+      {/* Chỉ nghe Realtime khi có kết nối ĐANG chạy lượt đồng bộ đầu tiên —
+          xem `isAwaitingFirstSync` để biết vì sao không dùng
+          `status === 'syncing'`, và xem component để biết vì sao không bật
+          thường trực. */}
       <ConnectionsRealtime
         siteId={site.id}
-        waiting={
-          !connections.isEmpty &&
-          (connections.lastSyncedAt === null ||
-            connections.all.some((connection) => connection.status === 'syncing'))
-        }
+        waiting={connections.all.some((connection) =>
+          isAwaitingFirstSync(connection, new Date()),
+        )}
       />
       <div className="flex h-dvh overflow-hidden">
         <SideRail
