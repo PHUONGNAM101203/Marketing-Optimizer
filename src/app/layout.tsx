@@ -35,6 +35,13 @@ export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
   viewportFit: 'cover',
+  // Màu thanh trạng thái/khung trình duyệt. Hai giá trị hex dưới đây là
+  // `--color-paper` của tokens.css ở nhánh sáng và nhánh tối — meta tag không
+  // đọc được biến CSS nên buộc phải ghi thẳng; đổi token thì phải đổi cả đây.
+  themeColor: [
+    { media: '(prefers-color-scheme: light)', color: '#fdfcf9' },
+    { media: '(prefers-color-scheme: dark)', color: '#0f1014' },
+  ],
 }
 
 export const metadata: Metadata = {
@@ -44,6 +51,20 @@ export const metadata: Metadata = {
   },
   description:
     'Trung tâm điều hành marketing: hợp nhất số liệu Google, Meta, TikTok và YouTube quanh một website.',
+  // Thiếu khối này thì "Thêm vào màn hình chính" trên iOS chỉ tạo một shortcut
+  // mở Safari KÈM thanh địa chỉ và thanh công cụ — không phải app toàn màn
+  // hình. `capable: true` là thứ duy nhất iOS đọc để quyết định điều đó
+  // (manifest `display: 'standalone'` chỉ Android nghe theo).
+  //
+  // `black-translucent` cho nội dung chạy dưới thanh trạng thái — chỉ an toàn
+  // vì Topbar và MobileNavDrawer đã đệm `env(safe-area-inset-top)` sẵn (cùng
+  // với `viewportFit: 'cover'` ở trên). Bỏ một trong ba thứ đó là tiêu đề
+  // chui lên dưới đồng hồ/Dynamic Island.
+  appleWebApp: {
+    capable: true,
+    title: 'Optimizer',
+    statusBarStyle: 'black-translucent',
+  },
 }
 
 export default function RootLayout({ children }: LayoutProps<'/'>) {
