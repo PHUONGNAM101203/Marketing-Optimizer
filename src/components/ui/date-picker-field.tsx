@@ -164,10 +164,21 @@ export function DatePickerField({
               button_previous: navButtonClass,
               button_next: navButtonClass,
               chevron: 'size-4 fill-current',
+              // KHÔNG ép `display:flex` lên `<tr>` (`weekdays`/`week`).
+              // `month_grid` là một `<table>` thật; để nguyên mô hình bảng thì
+              // `<th>` và `<td>` CÙNG MỘT CỘT tự động chung bề rộng. Ép flex
+              // là bỏ mô hình đó đi, mỗi hàng tự co giãn độc lập — và hai hàng
+              // vốn KHÔNG bằng nhau: ô ngày là `p-0.5` (2px mỗi bên) + nút
+              // `size-9` (36px) = 40px, còn ô thứ chỉ `size-9` = 36px. Lệch
+              // 4px mỗi cột, dồn 7 cột thành 28px, đúng như hàng "TH 2…CN"
+              // ngắn hụt so với lưới ngày bên dưới.
+              //
+              // Sửa bằng cách bỏ flex chứ không phải bằng cách chỉnh 36px
+              // thành 40px: căn cột khi đó do bảng bảo đảm, không phụ thuộc
+              // hai con số ở hai dòng khác nhau phải luôn khớp tay.
               month_grid: 'border-collapse',
-              weekdays: 'flex',
-              weekday: 'size-9 text-center text-[length:var(--text-2xs)] font-medium text-[var(--color-ink-3)] uppercase',
-              week: 'flex',
+              weekday:
+                'h-9 text-center align-middle text-[length:var(--text-2xs)] font-medium text-[var(--color-ink-3)] uppercase',
               day: 'p-0.5 text-center',
               day_button: dayButtonClass,
               today: '[&_button]:font-semibold [&_button]:text-[var(--color-signal)]',

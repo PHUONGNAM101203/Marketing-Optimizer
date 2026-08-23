@@ -116,7 +116,26 @@ export function StatsDonut({ slices, totalLabel, emptyTitle, emptyDescription }:
                 <Cell key={slice.key} fill={fillFor(slice.colorToken)} />
               ))}
             </Pie>
-            <Tooltip content={<StatsDonutTooltip total={grandTotal} />} />
+            {/* Ghim trục X ra NGOÀI vòng donut, để trục Y tự bám con trỏ.
+                Recharts cho set lẻ từng trục của `position` (xem
+                `util/tooltip/translate.js` — nó kiểm tra `isNumber` riêng cho
+                x và y), nên không phải đánh đổi "cố định hẳn" với "bám con
+                trỏ hẳn".
+
+                Vì sao cần: donut chỉ 180px và lỗ giữa đang hiển thị con số
+                TỔNG. Tooltip mặc định bám con trỏ, mà con trỏ thì luôn nằm
+                trên vành donut, nên nó rơi đúng vào lỗ giữa và đè lên tổng —
+                hai lớp chữ chồng nhau, không đọc được lớp nào.
+
+                188 = 180 (bề ngang donut) + 8 khoảng hở: sát nhất có thể mà
+                vẫn không chạm vành. `allowEscapeViewBox.x` là bắt buộc, thiếu
+                nó Recharts kẹp tooltip lại trong khung 180px và mọi thứ trên
+                trở về như cũ. */}
+            <Tooltip
+              content={<StatsDonutTooltip total={grandTotal} />}
+              position={{ x: 188 }}
+              allowEscapeViewBox={{ x: true }}
+            />
           </PieChart>
         </ResponsiveContainer>
         <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-0.5">

@@ -251,6 +251,9 @@ function DateRangeMenu({
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
+  // Menu phải là controlled để hai mục mở-dialog bên dưới tự đóng nó — xem
+  // lý do ở `onSelect` của "Tuỳ chỉnh…".
+  const [menuOpen, setMenuOpen] = useState(false)
   const [customDialogOpen, setCustomDialogOpen] = useState(false)
   const [from, setFrom] = useState(customRange?.start ?? '')
   const [to, setTo] = useState(customRange?.end ?? '')
@@ -315,7 +318,7 @@ function DateRangeMenu({
 
   return (
     <>
-      <DropdownMenu.Root>
+      <DropdownMenu.Root open={menuOpen} onOpenChange={setMenuOpen}>
         <DropdownMenu.Trigger asChild>
           <Button
             variant="secondary"
@@ -337,6 +340,12 @@ function DateRangeMenu({
           <DropdownMenu.Content
             align="end"
             sideOffset={6}
+            // Menu đóng lại NGAY khi mở dialog (xem `onSelect` bên dưới).
+            // Mặc định Radix trả focus về nút trigger lúc đóng, mà dialog thì
+            // vừa mount và đang giành focus — hai bên giật nhau, kết quả là
+            // focus rơi về topbar chứ không vào ô nhập ngày. Chặn hành vi trả
+            // focus đó đi thì dialog giữ được focus.
+            onCloseAutoFocus={(event) => event.preventDefault()}
             className={cn(
               'z-50 min-w-[12rem] rounded-[var(--radius-lg)] p-1',
               'border border-[var(--color-rule)] bg-[var(--color-paper)]',
@@ -371,7 +380,13 @@ function DateRangeMenu({
                 preset ở trên chỉ cần một lượt bấm. */}
             <DropdownMenu.Item
               onSelect={(event) => {
+                // `preventDefault` chặn Radix tự đóng menu THEO NHỊP CỦA NÓ
+                // (đóng kèm trả focus), nhưng nó chặn luôn cả việc đóng —
+                // nên phải tự đóng ở dòng dưới. Thiếu dòng đó thì menu nằm
+                // lại phía sau dialog và người dùng phải bấm thêm một lần
+                // nữa mới tắt được, đúng lỗi đã báo.
                 event.preventDefault()
+                setMenuOpen(false)
                 setCustomDialogOpen(true)
               }}
               className={cn(
@@ -397,7 +412,13 @@ function DateRangeMenu({
                 cùng menu thay vì phải mở lại "Tuỳ chỉnh…". */}
             <DropdownMenu.Item
               onSelect={(event) => {
+                // `preventDefault` chặn Radix tự đóng menu THEO NHỊP CỦA NÓ
+                // (đóng kèm trả focus), nhưng nó chặn luôn cả việc đóng —
+                // nên phải tự đóng ở dòng dưới. Thiếu dòng đó thì menu nằm
+                // lại phía sau dialog và người dùng phải bấm thêm một lần
+                // nữa mới tắt được, đúng lỗi đã báo.
                 event.preventDefault()
+                setMenuOpen(false)
                 setCompareDialogOpen(true)
               }}
               className={cn(
