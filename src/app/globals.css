@@ -235,3 +235,81 @@
     scroll-behavior: auto !important;
   }
 }
+
+/* ── SideRail: trạng thái thu gọn ──────────────────────────────────────────
+   Rail thu gọn theo HAI nguồn độc lập:
+     1. Lựa chọn của người dùng (`data-sidebar-collapsed` trên <html>, do
+        `SidebarScript`/`lib/sidebar.ts` ghi) — chỉ có nghĩa từ `lg:` trở lên.
+     2. BẮT BUỘC dưới `lg:` — dưới 1024px rail luôn ở dạng dải icon 72px.
+
+   Vì sao điều khiển bằng CSS chứ không bằng biến React `collapsed`: server
+   không biết bề rộng màn hình, nên nếu để React quyết thì HTML trả về cho
+   điện thoại sẽ chứa rail mở rộng đầy nhãn, hiện nguyên một nhịp rồi mới co
+   lại sau khi hydrate. CSS áp ngay từ khung hình đầu tiên — cùng lý do
+   `--rail-w` vốn đã do CSS đổi chứ không do className React (xem tokens.css).
+
+   `display: contents` chứ không phải `block`: thẻ bọc biến mất khỏi layout,
+   con bên trong giữ nguyên display gốc (Button là inline-flex, `w-full`...)
+   như thể không có thẻ bọc nào. */
+.rail-when-expanded {
+  display: contents;
+}
+
+.rail-when-collapsed {
+  display: none;
+}
+
+/* Biến thể cho thẻ có hộp riêng (nhãn nhóm `<p>` có padding): `display:
+   contents` sẽ xoá luôn hộp đó và mất padding, nên phải bật/tắt bằng
+   `block`/`none` thay vì `contents`/`none`. */
+.rail-when-expanded-block {
+  display: block;
+}
+
+/* Vài chỗ trong rail đổi CÁCH SẮP XẾP chứ không phải ẩn/hiện, nên không dùng
+   được `.rail-when-*`. Đẩy ra biến để cùng một cơ chế CSS quyết định, thay vì
+   để React tính className và lặp lại đúng lỗi nháy layout ở trên. */
+:root {
+  --rail-item-justify: flex-start;
+  --rail-brand-flex: 1;
+  --rail-footer-direction: row;
+  --rail-footer-justify: flex-start;
+}
+
+:root[data-sidebar-collapsed='true'] {
+  --rail-item-justify: center;
+  --rail-brand-flex: 0 1 auto;
+  --rail-footer-direction: column;
+  --rail-footer-justify: center;
+}
+
+:root[data-sidebar-collapsed='true'] .rail-when-expanded,
+:root[data-sidebar-collapsed='true'] .rail-when-expanded-block {
+  display: none;
+}
+
+:root[data-sidebar-collapsed='true'] .rail-when-collapsed {
+  display: contents;
+}
+
+/* PHẢI đặt sau khối `[data-sidebar-collapsed]` ở trên: hai bên cùng độ ưu
+   tiên selector nên bên viết sau thắng. Nhờ vậy dưới `lg:` rail luôn thu gọn
+   kể cả khi người dùng đã chọn mở rộng trên máy tính. */
+@media (width < 64rem) {
+  :root {
+    --rail-w: var(--rail-w-collapsed);
+  --rail-item-justify: center;
+  --rail-brand-flex: 0 1 auto;
+  --rail-footer-direction: column;
+  --rail-footer-justify: center;
+  }
+
+  .rail-when-expanded,
+  .rail-when-expanded-block {
+    display: none;
+  }
+
+  .rail-when-collapsed {
+    display: contents;
+  }
+}

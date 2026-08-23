@@ -60,31 +60,28 @@ export function SideRail({
     <nav
       aria-label="Điều hướng chính"
       className={cn(
-        // Ẩn hẳn dưới `lg:` — rail cố định 264px không có chế độ mobile nào,
-        // chiếm 82% một màn 320px nếu cứ hiện. Điều hướng mobile chuyển hẳn
-        // sang `MobileNavDrawer` (trượt từ trái, mở qua nút hamburger ở
-        // Topbar) thay vì cố nhồi rail này vào màn hẹp.
-        'hidden h-dvh w-[var(--rail-w)] shrink-0 flex-col lg:flex',
+        // Hiện ở MỌI bề rộng. Dưới `lg:` CSS ép rail về dạng thu gọn 72px
+        // (xem `.rail-when-*` và `--rail-w` trong globals.css) — 18% một màn
+        // 390px, đủ chỗ cho dải icon điều hướng luôn hiển thị. Bản trước ẩn
+        // hẳn rail dưới `lg:` vì rail MỞ RỘNG chiếm 264px = 82% màn 320px;
+        // lý do đó chỉ đúng cho trạng thái mở rộng, và đã vứt nhầm cả trạng
+        // thái thu gọn vốn dùng tốt trên điện thoại.
+        // `MobileNavDrawer` + hamburger vẫn giữ, cho khi cần nhãn đầy đủ.
+        'flex h-dvh w-[var(--rail-w)] shrink-0 flex-col',
         'border-r border-[var(--color-rule)] bg-[var(--color-paper-2)]',
         'sticky top-0',
         'transition-[width] duration-[var(--dur-base)] ease-[var(--ease-out)]',
       )}
     >
       <div
-        className={cn(
-          'flex items-center gap-2 px-4 pt-5 pb-4',
-          collapsed && 'justify-center',
-        )}
+        className="flex items-center gap-2 px-4 pt-5 pb-4 [justify-content:var(--rail-item-justify)]"
       >
         <Link
           href={`/${siteId}/overview`}
-          className={cn(
-            'flex min-w-0 items-center gap-2.5 rounded-[var(--radius-sm)]',
-            !collapsed && 'flex-1',
-          )}
+          className="flex min-w-0 items-center gap-2.5 rounded-[var(--radius-sm)] [flex:var(--rail-brand-flex)]"
         >
           <SiteFavicon domain={siteDomain} className="size-6 shrink-0" />
-          {collapsed ? null : (
+          <span className="rail-when-expanded">
             <span className="min-w-0">
               <span className="block truncate font-[family-name:var(--font-display)] text-[length:var(--text-sm)] leading-tight font-bold text-[var(--color-ink)]">
                 {siteName}
@@ -93,14 +90,14 @@ export function SideRail({
                 {siteDomain}
               </span>
             </span>
-          )}
+          </span>
         </Link>
 
         {/* Thu gọn/mở rộng — chỉ hiện khi mở rộng (đủ chỗ), ở dạng thu gọn
             bấm lại được qua chính nút này khi nó co xuống còn icon (xem dưới
             khối "Kết nối nguồn"), tránh chiếm thêm một hàng riêng làm rail
             thu gọn cao hơn cần thiết. */}
-        {collapsed ? null : (
+        <span className="rail-when-expanded">
           <Button
             variant="ghost"
             size="icon"
@@ -110,29 +107,40 @@ export function SideRail({
           >
             <PanelLeftClose aria-hidden className="size-4" />
           </Button>
-        )}
+        </span>
       </div>
 
       <div className="px-4 pb-4">
-        {collapsed ? (
+        <div className="rail-when-collapsed">
+          {/* Nút mở rộng chỉ có nghĩa từ `lg:` trở lên — dưới đó CSS ép thu
+              gọn nên bấm vào sẽ không thấy gì đổi. Thay bằng lối tắt "Kết nối
+              nguồn" dạng icon, giữ đúng chức năng của ô này ở bản mở rộng. */}
           <Button
             variant="ghost"
             size="icon"
             aria-label="Mở rộng sidebar"
             title="Mở rộng sidebar"
-            className="w-full"
+            className="hidden w-full lg:inline-flex"
             onClick={toggleCollapsed}
           >
             <PanelLeftOpen aria-hidden className="size-4" />
           </Button>
-        ) : (
+
+          <Button asChild variant="ghost" size="icon" className="w-full lg:hidden">
+            <Link href={`/${siteId}/connections`} aria-label="Kết nối nguồn" title="Kết nối nguồn">
+              <Plus aria-hidden className="size-4" />
+            </Link>
+          </Button>
+        </div>
+
+        <div className="rail-when-expanded">
           <Button asChild variant="primary" size="md" className="w-full">
             <Link href={`/${siteId}/connections`}>
               <Plus aria-hidden className="size-4" />
               Kết nối nguồn
             </Link>
           </Button>
-        )}
+        </div>
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto pb-4">
@@ -144,8 +152,8 @@ export function SideRail({
               section.label ? 'pt-4' : 'mt-4 border-t border-[var(--color-rule)] pt-4',
             )}
           >
-            {section.label && !collapsed ? (
-              <p className="px-2 pb-1.5 text-[length:var(--text-2xs)] font-medium tracking-[var(--tracking-label)] text-[var(--color-ink-3)] uppercase">
+            {section.label ? (
+              <p className="rail-when-expanded-block px-2 pb-1.5 text-[length:var(--text-2xs)] font-medium tracking-[var(--tracking-label)] text-[var(--color-ink-3)] uppercase">
                 {section.label}
               </p>
             ) : null}
@@ -165,7 +173,7 @@ export function SideRail({
                         'flex items-center gap-2.5 rounded-[var(--radius-sm)] px-2 py-1.5',
                         'text-[length:var(--text-sm)] whitespace-nowrap',
                         'transition-colors duration-[var(--dur-fast)] ease-[var(--ease-out)]',
-                        collapsed && 'justify-center',
+                        '[justify-content:var(--rail-item-justify)]',
                         active
                           ? 'bg-[var(--color-paper-3)] font-medium text-[var(--color-ink)]'
                           : 'text-[var(--color-ink-2)] hover:bg-[var(--color-paper-3)] hover:text-[var(--color-ink)]',
@@ -180,7 +188,9 @@ export function SideRail({
                             : 'text-[var(--color-ink-3)]',
                         )}
                       />
-                      {collapsed ? null : <span className="truncate">{item.label}</span>}
+                      <span className="rail-when-expanded">
+                        <span className="truncate">{item.label}</span>
+                      </span>
                     </Link>
 
                     {/* Chỉ báo ép mép phải của rail — chi tiết giữ lại từ bản gốc. */}
@@ -206,7 +216,7 @@ export function SideRail({
           // bị lệch trái so với các icon điều hướng phía trên (mỗi icon đó
           // tự canh giữa một mình). Xếp DỌC khi thu gọn để avatar VÀ nút đăng
           // xuất đều tự canh giữa riêng, khớp trục với icon điều hướng.
-          collapsed ? 'flex-col justify-center gap-2' : 'justify-start',
+          '[flex-direction:var(--rail-footer-direction)] [justify-content:var(--rail-footer-justify)]',
         )}
       >
         <span
@@ -217,7 +227,7 @@ export function SideRail({
           {userName.charAt(0).toUpperCase()}
         </span>
 
-        {collapsed ? null : (
+        <div className="rail-when-expanded">
           <div className="min-w-0 flex-1">
             <p className="truncate text-[length:var(--text-xs)] font-medium text-[var(--color-ink)]">
               {userName}
@@ -226,7 +236,7 @@ export function SideRail({
               {userEmail}
             </p>
           </div>
-        )}
+        </div>
 
         <form action={signOut}>
           <Button
