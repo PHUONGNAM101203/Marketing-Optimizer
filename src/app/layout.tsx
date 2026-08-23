@@ -65,6 +65,14 @@ export const metadata: Metadata = {
     title: 'Optimizer',
     statusBarStyle: 'black-translucent',
   },
+  // `appleWebApp.capable` ở trên chỉ phát ra `mobile-web-app-capable` (tên
+  // chuẩn mới) — đã xác nhận trên HTML production. iOS cũ hơn 15.4 chỉ đọc
+  // tên có tiền tố `apple-`, nên khai thêm ở đây; iOS mới thấy cả hai cũng
+  // không sao. Một thẻ meta thừa rẻ hơn nhiều so với việc người dùng cài về
+  // máy rồi mở ra vẫn thấy thanh địa chỉ Safari.
+  other: {
+    'apple-mobile-web-app-capable': 'yes',
+  },
 }
 
 export default function RootLayout({ children }: LayoutProps<'/'>) {
