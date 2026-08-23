@@ -141,7 +141,17 @@ export interface PageSpeedResult {
   readonly desktopError?: string | null
 }
 
-export interface AuditRun {
+/**
+ * Lượt quét KHÔNG kèm `pageCitability`.
+ *
+ * `pageCitability` là một mảng có MỘT phần tử cho MỖI trang đã quét — với
+ * site 1000+ trang nó nặng ~2,5 MB, gấp ~130 lần toàn bộ phần còn lại cộng
+ * lại (đo thật trên production 23/8/2026: 2.060.490 bytes so với 15.506
+ * bytes). Sáu trang gọi `getLatestAuditRun` nhưng CHỈ trang Hiện diện AI
+ * đọc tới field này, nên mặc định phải là bản không có nó; ai cần thì gọi
+ * `getLatestAuditRunWithCitability`.
+ */
+export interface AuditRunSummary {
   readonly id: string
   readonly siteId: string
   readonly status: AuditRunStatus
@@ -162,7 +172,6 @@ export interface AuditRun {
    * thêm ở đây. */
   readonly aeoScore: number | null
   readonly findings: readonly AuditFinding[]
-  readonly pageCitability: readonly PageCitabilityScore[]
   readonly siteProfile: SiteProfile | null
   readonly pagespeed: PageSpeedResult | null
   /** 10 câu hỏi/từ khoá phổ biến TOÀN CẦU theo chủ đề site — xem
@@ -200,7 +209,13 @@ export interface AuditRun {
   readonly completedAt: string | null
 }
 
-export const scoreOf = (run: AuditRun, category: AuditCategory): number | null =>
+/** `AuditRunSummary` kèm điểm citability từng trang — chỉ dùng khi thật sự
+ * render danh sách đó (xem lý do ở `AuditRunSummary`). */
+export interface AuditRun extends AuditRunSummary {
+  readonly pageCitability: readonly PageCitabilityScore[]
+}
+
+export const scoreOf = (run: AuditRunSummary, category: AuditCategory): number | null =>
   category === 'seo'
     ? run.seoScore
     : category === 'geo'
@@ -210,7 +225,7 @@ export const scoreOf = (run: AuditRun, category: AuditCategory): number | null =
         : run.aeoScore
 
 export const findingsOf = (
-  run: AuditRun,
+  run: AuditRunSummary,
   category: AuditCategory,
 ): readonly AuditFinding[] => run.findings.filter((finding) => finding.category === category)
 

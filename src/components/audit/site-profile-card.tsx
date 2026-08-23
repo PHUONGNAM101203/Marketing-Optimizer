@@ -4,7 +4,7 @@ import { Card } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { BotProtectionGuide } from '@/components/audit/bot-protection-guide'
-import type { AuditRun } from '@/lib/domain/audit'
+import type { AuditRunSummary } from '@/lib/domain/audit'
 
 /* Hallmark · component: site-profile-card · theme: studied-DNA (Ink & Signal)
  *
@@ -24,7 +24,7 @@ const CONFIDENCE_LABELS: Readonly<Record<'high' | 'medium' | 'low', string>> = {
   low: 'Độ tin cậy thấp — ước tính sơ bộ',
 }
 
-export function SiteProfileCard({ siteId, run }: { readonly siteId: string; readonly run: AuditRun | null }) {
+export function SiteProfileCard({ siteId, run }: { readonly siteId: string; readonly run: AuditRunSummary | null }) {
   if (!run || !run.siteProfile) {
     return (
       <Card className="flex flex-wrap items-center justify-between gap-4 p-5">

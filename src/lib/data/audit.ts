@@ -2,7 +2,14 @@ import 'server-only'
 
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import type { AuditFinding, AuditRun, AuditRunStatus, PageSpeedResult, SiteProfile } from '@/lib/domain/audit'
+import type {
+  AuditFinding,
+  AuditRun,
+  AuditRunStatus,
+  AuditRunSummary,
+  PageSpeedResult,
+  SiteProfile,
+} from '@/lib/domain/audit'
 import type { PageCitabilityScore } from '@/lib/domain/geo'
 import type { PageSignals } from '@/lib/audit/crawler'
 
@@ -56,7 +63,7 @@ const toSourceTagged = <T extends Record<string, unknown>>(value: unknown, listK
   return empty
 }
 
-const toAuditRun = (row: AuditRunRow): AuditRun => {
+const toAuditRunSummary = (row: AuditRunRow): AuditRunSummary => {
   const isStaleRunning =
     row.status === 'running' &&
     Date.now() - new Date(row.started_at).getTime() > STALE_RUNNING_THRESHOLD_MS
@@ -74,7 +81,6 @@ const toAuditRun = (row: AuditRunRow): AuditRun => {
     aioScore: row.aio_score,
     aeoScore: row.aeo_score,
     findings: (row.findings as readonly AuditFinding[] | null) ?? [],
-    pageCitability: (row.page_citability as readonly PageCitabilityScore[] | null) ?? [],
     siteProfile: row.site_profile as SiteProfile | null,
     pagespeed: row.pagespeed as PageSpeedResult | null,
     globalKeywordSuggestions: toSourceTagged(row.global_keyword_suggestions, 'suggestions', {
@@ -101,10 +107,47 @@ const toAuditRun = (row: AuditRunRow): AuditRun => {
  * hiệu crawl thô của toàn bộ sitemap, chỉ `getLatestAuditPageSignals` bên
  * dưới cần tới. Trang Tổng quan gọi hàm này trên MỌI lượt render (kể cả mỗi
  * lần đổi khoảng ngày) nên kéo cả blob đó qua dây mỗi lần là phí. */
-const AUDIT_RUN_COLUMNS =
-  'id, site_id, status, pages_scanned, sitemap_url_count, truncated, blocked_by_bot_protection, seo_score, geo_score, aio_score, aeo_score, findings, page_citability, site_profile, pagespeed, global_keyword_suggestions, prompt_template_suggestions, agent_role_suggestions, error, started_at, completed_at'
+/**
+ * CỐ TÌNH không có `page_citability`.
+ *
+ * Cột đó giữ một điểm số cho MỖI trang đã quét. Đo thật trên production
+ * (23/8/2026, site 1000+ trang): kèm nó thì một hàng là 2.060.490 bytes và
+ * truy vấn mất 2,1–7,8 giây; bỏ nó ra còn 15.506 bytes và 0,22–0,47 giây —
+ * nhỏ hơn 133 lần. Sáu trang gọi `getLatestAuditRun` (Tổng quan, Kênh,
+ * Kiểm tra, Agents, Prompt Studio, Hiện diện AI) và mỗi trang đều phải trả
+ * cái giá đó, trong khi CHỈ Hiện diện AI render danh sách này.
+ */
+const AUDIT_RUN_SUMMARY_COLUMNS =
+  'id, site_id, status, pages_scanned, sitemap_url_count, truncated, blocked_by_bot_protection, seo_score, geo_score, aio_score, aeo_score, findings, site_profile, pagespeed, global_keyword_suggestions, prompt_template_suggestions, agent_role_suggestions, error, started_at, completed_at'
 
-export const getLatestAuditRun = async (siteId: string): Promise<AuditRun | null> => {
+/** Cố tình viết lại đầy đủ thay vì nối chuỗi từ hằng trên: Supabase suy ra
+ * kiểu trả về TỪ KIỂU LITERAL của chuỗi select. Một template literal cho ra
+ * kiểu `string`, làm kết quả rơi về `any` và lan sang mọi biến cùng nằm
+ * trong `Promise.all` ở phía trang gọi. */
+const AUDIT_RUN_COLUMNS =
+  'id, site_id, status, pages_scanned, sitemap_url_count, truncated, blocked_by_bot_protection, seo_score, geo_score, aio_score, aeo_score, findings, site_profile, pagespeed, global_keyword_suggestions, prompt_template_suggestions, agent_role_suggestions, error, started_at, completed_at, page_citability'
+
+/** Mặc định của mọi trang. Xem `AUDIT_RUN_SUMMARY_COLUMNS` để biết vì sao
+ * KHÔNG kèm `pageCitability`. */
+export const getLatestAuditRun = async (siteId: string): Promise<AuditRunSummary | null> => {
+  const supabase = await createClient()
+  const { data, error } = await supabase
+    .from('audit_runs')
+    .select(AUDIT_RUN_SUMMARY_COLUMNS)
+    .eq('site_id', siteId)
+    .order('started_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  if (error) throw new Error(`Không đọc được lượt quét: ${error.message}`)
+  return data ? toAuditRunSummary(data as AuditRunRow) : null
+}
+
+/** CHỈ dùng khi thật sự render điểm citability từng trang (hiện tại: trang
+ * Hiện diện AI). Kéo thêm ~2 MB — đừng gọi "cho chắc". */
+export const getLatestAuditRunWithCitability = async (
+  siteId: string,
+): Promise<AuditRun | null> => {
   const supabase = await createClient()
   const { data, error } = await supabase
     .from('audit_runs')
@@ -115,7 +158,12 @@ export const getLatestAuditRun = async (siteId: string): Promise<AuditRun | null
     .maybeSingle()
 
   if (error) throw new Error(`Không đọc được lượt quét: ${error.message}`)
-  return data ? toAuditRun(data as AuditRunRow) : null
+  if (!data) return null
+  const row = data as AuditRunRow
+  return {
+    ...toAuditRunSummary(row),
+    pageCitability: (row.page_citability as readonly PageCitabilityScore[] | null) ?? [],
+  }
 }
 
 /**

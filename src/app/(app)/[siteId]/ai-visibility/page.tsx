@@ -14,7 +14,7 @@ import { TrackedPromptCard } from '@/components/geo/tracked-prompt-card'
 import { AddSuggestedPromptButton } from '@/components/geo/add-suggested-prompt-button'
 import { UrlTabs } from '@/components/ui/tabs'
 import { getSite } from '@/lib/data/sites'
-import { getLatestAuditRun } from '@/lib/data/audit'
+import { getLatestAuditRunWithCitability } from '@/lib/data/audit'
 import { listTrackedPrompts } from '@/lib/data/tracked-prompts'
 import { getLatestCitationCheckByPrompt, countCitationChecks } from '@/lib/data/citation-checks'
 import { getSiteAiConnection } from '@/lib/data/site-ai-keys'
@@ -38,7 +38,7 @@ export default async function AiVisibilityPage({
   if (!site) notFound()
 
   const [run, prompts, aiConnection] = await Promise.all([
-    getLatestAuditRun(site.id),
+    getLatestAuditRunWithCitability(site.id),
     listTrackedPrompts(site.id),
     getSiteAiConnection(site.id),
   ])
