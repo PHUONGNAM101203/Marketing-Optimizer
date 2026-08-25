@@ -70,7 +70,11 @@ export function YoutubeDashboard({
         />
       </section>
 
-      <VideoTrendingWidget trendingFast={trending.trendingFast} rangeLabel={rangeLabel} />
+      <VideoTrendingWidget
+        trendingFast={trending.trendingFast}
+        rangeLabel={rangeLabel}
+        platformLabel="YouTube"
+      />
 
       <section className="flex flex-col gap-3">
         <SectionHead label="Tổng quan tương tác" title={`Thống kê — ${rangeLabel}`} />

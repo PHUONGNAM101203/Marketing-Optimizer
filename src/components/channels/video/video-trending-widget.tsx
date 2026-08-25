@@ -1,5 +1,7 @@
 import { Card, CardHeader } from '@/components/ui/card'
 import { EmptyState } from '@/components/ui/feedback'
+import { DialogRoot, DialogTrigger } from '@/components/ui/dialog'
+import { VideoDetailDialog } from './video-detail-dialog'
 import { formatCompact, formatDate, formatNumber } from '@/lib/format'
 import type { VideoGrowthSummary } from '@/lib/providers/video-trending-types'
 
@@ -19,6 +21,7 @@ import type { VideoGrowthSummary } from '@/lib/providers/video-trending-types'
 export function VideoTrendingWidget({
   trendingFast,
   rangeLabel,
+  platformLabel,
   likelyBroken = false,
 }: {
   /** Đã tính sẵn theo khoảng ngày đang chọn ở tầng data. */
@@ -26,6 +29,8 @@ export function VideoTrendingWidget({
   /** Nhãn khoảng ngày đang xem, hiện ngay trên thẻ để không phải suy đoán
    * bảng này đang nói về khoảng nào. */
   readonly rangeLabel: string
+  /** "TikTok"/"YouTube" — chỉ để hiện nhãn nút "Xem trên …" trong dialog. */
+  readonly platformLabel: string
   /** `true` khi kết nối đã đủ lâu mà vẫn không có snapshot nào — dấu hiệu
    * lỗi ghi THẬT (thiếu quyền, token hỏng...) bị nuốt im lặng trước đây,
    * KHÁC "chưa đủ thời gian tích luỹ". Tính sẵn phía server (xem
@@ -57,7 +62,12 @@ export function VideoTrendingWidget({
         ) : (
           <ol className="flex flex-col divide-y divide-[var(--color-rule)]">
             {positiveEntries.map((entry, index) => (
-              <TrendingRow key={index} rank={index + 1} entry={entry} />
+              <TrendingRow
+                key={entry.externalVideoId}
+                rank={index + 1}
+                entry={entry}
+                platformLabel={platformLabel}
+              />
             ))}
           </ol>
         )}
@@ -66,44 +76,77 @@ export function VideoTrendingWidget({
   )
 }
 
-function TrendingRow({ rank, entry }: { readonly rank: number; readonly entry: VideoGrowthSummary }) {
+/* Mở đúng `VideoDetailDialog` mà bảng xếp hạng và thẻ video đang dùng, không
+ * dựng dialog thứ hai: `VideoGrowthSummary` kế thừa `VideoSummary` nên đã có
+ * đủ mọi field `VideoRankingItem` cần, khỏi phải ánh xạ gì.
+ *
+ * Trigger là `<button>` BÊN TRONG `<li>`, không phải chính `<li>`: `<li>`
+ * không nhận focus bàn phím, đặt trigger lên nó là chỉ chuột mới bấm được. */
+function TrendingRow({
+  rank,
+  entry,
+  platformLabel,
+}: {
+  readonly rank: number
+  readonly entry: VideoGrowthSummary
+  readonly platformLabel: string
+}) {
   return (
-    <li className="flex items-center gap-3 py-3 first:pt-0 last:pb-0">
-      <span
-        data-numeric
-        className="w-5 shrink-0 text-[length:var(--text-sm)] font-semibold text-[var(--color-ink-3)]"
-      >
-        {rank}
-      </span>
-      {entry.thumbnailUrl ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          src={entry.thumbnailUrl}
-          alt=""
-          loading="lazy"
-          className="size-10 shrink-0 rounded-[var(--radius-sm)] object-cover"
-        />
-      ) : (
-        <div className="size-10 shrink-0 rounded-[var(--radius-sm)] bg-[var(--color-paper-3)]" />
-      )}
-      <div className="min-w-0 flex-1">
-        <p className="truncate text-[length:var(--text-sm)] text-[var(--color-ink)]" title={entry.title}>
-          {entry.title}
-        </p>
-        {entry.createdAt ? (
-          <p className="mt-0.5 text-[length:var(--text-2xs)] text-[var(--color-ink-3)]">
-            {formatDate(entry.createdAt.slice(0, 10))}
-          </p>
-        ) : null}
-      </div>
-      <div className="flex shrink-0 flex-col items-end">
-        <span data-numeric className="text-[length:var(--text-sm)] font-semibold text-[var(--color-positive)]">
-          +{formatNumber(Math.round((entry.growthPct ?? 0) * 100))}%
-        </span>
-        <span data-numeric className="text-[length:var(--text-2xs)] text-[var(--color-ink-3)]">
-          +{formatCompact(entry.growthDelta)} views
-        </span>
-      </div>
+    <li className="first:pt-0 last:pb-0">
+      <DialogRoot>
+        <DialogTrigger asChild>
+          <button
+            type="button"
+            className={[
+              'flex w-full cursor-pointer items-center gap-3 rounded-[var(--radius-sm)] px-1 py-3 text-left',
+              'transition-colors duration-[var(--dur-fast)] ease-[var(--ease-out)]',
+              'hover:bg-[var(--color-paper-3)]',
+              'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-focus)]',
+            ].join(' ')}
+          >
+            <span
+              data-numeric
+              className="w-5 shrink-0 text-[length:var(--text-sm)] font-semibold text-[var(--color-ink-3)]"
+            >
+              {rank}
+            </span>
+            {entry.thumbnailUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={entry.thumbnailUrl}
+                alt=""
+                loading="lazy"
+                className="size-10 shrink-0 rounded-[var(--radius-sm)] object-cover"
+              />
+            ) : (
+              <div className="size-10 shrink-0 rounded-[var(--radius-sm)] bg-[var(--color-paper-3)]" />
+            )}
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-[length:var(--text-sm)] text-[var(--color-ink)]" title={entry.title}>
+                {entry.title}
+              </p>
+              {entry.createdAt ? (
+                <p className="mt-0.5 text-[length:var(--text-2xs)] text-[var(--color-ink-3)]">
+                  {formatDate(entry.createdAt.slice(0, 10))}
+                </p>
+              ) : null}
+            </div>
+            <div className="flex shrink-0 flex-col items-end">
+              <span
+                data-numeric
+                className="text-[length:var(--text-sm)] font-semibold text-[var(--color-positive)]"
+              >
+                +{formatNumber(Math.round((entry.growthPct ?? 0) * 100))}%
+              </span>
+              <span data-numeric className="text-[length:var(--text-2xs)] text-[var(--color-ink-3)]">
+                +{formatCompact(entry.growthDelta)} views
+              </span>
+            </div>
+          </button>
+        </DialogTrigger>
+
+        <VideoDetailDialog video={entry} platformLabel={platformLabel} />
+      </DialogRoot>
     </li>
   )
 }
