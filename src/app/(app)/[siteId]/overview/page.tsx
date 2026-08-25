@@ -31,7 +31,9 @@ import {
 import { SiteProfileCard } from '@/components/audit/site-profile-card'
 import { PageSpeedReport } from '@/components/audit/pagespeed-report'
 import { ChannelTrendCard } from '@/components/overview/channel-trend-card'
-import { parseCompareRangeParams, parseCustomRangeParams, parseRangeParam } from '@/lib/domain/date-range-param'
+import { OverviewComparisonPanel } from '@/components/overview/overview-comparison-panel'
+import { parseCustomRangeParams, parseRangeParam } from '@/lib/domain/date-range-param'
+import { parseComparisonParams } from '@/lib/domain/comparison-param'
 import { resolveDateRange } from '@/mock/dates'
 import {
   CHARTABLE_PROVIDERS,
@@ -79,12 +81,14 @@ export default async function OverviewPage({
     readonly range?: string
     readonly from?: string
     readonly to?: string
-    readonly compareFrom?: string
-    readonly compareTo?: string
+    readonly cmpAFrom?: string
+    readonly cmpATo?: string
+    readonly cmpBFrom?: string
+    readonly cmpBTo?: string
   }>
 }) {
   const { siteId } = await params
-  const { range: rangeParam, from, to, compareFrom, compareTo } = await searchParams
+  const { range: rangeParam, from, to, cmpAFrom, cmpATo, cmpBFrom, cmpBTo } = await searchParams
   const site = await getSite(siteId)
   if (!site) notFound()
 
@@ -92,8 +96,10 @@ export default async function OverviewPage({
     parseRangeParam(rangeParam),
     new Date(),
     parseCustomRangeParams(from, to) ?? undefined,
-    parseCompareRangeParams(compareFrom, compareTo) ?? undefined,
   )
+  // So sánh ĐỘC LẬP với `range` — hai khoảng do người dùng chọn thẳng trong
+  // dialog "So sánh với…", không vế nào lấy từ topbar.
+  const comparison = parseComparisonParams({ cmpAFrom, cmpATo, cmpBFrom, cmpBTo })
   const previousRange = { start: range.previousStart, end: range.previousEnd }
 
   // Số liệu MOCK — minh hoạ cho khối chi phí quảng cáo, luôn bị khoá mờ bên
@@ -109,12 +115,21 @@ export default async function OverviewPage({
   // báo cáo thật (xem lib/providers/google-metrics.ts). GA4 đóng góp
   // sessions/conversions, Search Console đóng góp clicks/impressions — gộp
   // trong CÙNG một totals vì adapter kia luôn để phần của nó bằng 0.
-  const [real, realPrevious, channelSummaries, auditRun, dailySeriesByProvider] =
+  const [real, realPrevious, channelSummaries, auditRun, comparisonTotals, dailySeriesByProvider] =
     await Promise.all([
       getRealMetricsSummary(site.id, range),
       getRealMetricsSummary(site.id, previousRange),
       getChannelSummaries(site.id, range),
       getLatestAuditRun(site.id),
+      // Hai kỳ so sánh đi qua ĐÚNG MỘT hàm với đúng một chữ ký — điều kiện để
+      // hai cột không lệch nhau vì đường lấy dữ liệu khác nhau. Không fetch gì
+      // khi người dùng chưa bật so sánh.
+      comparison
+        ? Promise.all([
+            getRealMetricsSummary(site.id, comparison.a),
+            getRealMetricsSummary(site.id, comparison.b),
+          ])
+        : Promise.resolve(null),
       // Nuôi CẢ hai chỗ cần xu hướng theo ngày của TỪNG kênh riêng: lưới nhỏ
       // ở tab Tổng hợp và các thẻ đầy đủ ở tab Google/Meta/TikTok, không
       // truy vấn hai lần cho cùng một kênh. Một lượt gộp cho cả 10 provider
@@ -127,13 +142,6 @@ export default async function OverviewPage({
     sessions: point.sessions,
   }))
 
-  // Nhãn delta phải nói ĐÚNG đang so với gì — mặc định "so với kỳ trước"
-  // (kỳ liền trước tự động) chỉ còn đúng khi KHÔNG có kỳ so sánh tự chọn;
-  // có rồi thì phải nêu rõ khoảng ngày đó, không thì con số % đúng nhưng
-  // nhãn nói sai, gây hiểu lầm nghiêm trọng hơn không có nhãn.
-  const comparisonLabel = range.isCustomCompare
-    ? `so với ${formatDateRange(range.previousStart, range.previousEnd)}`
-    : undefined
 
   const summaryPanel = (
     <div key="summary" className="flex flex-col gap-6">
@@ -144,7 +152,6 @@ export default async function OverviewPage({
             value={formatNumber(real.totals.conversions)}
             metric="conversions"
             deltaPct={compare(real.totals.conversions, realPrevious.totals.conversions).deltaPct}
-            comparisonLabel={comparisonLabel}
           />
         ) : (
           <InlineLocked siteId={site.id} label="Cần kết nối GA4">
@@ -153,7 +160,6 @@ export default async function OverviewPage({
               value={formatNumber(current.conversions)}
               metric="conversions"
               deltaPct={compare(current.conversions, previous.conversions).deltaPct}
-              comparisonLabel={comparisonLabel}
             />
           </InlineLocked>
         )}
@@ -164,7 +170,6 @@ export default async function OverviewPage({
             value={formatCurrencyCompact(current.costMicros, site.currency)}
             metric="costMicros"
             deltaPct={compare(current.costMicros, previous.costMicros).deltaPct}
-            comparisonLabel={comparisonLabel}
             footnote="Chi phí không tự thân tốt hay xấu — đọc cùng ROAS bên cạnh."
           />
         </InlineLocked>
@@ -175,7 +180,6 @@ export default async function OverviewPage({
             value={formatMultiplier(currentDerived.roas)}
             metric="roas"
             deltaPct={compare(currentDerived.roas, previousDerived.roas).deltaPct}
-            comparisonLabel={comparisonLabel}
             footnote="Giá trị chuyển đổi ÷ chi phí, gộp mọi kênh trả phí."
           />
         </InlineLocked>
@@ -186,7 +190,6 @@ export default async function OverviewPage({
             value={formatCurrencyCompact(currentDerived.cpaMicros, site.currency)}
             metric="cpaMicros"
             deltaPct={compare(currentDerived.cpaMicros, previousDerived.cpaMicros).deltaPct}
-            comparisonLabel={comparisonLabel}
           />
         </InlineLocked>
       </StatRow>
@@ -323,10 +326,7 @@ export default async function OverviewPage({
         description={`Hiệu suất hợp nhất của ${site.domain} trên toàn bộ kênh đã kết nối.`}
         meta={
           <p className="text-[length:var(--text-sm)] text-[var(--color-ink-3)]">
-            {formatDateRange(range.start, range.end)} ·{' '}
-            {range.isCustomCompare
-              ? `so với ${formatDateRange(range.previousStart, range.previousEnd)}`
-              : 'so với kỳ liền trước'}
+            {formatDateRange(range.start, range.end)} · so với kỳ liền trước
           </p>
         }
         action={
@@ -338,6 +338,18 @@ export default async function OverviewPage({
           </Button>
         }
       />
+
+      {/* Ngay dưới header, TRƯỚC hồ sơ site và các tab: người dùng bấm "So
+          sánh với…" là đang chủ động đi tìm đúng bảng này, không nên phải
+          cuộn qua mọi thứ khác mới thấy. */}
+      {comparison && comparisonTotals ? (
+        <OverviewComparisonPanel
+          a={comparisonTotals[0]}
+          b={comparisonTotals[1]}
+          aLabel={formatDateRange(comparison.a.start, comparison.a.end)}
+          bLabel={formatDateRange(comparison.b.start, comparison.b.end)}
+        />
+      ) : null}
 
       <SiteProfileCard siteId={site.id} run={auditRun} />
       {auditRun ? <PageSpeedReport pagespeed={auditRun.pagespeed} pageUrl={site.url} /> : null}

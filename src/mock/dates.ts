@@ -49,31 +49,23 @@ const PRESET_LENGTHS: Readonly<Partial<Record<DateRangePreset, number>>> = {
  * — thiếu nó (bookmark cũ, gõ tay URL) thì SẬP VỀ `last-28` như trước khi có
  * tuỳ chọn này, không render một khoảng ngày trống nghĩa.
  */
-/** `compareRange`: kỳ so sánh người dùng TỰ CHỌN (từ `?compareFrom=`/
- * `?compareTo=`), ghi đè lên kỳ liền-trước-tự-động — áp dụng cho MỌI preset,
- * không chỉ `custom`. Đặt sau khi hàm bên trong đã tính xong kỳ chính + kỳ
- * trước mặc định, để không phải lặp lại logic ghi đè ở từng nhánh preset. */
+/** So sánh hai khoảng ngày KHÔNG còn đi qua đây nữa. Trước đây hàm này nhận
+ * thêm `compareRange` rồi ghi đè `previousStart`/`previousEnd` — nghĩa là chọn
+ * kỳ so sánh sẽ đổi luôn nhãn delta của mọi KPI trên trang, và không thể xem
+ * một khoảng trong khi so hai khoảng khác. So sánh giờ là tính năng riêng với
+ * bộ tham số riêng (`domain/comparison-param.ts`); ở đây `previousStart`/
+ * `previousEnd` luôn là kỳ liền trước tự động. */
 export const resolveDateRange = (
   preset: DateRangePreset,
   today: Date = MOCK_TODAY,
   customRange?: { readonly start: IsoDate; readonly end: IsoDate },
-  compareRange?: { readonly start: IsoDate; readonly end: IsoDate },
-): ResolvedDateRange => {
-  const base = resolveDateRangeWithoutCompare(preset, today, customRange)
-  if (!compareRange) return { ...base, isCustomCompare: false }
-  return {
-    ...base,
-    previousStart: compareRange.start,
-    previousEnd: compareRange.end,
-    isCustomCompare: true,
-  }
-}
+): ResolvedDateRange => resolveDateRangeWithoutCompare(preset, today, customRange)
 
 const resolveDateRangeWithoutCompare = (
   preset: DateRangePreset,
   today: Date,
   customRange?: { readonly start: IsoDate; readonly end: IsoDate },
-): Omit<ResolvedDateRange, 'isCustomCompare'> => {
+): ResolvedDateRange => {
   if (preset === 'custom' && customRange) {
     const start = new Date(customRange.start)
     const length = daysBetween(customRange)

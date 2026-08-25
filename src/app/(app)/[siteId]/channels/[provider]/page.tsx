@@ -21,16 +21,12 @@ import {
   getChannelDailySeries,
   getChannelSummaries,
   snapshotUpperBound,
-  type ChannelSummary,
 } from '@/lib/data/site-channels'
 import { aggregateVideoRangeGrowth, getTiktokVideoRangeStats } from '@/lib/data/video-trending'
-import {
-  parseCompareRangeParams,
-  parseCustomRangeParams,
-  parseRangeParam,
-} from '@/lib/domain/date-range-param'
+import { parseCustomRangeParams, parseRangeParam } from '@/lib/domain/date-range-param'
+import { parseComparisonParams } from '@/lib/domain/comparison-param'
 import { resolveDateRange } from '@/mock/dates'
-import { PROVIDER_META, isProviderId, type ProviderId } from '@/lib/domain/providers'
+import { PROVIDER_META, isProviderId } from '@/lib/domain/providers'
 import { formatDateRange } from '@/lib/format'
 
 export async function generateMetadata({
@@ -59,8 +55,10 @@ export default async function ChannelDetailPage({
     readonly range?: string
     readonly from?: string
     readonly to?: string
-    readonly compareFrom?: string
-    readonly compareTo?: string
+    readonly cmpAFrom?: string
+    readonly cmpATo?: string
+    readonly cmpBFrom?: string
+    readonly cmpBTo?: string
     readonly status?: string
     readonly page?: string
     readonly connection?: string
@@ -71,8 +69,10 @@ export default async function ChannelDetailPage({
     range: rangeParam,
     from,
     to,
-    compareFrom,
-    compareTo,
+    cmpAFrom,
+    cmpATo,
+    cmpBFrom,
+    cmpBTo,
     status: statusParam,
     page: pageParam,
     connection: connectionParam,
@@ -85,26 +85,27 @@ export default async function ChannelDetailPage({
     parseRangeParam(rangeParam),
     new Date(),
     parseCustomRangeParams(from, to) ?? undefined,
-    parseCompareRangeParams(compareFrom, compareTo) ?? undefined,
   )
+  // So sánh ĐỘC LẬP với `range` ở trên — hai khoảng do người dùng chọn thẳng
+  // trong dialog "So sánh với…", không vế nào lấy từ topbar.
+  const comparison = parseComparisonParams({ cmpAFrom, cmpATo, cmpBFrom, cmpBTo })
   const productFilter = statusParam && isProductStatusFilter(statusParam) ? statusParam : undefined
   const page = Math.max(1, Number(pageParam) || 1)
 
-  const [summaries, compareSummaries, connections] = await Promise.all([
+  const [summaries, comparisonSummaries, connections] = await Promise.all([
     getChannelSummaries(site.id, range),
-    // Chỉ fetch/hiện bảng so sánh khi người dùng CHỦ ĐỘNG bấm "So sánh với…"
-    // (`range.isCustomCompare`, xem `resolveDateRange`) — trước đây always-on
-    // bằng kỳ liền trước tự động, nhưng người dùng phản hồi rõ: tắt so sánh
-    // (không chọn kỳ so sánh) phải ẩn hẳn bảng, không tự so với kỳ trước.
-    // Bỏ qua truy vấn này khi tắt — không lãng phí một lượt gọi Supabase mỗi
-    // lần tải trang chỉ để tính ra dữ liệu sẽ không hiển thị.
-    range.isCustomCompare
-      ? getChannelSummaries(site.id, { start: range.previousStart, end: range.previousEnd })
-      : Promise.resolve(new Map<ProviderId, ChannelSummary>()),
+    // Hai kỳ so sánh đi qua ĐÚNG MỘT hàm với đúng một chữ ký — điều kiện để
+    // hai cột trong bảng không bao giờ lệch nhau vì đường lấy dữ liệu khác
+    // nhau. Không fetch gì khi người dùng chưa bật so sánh.
+    comparison
+      ? Promise.all([
+          getChannelSummaries(site.id, comparison.a),
+          getChannelSummaries(site.id, comparison.b),
+        ])
+      : Promise.resolve(null),
     listChannelConnections(site.id, provider),
   ])
   const summary = summaries.get(provider)
-  const compareSummary = compareSummaries.get(provider)
 
   // `?connection=` chỉ đáng tin khi đúng là một trong các connection THẬT của
   // provider này — id lạ/đã bị xoá thì coi như không có param. Không có/không
@@ -135,30 +136,49 @@ export default async function ChannelDetailPage({
 
   const activeConnectionId = detail && detail.kind !== 'unsupported' ? detail.connectionId : connections[0]?.id
 
-  // Bảng so sánh dùng SỐ THẬT theo ĐÚNG khoảng ngày đang so cho TikTok —
-  // `ChannelSummary.extra.followerCount`/`likesCount`/`videoCount` là
-  // SNAPSHOT trạng thái, hai kỳ dễ trỏ về đúng một dòng khi connection còn ít
-  // lịch sử (so ra 0% chênh lệch giả, xem `channelComparisonMetrics`). Tính
-  // tăng trưởng view/like/comment THẬT trong từng khoảng bằng
-  // `getTiktokVideoRangeStats` (cùng nguồn "Video xem nhiều nhất" đã dùng,
-  // chỉ gọi thêm một lần cho khoảng so sánh) rồi ghép vào bản sao `extra` —
-  // không đụng tới `summary`/`compareSummary` gốc (vẫn dùng nguyên cho mọi
-  // chỗ khác trên trang).
-  let comparisonSummary = summary
-  let comparisonCompareSummary = compareSummary
-  if (provider === 'tiktok' && detail && detail.kind === 'tiktok' && summary && compareSummary) {
-    const compareRangeStats = await getTiktokVideoRangeStats(detail.connectionId, {
-      startDate: range.previousStart,
-      endDate: snapshotUpperBound(range.previousEnd),
-    })
-    comparisonSummary = {
-      ...summary,
-      extra: { ...summary.extra, ...aggregateVideoRangeGrowth(detail.rangeStats) },
-    }
-    comparisonCompareSummary = {
-      ...compareSummary,
-      extra: { ...compareSummary.extra, ...aggregateVideoRangeGrowth(compareRangeStats) },
-    }
+  // Hai cột của bảng so sánh, lấy từ hai kỳ độc lập ở trên.
+  const comparisonA = comparisonSummaries?.[0].get(provider)
+  const comparisonB = comparisonSummaries?.[1].get(provider)
+
+  // TikTok cần một bước nữa: `ChannelSummary.extra.followerCount`/
+  // `likesCount`/`videoCount` là SNAPSHOT TRẠNG THÁI, không phải số phát sinh
+  // trong khoảng — hai kỳ dễ trỏ về đúng một dòng snapshot khi connection còn
+  // ít lịch sử, và bảng so ra 0% chênh lệch giả. Tăng trưởng
+  // view/like/comment THẬT trong từng khoảng phải lấy từ
+  // `getTiktokVideoRangeStats`.
+  //
+  // Hai lời gọi dưới đây CỐ TÌNH viết giống hệt nhau, chỉ khác `comparison.a`
+  // / `comparison.b`. Bản trước lấy kỳ chính từ `detail.rangeStats` (đi qua
+  // `getChannelDetail`) và kỳ so sánh từ `getTiktokVideoRangeStats` — hai
+  // đường khác nhau, tình cờ cùng áp `snapshotUpperBound` nên chưa lệch,
+  // nhưng chỉ cần một bên đổi là hai cột lệch nhau mà không ai thấy. Cùng một
+  // biểu thức cho cả hai thì không còn cửa cho kiểu lệch đó.
+  //
+  // `snapshotUpperBound` bắt buộc ở cả hai: snapshot của ngày cuối khoảng
+  // thường được ghi vào ngày hôm sau (xem `lib/data/site-channels.ts`), thiếu
+  // nó là kỳ đó hụt mất ngày cuối.
+  let comparisonSummaryA = comparisonA
+  let comparisonSummaryB = comparisonB
+  if (
+    provider === 'tiktok' &&
+    comparison &&
+    detail &&
+    detail.kind === 'tiktok' &&
+    comparisonA &&
+    comparisonB
+  ) {
+    const [statsA, statsB] = await Promise.all([
+      getTiktokVideoRangeStats(detail.connectionId, {
+        startDate: comparison.a.start,
+        endDate: snapshotUpperBound(comparison.a.end),
+      }),
+      getTiktokVideoRangeStats(detail.connectionId, {
+        startDate: comparison.b.start,
+        endDate: snapshotUpperBound(comparison.b.end),
+      }),
+    ])
+    comparisonSummaryA = { ...comparisonA, extra: { ...comparisonA.extra, ...aggregateVideoRangeGrowth(statsA) } }
+    comparisonSummaryB = { ...comparisonB, extra: { ...comparisonB.extra, ...aggregateVideoRangeGrowth(statsB) } }
   }
 
   const channelSwitcher =
@@ -240,14 +260,14 @@ export default async function ChannelDetailPage({
         </div>
       )}
 
-      {range.isCustomCompare && summary?.connected && comparisonSummary && comparisonCompareSummary ? (
+      {comparison && summary?.connected && comparisonSummaryA && comparisonSummaryB ? (
         <ChannelComparisonPanel
           provider={provider}
-          summary={comparisonSummary}
-          compareSummary={comparisonCompareSummary}
+          summary={comparisonSummaryA}
+          compareSummary={comparisonSummaryB}
           currency={site.currency}
-          currentLabel={formatDateRange(range.start, range.end)}
-          compareLabel={formatDateRange(range.previousStart, range.previousEnd)}
+          currentLabel={formatDateRange(comparison.a.start, comparison.a.end)}
+          compareLabel={formatDateRange(comparison.b.start, comparison.b.end)}
         />
       ) : null}
 

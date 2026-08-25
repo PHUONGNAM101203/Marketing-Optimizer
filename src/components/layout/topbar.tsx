@@ -14,7 +14,13 @@ import { ThemeToggle } from '@/components/layout/theme-toggle'
 import { SiteFavicon } from '@/components/brand/site-favicon'
 import { useMobileNav } from '@/components/layout/mobile-nav-context'
 import { resyncSiteAction, type ResyncState } from '@/lib/actions/sync'
-import { parseCompareRangeParams, parseCustomRangeParams, parseRangeParam } from '@/lib/domain/date-range-param'
+import { parseCustomRangeParams, parseRangeParam } from '@/lib/domain/date-range-param'
+import { resolveDateRange } from '@/mock/dates'
+import {
+  COMPARISON_PARAM_KEYS,
+  parseComparisonParams,
+  type ComparisonRanges,
+} from '@/lib/domain/comparison-param'
 import { DATE_RANGE_LABELS, type DateRangePreset, type Site } from '@/lib/domain/site'
 import { formatDateRange, formatRelativeTime } from '@/lib/format'
 
@@ -64,10 +70,12 @@ export function Topbar({ site, sites, lastSyncedAt, hasConnections, now }: Topba
     searchParams.get('from') ?? undefined,
     searchParams.get('to') ?? undefined,
   )
-  const compareRange = parseCompareRangeParams(
-    searchParams.get('compareFrom') ?? undefined,
-    searchParams.get('compareTo') ?? undefined,
-  )
+  const comparison = parseComparisonParams({
+    cmpAFrom: searchParams.get('cmpAFrom') ?? undefined,
+    cmpATo: searchParams.get('cmpATo') ?? undefined,
+    cmpBFrom: searchParams.get('cmpBFrom') ?? undefined,
+    cmpBTo: searchParams.get('cmpBTo') ?? undefined,
+  })
   const { setOpen } = useMobileNav()
 
   return (
@@ -134,7 +142,7 @@ export function Topbar({ site, sites, lastSyncedAt, hasConnections, now }: Topba
           </span>
         )}
 
-        <DateRangeMenu preset={preset} customRange={customRange} compareRange={compareRange} />
+        <DateRangeMenu preset={preset} customRange={customRange} comparison={comparison} />
 
         {/* Chuyển vào chân `MobileNavDrawer` trên mobile — nhường chỗ cho
             SiteSwitcher/DateRangeMenu, hai control người dùng chạm thường
@@ -238,15 +246,14 @@ function SiteSwitcher({
 function DateRangeMenu({
   preset,
   customRange,
-  compareRange,
+  comparison,
 }: {
   readonly preset: DateRangePreset
   readonly customRange: { readonly start: string; readonly end: string } | null
-  /** Kỳ so sánh người dùng tự chọn, khác kỳ trước tự động — xem
-   * `parseCompareRangeParams`. Áp dụng độc lập với `preset`/`customRange`,
-   * không bị xoá khi đổi preset chính (người dùng có thể muốn giữ nguyên
-   * một kỳ so sánh cố định trong lúc thử nhiều preset chính khác nhau). */
-  readonly compareRange: { readonly start: string; readonly end: string } | null
+  /** Hai khoảng ngày của tính năng So sánh, đọc từ `?cmpAFrom=`… — xem
+   * `domain/comparison-param.ts`. Hoàn toàn độc lập với `preset`/`customRange`:
+   * đổi khoảng ngày đang xem KHÔNG đụng tới so sánh, và ngược lại. */
+  readonly comparison: ComparisonRanges | null
 }) {
   const router = useRouter()
   const pathname = usePathname()
@@ -258,8 +265,10 @@ function DateRangeMenu({
   const [from, setFrom] = useState(customRange?.start ?? '')
   const [to, setTo] = useState(customRange?.end ?? '')
   const [compareDialogOpen, setCompareDialogOpen] = useState(false)
-  const [compareFrom, setCompareFrom] = useState(compareRange?.start ?? '')
-  const [compareTo, setCompareTo] = useState(compareRange?.end ?? '')
+  const [aFrom, setAFrom] = useState(comparison?.a.start ?? '')
+  const [aTo, setATo] = useState(comparison?.a.end ?? '')
+  const [bFrom, setBFrom] = useState(comparison?.b.start ?? '')
+  const [bTo, setBTo] = useState(comparison?.b.end ?? '')
   // Đổi khoảng ngày = điều hướng, đợi cả trang render lại phía server. Không
   // bọc trong transition thì nút bấm không đổi trạng thái gì cho tới khi
   // trang mới xong hẳn — CẢM GIÁC như bấm không ăn. `isPending` cho nút biết
@@ -288,11 +297,18 @@ function DateRangeMenu({
     })
   }
 
+  const comparisonValid =
+    Boolean(aFrom && aTo && bFrom && bTo) && aFrom <= aTo && bFrom <= bTo
+
   const applyCompare = () => {
-    if (!compareFrom || !compareTo || compareFrom > compareTo) return
+    if (!comparisonValid) return
     const params = new URLSearchParams(searchParams.toString())
-    params.set('compareFrom', compareFrom)
-    params.set('compareTo', compareTo)
+    // KHÔNG đụng tới `range`/`from`/`to`: so sánh độc lập hoàn toàn với khoảng
+    // ngày đang xem, mở so sánh không được làm đổi số liệu trên trang.
+    params.set('cmpAFrom', aFrom)
+    params.set('cmpATo', aTo)
+    params.set('cmpBFrom', bFrom)
+    params.set('cmpBTo', bTo)
     setCompareDialogOpen(false)
     startTransition(() => {
       router.push(`${pathname}?${params.toString()}`, { scroll: false })
@@ -301,14 +317,28 @@ function DateRangeMenu({
 
   const clearCompare = () => {
     const params = new URLSearchParams(searchParams.toString())
-    params.delete('compareFrom')
-    params.delete('compareTo')
-    setCompareFrom('')
-    setCompareTo('')
+    for (const key of COMPARISON_PARAM_KEYS) params.delete(key)
     setCompareDialogOpen(false)
     startTransition(() => {
       router.push(`${pathname}?${params.toString()}`, { scroll: false })
     })
+  }
+
+  /** Mở dialog: nếu chưa từng so sánh thì mồi sẵn kỳ A = khoảng đang xem, kỳ
+   * B = kỳ liền trước cùng độ dài. Đây chỉ là ĐIỂM XUẤT PHÁT cho đỡ phải gõ
+   * bốn ngày từ đầu — sửa vế nào cũng được, và sau khi Áp dụng thì hai kỳ này
+   * không còn liên quan gì tới khoảng ngày ở topbar nữa. */
+  const openCompareDialog = () => {
+    if (!comparison) {
+      // `new Date()` nằm TRONG handler chứ không ở thân render — client
+      // component đọc giờ hiện tại lúc render là mầm lệch hydrate.
+      const resolved = resolveDateRange(preset, new Date(), customRange ?? undefined)
+      setAFrom(resolved.start)
+      setATo(resolved.end)
+      setBFrom(resolved.previousStart)
+      setBTo(resolved.previousEnd)
+    }
+    setCompareDialogOpen(true)
   }
 
   const triggerLabel =
@@ -419,7 +449,7 @@ function DateRangeMenu({
                 // nữa mới tắt được, đúng lỗi đã báo.
                 event.preventDefault()
                 setMenuOpen(false)
-                setCompareDialogOpen(true)
+                openCompareDialog()
               }}
               className={cn(
                 'flex cursor-pointer items-center gap-2 rounded-[var(--radius-sm)] px-2 py-1.5',
@@ -429,15 +459,15 @@ function DateRangeMenu({
             >
               <GitCompare
                 aria-hidden
-                className={cn('size-3.5 shrink-0', compareRange ? 'text-[var(--color-signal)]' : 'text-[var(--color-ink-3)]')}
+                className={cn('size-3.5 shrink-0', comparison ? 'text-[var(--color-signal)]' : 'text-[var(--color-ink-3)]')}
               />
-              {compareRange ? 'Đổi kỳ so sánh…' : 'So sánh với…'}
+              {comparison ? 'Đổi khoảng so sánh…' : 'So sánh với…'}
             </DropdownMenu.Item>
           </DropdownMenu.Content>
         </DropdownMenu.Portal>
       </DropdownMenu.Root>
 
-      {compareRange ? (
+      {comparison ? (
         <button
           type="button"
           onClick={clearCompare}
@@ -446,52 +476,47 @@ function DateRangeMenu({
             'border border-[var(--color-signal)]/30 bg-[var(--color-signal-soft)]',
             'text-[length:var(--text-2xs)] font-medium text-[var(--color-signal)]',
           )}
-          title="Bỏ kỳ so sánh"
+          title="Bỏ so sánh"
         >
           <GitCompare aria-hidden className="size-3" />
-          So với {formatDateRange(compareRange.start, compareRange.end)}
+          {formatDateRange(comparison.a.start, comparison.a.end)} vs{' '}
+          {formatDateRange(comparison.b.start, comparison.b.end)}
           <X aria-hidden className="size-3" />
         </button>
       ) : null}
 
       <DialogRoot open={compareDialogOpen} onOpenChange={setCompareDialogOpen}>
         <DialogContent
-          title="Chọn kỳ so sánh"
-          description="Mặc định app tự so với kỳ liền trước cùng độ dài — chọn ở đây nếu muốn so với một khoảng ngày khác, ví dụ cùng kỳ năm ngoái."
+          title="So sánh hai khoảng ngày"
+          description="Chọn cả hai khoảng ngay tại đây. Hai khoảng này độc lập với khoảng ngày đang xem ở thanh trên — mở so sánh không làm đổi số liệu trên trang."
         >
-          <div className="flex flex-col gap-4">
-            <div className="grid grid-cols-2 gap-3">
-              <div className="flex flex-col gap-1.5">
-                <label className="text-[length:var(--text-sm)] font-medium text-[var(--color-ink)]">
-                  Từ ngày
-                </label>
-                <DatePickerField
-                  name="compareFrom"
-                  defaultValue={compareFrom}
-                  onValueChange={setCompareFrom}
-                />
-              </div>
-              <div className="flex flex-col gap-1.5">
-                <label className="text-[length:var(--text-sm)] font-medium text-[var(--color-ink)]">
-                  Đến ngày
-                </label>
-                <DatePickerField
-                  name="compareTo"
-                  defaultValue={compareTo}
-                  minDate={compareFrom || undefined}
-                  onValueChange={setCompareTo}
-                />
-              </div>
-            </div>
+          <div className="flex flex-col gap-5">
+            <ComparePeriodFields
+              legend="Kỳ A"
+              from={aFrom}
+              to={aTo}
+              onFromChange={setAFrom}
+              onToChange={setATo}
+              namePrefix="cmpA"
+            />
 
-            {compareFrom && compareTo && compareFrom > compareTo ? (
+            <ComparePeriodFields
+              legend="Kỳ B"
+              from={bFrom}
+              to={bTo}
+              onFromChange={setBFrom}
+              onToChange={setBTo}
+              namePrefix="cmpB"
+            />
+
+            {(aFrom && aTo && aFrom > aTo) || (bFrom && bTo && bFrom > bTo) ? (
               <p className="text-[length:var(--text-xs)] text-[var(--color-negative)]">
                 Ngày kết thúc phải sau ngày bắt đầu.
               </p>
             ) : null}
 
             <div className="flex gap-2">
-              {compareRange ? (
+              {comparison ? (
                 <Button type="button" variant="secondary" size="md" className="flex-1" onClick={clearCompare}>
                   Bỏ so sánh
                 </Button>
@@ -501,10 +526,10 @@ function DateRangeMenu({
                 variant="primary"
                 size="md"
                 className="flex-1"
-                disabled={!compareFrom || !compareTo || compareFrom > compareTo}
+                disabled={!comparisonValid}
                 onClick={applyCompare}
               >
-                Áp dụng
+                So sánh
               </Button>
             </div>
           </div>
@@ -621,5 +646,52 @@ function SyncAllButton({ siteId }: { readonly siteId: string }) {
         </div>
       ) : null}
     </form>
+  )
+}
+
+/** Một kỳ = hai ô ngày. Hai kỳ A/B dùng CHUNG component này thay vì lặp lại
+ * JSX: chỉ cần một bên quên `minDate` là kỳ đó cho phép chọn ngày kết thúc
+ * trước ngày bắt đầu trong khi kỳ kia thì không — kiểu lệch âm thầm đúng
+ * nghĩa. */
+function ComparePeriodFields({
+  legend,
+  from,
+  to,
+  onFromChange,
+  onToChange,
+  namePrefix,
+}: {
+  readonly legend: string
+  readonly from: string
+  readonly to: string
+  readonly onFromChange: (value: string) => void
+  readonly onToChange: (value: string) => void
+  readonly namePrefix: string
+}) {
+  return (
+    <fieldset className="flex flex-col gap-2">
+      <legend className="pb-1 text-[length:var(--text-2xs)] font-medium tracking-[var(--tracking-label)] text-[var(--color-ink-3)] uppercase">
+        {legend}
+      </legend>
+      <div className="grid grid-cols-2 gap-3">
+        <div className="flex flex-col gap-1.5">
+          <label className="text-[length:var(--text-sm)] font-medium text-[var(--color-ink)]">
+            Từ ngày
+          </label>
+          <DatePickerField name={`${namePrefix}From`} defaultValue={from} onValueChange={onFromChange} />
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <label className="text-[length:var(--text-sm)] font-medium text-[var(--color-ink)]">
+            Đến ngày
+          </label>
+          <DatePickerField
+            name={`${namePrefix}To`}
+            defaultValue={to}
+            minDate={from || undefined}
+            onValueChange={onToChange}
+          />
+        </div>
+      </div>
+    </fieldset>
   )
 }
