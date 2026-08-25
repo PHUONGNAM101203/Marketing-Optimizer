@@ -201,7 +201,7 @@ export default async function ChannelDetailPage({
         <TiktokChannelHeader
           siteId={site.id}
           detail={detail}
-          dailySeries={dailySeries}
+          accountExtra={summary?.extra ?? {}}
           connected={summary?.connected ?? false}
           dateRangeLabel={formatDateRange(range.start, range.end)}
           channelSwitcher={channelSwitcher}

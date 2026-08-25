@@ -5,7 +5,6 @@ import { ChannelAvatar } from '@/components/channels/channel-avatar'
 import { ExternalChannelLink } from '@/components/connections/external-channel-link'
 import { Badge } from '@/components/ui/badge'
 import type { ChannelDetail } from '@/lib/data/site-channel-detail'
-import type { ChannelDailyPoint } from '@/lib/data/site-channels'
 import { formatNumber } from '@/lib/format'
 
 /* Hallmark · component: tiktok-channel-header · theme: studied-DNA (Ink & Signal)
@@ -20,20 +19,28 @@ import { formatNumber } from '@/lib/format'
 export function TiktokChannelHeader({
   siteId,
   detail,
-  dailySeries,
+  accountExtra,
   connected,
   dateRangeLabel,
   channelSwitcher,
 }: {
   readonly siteId: string
   readonly detail: Extract<ChannelDetail, { readonly kind: 'tiktok' }>
-  readonly dailySeries: readonly ChannelDailyPoint[]
+  /** Trạng thái TÀI KHOẢN (follower/tổng lượt thích/số video) — cộng dồn từ
+   * trước tới giờ, KHÔNG phải số của khoảng đang chọn.
+   *
+   * Nhận qua prop riêng thay vì tự rút từ `dailySeries` như bản trước:
+   * `dailySeries` đã lọc theo khoảng ngày, mà snapshot TikTok chỉ có từ
+   * 13/8/2026 — chọn tháng 7 là mảng rỗng và cả ba số về 0, tức khẳng định
+   * tài khoản không có follower nào. `getChannelSummaries` đã lo phần lùi về
+   * snapshot mới nhất khi khoảng không chứa hàng nào; ở đây chỉ hiển thị.
+   * Bỏ hẳn `dailySeries` khỏi chữ ký để không ai vô tình nối lại ba con số
+   * này vào khoảng ngày. */
+  readonly accountExtra: Readonly<Record<string, number>>
   readonly connected: boolean
   readonly dateRangeLabel: string
   readonly channelSwitcher?: ReactNode
 }) {
-  const latest = dailySeries.length > 0 ? dailySeries[dailySeries.length - 1] : null
-  const latestExtra = latest?.extra ?? {}
 
   return (
     <div className="flex flex-col gap-4">
@@ -62,9 +69,9 @@ export function TiktokChannelHeader({
           </div>
 
           <div className="flex flex-wrap gap-x-6 gap-y-1">
-            <HeaderStat label="Follower" value={Number(latestExtra.followerCount ?? 0)} />
-            <HeaderStat label="Lượt thích" value={Number(latestExtra.likesCount ?? 0)} />
-            <HeaderStat label="Số video" value={Number(latestExtra.videoCount ?? 0)} />
+            <HeaderStat label="Follower" value={Number(accountExtra.followerCount ?? 0)} />
+            <HeaderStat label="Lượt thích" value={Number(accountExtra.likesCount ?? 0)} />
+            <HeaderStat label="Số video" value={Number(accountExtra.videoCount ?? 0)} />
           </div>
 
           <p className="text-[length:var(--text-sm)] text-[var(--color-ink-3)]">{dateRangeLabel}</p>
