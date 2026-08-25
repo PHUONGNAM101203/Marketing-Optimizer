@@ -76,6 +76,15 @@ export function ChannelComparisonPanel({
     isEmpty(compareSummary) ? compareLabel : null,
   ].filter((label): label is string => label !== null)
 
+  // Hai cột GIỐNG HỆT nhau ở provider snapshot = cả hai kỳ đang đọc về cùng
+  // một dòng snapshot (khoảng chọn không chứa snapshot nào nên rơi về bản mới
+  // nhất — xem `getChannelSummaries`). Chênh lệch 0% khi đó là ảo, không phải
+  // "không đổi". Trước đây trường hợp này hiện 0 vs 0, giờ hiện số thật giống
+  // nhau — dễ tin nhầm hơn, nên phải nói ra.
+  const identicalColumns =
+    !isEmpty(summary) &&
+    metrics.every((metric) => metric.getValue(summary) === metric.getValue(compareSummary))
+
   return (
     <section className="flex flex-col gap-4">
       <SectionHead
@@ -83,12 +92,25 @@ export function ChannelComparisonPanel({
         title="Đối chiếu hai khoảng ngày"
         description="Cạnh nhau để biết chênh lệch bao nhiêu, không phải chỉ một con số % rời rạc."
       />
-      {isSnapshotProvider && emptyLabels.length > 0 ? (
+      {provider === 'tiktok' ? (
+        <Callout tone="signal" title="Đọc bảng này thế nào">
+          TikTok không có báo cáo lịch sử theo ngày, nên không thể biết một video kiếm được bao
+          nhiêu lượt xem riêng trong một khoảng đã qua. Thay vào đó bảng gộp theo NGÀY ĐĂNG: mỗi
+          cột là các video đăng trong khoảng đó, kèm chỉ số cộng dồn của chúng tính tới hôm nay.
+          Lưu ý khoảng cũ hơn đã có nhiều thời gian tích luỹ hơn — so “Video đăng trong kỳ” và số
+          trung bình mỗi video sẽ công bằng hơn so tổng thô.
+        </Callout>
+      ) : isSnapshotProvider && identicalColumns ? (
+        <Callout tone="caution" title="Hai cột đang đọc cùng một mốc">
+          Nền tảng này không có báo cáo lịch sử, và không khoảng nào trong hai khoảng bạn chọn có
+          bản ghi riêng — cả hai đang hiển thị cùng một trạng thái mới nhất. Chênh lệch 0% ở đây là
+          do thiếu dữ liệu, không phải vì số không đổi.
+        </Callout>
+      ) : isSnapshotProvider && emptyLabels.length > 0 ? (
         <Callout tone="caution" title={`${emptyLabels.join(' và ')} không có dữ liệu`}>
           Nền tảng này không cung cấp báo cáo lịch sử — API chỉ trả về trạng thái tại thời điểm
-          hỏi, nên không thể lấy lùi số liệu của quá khứ như GA4 hay Search Console. Số liệu chỉ có
-          từ ngày kênh được kết nối và app bắt đầu tự ghi lại hằng ngày. Số 0 dưới đây là do thiếu
-          dữ liệu, không phải hiệu suất bằng 0.
+          hỏi. Số liệu chỉ có từ ngày kênh được kết nối và app bắt đầu tự ghi lại hằng ngày. Số 0
+          dưới đây là do thiếu dữ liệu, không phải hiệu suất bằng 0.
         </Callout>
       ) : null}
 

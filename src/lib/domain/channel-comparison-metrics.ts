@@ -69,11 +69,22 @@ export const channelComparisonMetrics = (provider: ProviderId): readonly Compari
   // theo dõi kênh lớn dần), chỉ bỏ `likesCount`/`videoCount` tổng cộng dồn.
   if (provider === 'tiktok') {
     return [
-      { key: 'viewsGrowth', label: 'Lượt xem tăng thêm', formatter: 'compact', getValue: (s) => s.extra.viewsGrowth ?? null },
-      { key: 'activeVideoCount', label: 'Video có hoạt động', formatter: 'number', getValue: (s) => s.extra.activeVideoCount ?? null },
-      { key: 'likesGrowth', label: 'Lượt thích tăng thêm', formatter: 'compact', getValue: (s) => s.extra.likesGrowth ?? null },
-      { key: 'commentsGrowth', label: 'Bình luận tăng thêm', formatter: 'compact', getValue: (s) => s.extra.commentsGrowth ?? null },
-      { key: 'followerCount', label: 'Follower (cuối kỳ)', formatter: 'compact', getValue: (s) => s.extra.followerCount ?? 0 },
+      // Theo LỨA NGÀY ĐĂNG, không phải tăng trưởng trong khoảng.
+      //
+      // Bản trước dùng `viewsGrowth`/`likesGrowth`/… — hiệu số giữa hai
+      // snapshot trong khoảng. Chính xác hơn về mặt khái niệm, nhưng chỉ tồn
+      // tại từ 13/8/2026 (ngày app bắt đầu tự chụp snapshot TikTok), nên mọi
+      // khoảng trước đó ra 0 và bảng so sánh thành một cột −100% vô nghĩa.
+      //
+      // Chỉ số cộng dồn từng video thì TikTok trả đủ, và mỗi video có
+      // `posted_at` thật — gộp theo ngày đăng dùng được cho MỌI khoảng.
+      // Nhãn phải nói rõ "tới nay": đây là tổng cộng dồn của một lứa video
+      // tính tới snapshot mới nhất, KHÔNG phải lượt phát sinh trong khoảng.
+      { key: 'postedVideoCount', label: 'Video đăng trong kỳ', formatter: 'number', getValue: (s) => s.extra.postedVideoCount ?? null },
+      { key: 'postedViews', label: 'Lượt xem của lứa này (tới nay)', formatter: 'compact', getValue: (s) => s.extra.postedViews ?? null },
+      { key: 'postedLikes', label: 'Lượt thích của lứa này (tới nay)', formatter: 'compact', getValue: (s) => s.extra.postedLikes ?? null },
+      { key: 'postedComments', label: 'Bình luận của lứa này (tới nay)', formatter: 'compact', getValue: (s) => s.extra.postedComments ?? null },
+      { key: 'postedShares', label: 'Chia sẻ của lứa này (tới nay)', formatter: 'compact', getValue: (s) => s.extra.postedShares ?? null },
     ]
   }
 

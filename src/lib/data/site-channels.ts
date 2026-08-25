@@ -216,6 +216,49 @@ export const getChannelSummaries = async (
     })
   }
 
+  // Provider snapshot: nếu khoảng đang chọn KHÔNG chứa snapshot nào thì lùi
+  // về snapshot mới nhất hiện có, bất kể khoảng.
+  //
+  // Follower / tổng lượt thích / số video là TRẠNG THÁI TÀI KHOẢN cộng dồn từ
+  // trước tới giờ, không phải số phát sinh trong kỳ. App mới bắt đầu chụp
+  // snapshot TikTok từ 13/8/2026, nên chọn một khoảng cũ hơn thế sẽ không
+  // khớp hàng nào và cả ba về 0 — trong khi tài khoản rõ ràng vẫn có 3.336
+  // follower. Số 0 đó không chỉ vô dụng mà còn SAI: nó nói tài khoản không có
+  // follower nào, chứ không nói "không biết con số của kỳ đó".
+  //
+  // Truy vấn từng connection một (`limit(1)`) thay vì một lượt `in(...)`:
+  // PostgREST không có `distinct on`, gộp lại sẽ phải kéo về nhiều hàng rồi
+  // tự lọc — mà số connection snapshot chỉ vài cái, và từ `sin1` mỗi lượt chỉ
+  // vài mili-giây.
+  const staleSnapshotIds = snapshotConnectionIds.filter((connectionId) => {
+    const provider = connectionIdToProvider.get(connectionId)
+    if (!provider) return false
+    const summary = summaries.get(provider)
+    return summary !== undefined && Object.keys(summary.extra).length === 0
+  })
+
+  if (staleSnapshotIds.length > 0) {
+    await Promise.all(
+      staleSnapshotIds.map(async (connectionId) => {
+        const provider = connectionIdToProvider.get(connectionId)
+        if (!provider) return
+        const { data } = await supabase
+          .from('metrics_daily')
+          .select('extra')
+          .eq('connection_id', connectionId)
+          .order('date', { ascending: false })
+          .limit(1)
+          .maybeSingle()
+
+        const extra = (data?.extra ?? {}) as Record<string, number>
+        if (Object.keys(extra).length === 0) return
+
+        const current = summaries.get(provider) as ChannelSummary
+        summaries.set(provider, { ...current, extra: { ...current.extra, ...extra } })
+      }),
+    )
+  }
+
   // Cả hai nguồn dưới đây gọi API NGOÀI và hoàn toàn độc lập nhau, nên chạy
   // trong CÙNG một `Promise.all`. Trước đây chúng nối tiếp: mỗi lần cache lạnh
   // là độ trễ Meta Graph API cộng thẳng vào độ trễ Klaviyo Reporting API rồi

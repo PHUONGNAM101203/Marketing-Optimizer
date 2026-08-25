@@ -322,6 +322,47 @@ export const aggregateVideoRangeGrowth = (stats: readonly VideoSummary[]): Video
     { viewsGrowth: 0, likesGrowth: 0, commentsGrowth: 0, sharesGrowth: 0, activeVideoCount: 0 },
   )
 
+export interface VideoPostedTotals {
+  /** Số video ĐĂNG trong khoảng. */
+  readonly postedVideoCount: number
+  /** Cộng dồn TỚI SNAPSHOT MỚI NHẤT của những video đăng trong khoảng —
+   * KHÔNG phải lượt phát sinh trong chính khoảng đó. */
+  readonly postedViews: number
+  readonly postedLikes: number
+  readonly postedComments: number
+  readonly postedShares: number
+}
+
+/**
+ * Gộp video theo NGÀY ĐĂNG.
+ *
+ * Vì sao cần, bên cạnh `aggregateVideoRangeGrowth`: TikTok không có báo cáo
+ * lịch sử, nên "lượt xem phát sinh trong khoảng X" chỉ tính được từ snapshot
+ * app tự chụp — và app mới chụp từ 13/8/2026. Mọi khoảng trước đó ra 0, đúng
+ * về mặt số học nhưng vô dụng để đối chiếu.
+ *
+ * Còn chỉ số CỘNG DỒN của từng video thì TikTok trả về đầy đủ, và mỗi video có
+ * `posted_at` thật. Gộp theo ngày đăng vì vậy dùng được cho MỌI khoảng, xa tới
+ * tận video cũ nhất tài khoản còn giữ.
+ *
+ * ĐÁNH ĐỔI phải nói rõ ở UI: đây là tổng cộng dồn TỚI NAY của một lứa video,
+ * không phải hiệu suất TRONG khoảng. Lứa tháng 6 đã có vài tháng tích luỹ,
+ * lứa tháng 8 mới vài tuần — so số thô là thiên vị tháng cũ.
+ */
+export const aggregateVideosPostedInRange = (
+  videos: readonly VideoSummary[],
+): VideoPostedTotals =>
+  videos.reduce(
+    (totals, video) => ({
+      postedVideoCount: totals.postedVideoCount + 1,
+      postedViews: totals.postedViews + video.views,
+      postedLikes: totals.postedLikes + video.likes,
+      postedComments: totals.postedComments + video.comments,
+      postedShares: totals.postedShares + (video.shares ?? 0),
+    }),
+    { postedVideoCount: 0, postedViews: 0, postedLikes: 0, postedComments: 0, postedShares: 0 },
+  )
+
 interface VideoPostedRow {
   readonly external_video_id: string
   readonly title: string | null

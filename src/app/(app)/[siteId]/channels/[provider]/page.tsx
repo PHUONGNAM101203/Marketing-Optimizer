@@ -22,7 +22,7 @@ import {
   getChannelSummaries,
   snapshotUpperBound,
 } from '@/lib/data/site-channels'
-import { aggregateVideoRangeGrowth, getTiktokVideoRangeStats } from '@/lib/data/video-trending'
+import { aggregateVideosPostedInRange, getTiktokVideosPostedInRange } from '@/lib/data/video-trending'
 import { parseCustomRangeParams, parseRangeParam } from '@/lib/domain/date-range-param'
 import { parseComparisonParams } from '@/lib/domain/comparison-param'
 import { resolveDateRange } from '@/mock/dates'
@@ -140,23 +140,21 @@ export default async function ChannelDetailPage({
   const comparisonA = comparisonSummaries?.[0].get(provider)
   const comparisonB = comparisonSummaries?.[1].get(provider)
 
-  // TikTok cần một bước nữa: `ChannelSummary.extra.followerCount`/
-  // `likesCount`/`videoCount` là SNAPSHOT TRẠNG THÁI, không phải số phát sinh
-  // trong khoảng — hai kỳ dễ trỏ về đúng một dòng snapshot khi connection còn
-  // ít lịch sử, và bảng so ra 0% chênh lệch giả. Tăng trưởng
-  // view/like/comment THẬT trong từng khoảng phải lấy từ
-  // `getTiktokVideoRangeStats`.
+  // TikTok cần một bước nữa. `ChannelSummary.extra.followerCount`/
+  // `likesCount`/`videoCount` là SNAPSHOT TRẠNG THÁI của cả tài khoản, không
+  // phải số của riêng khoảng — hai kỳ trỏ về đúng một dòng snapshot là bảng
+  // so ra 0% giả.
   //
-  // Hai lời gọi dưới đây CỐ TÌNH viết giống hệt nhau, chỉ khác `comparison.a`
-  // / `comparison.b`. Bản trước lấy kỳ chính từ `detail.rangeStats` (đi qua
-  // `getChannelDetail`) và kỳ so sánh từ `getTiktokVideoRangeStats` — hai
-  // đường khác nhau, tình cờ cùng áp `snapshotUpperBound` nên chưa lệch,
-  // nhưng chỉ cần một bên đổi là hai cột lệch nhau mà không ai thấy. Cùng một
-  // biểu thức cho cả hai thì không còn cửa cho kiểu lệch đó.
+  // Gộp theo NGÀY ĐĂNG chứ không phải theo tăng trưởng giữa hai snapshot:
+  // TikTok không có báo cáo lịch sử nên tăng trưởng-trong-khoảng chỉ tồn tại
+  // từ 13/8/2026 (ngày app bắt đầu tự chụp), mọi khoảng trước đó ra 0. Chỉ số
+  // cộng dồn từng video thì TikTok trả đủ và mỗi video có `posted_at` thật,
+  // nên cách này dùng được cho MỌI khoảng — xa tới video cũ nhất tài khoản
+  // còn giữ. Đánh đổi (tổng cộng dồn TỚI NAY của một lứa, không phải hiệu
+  // suất TRONG khoảng) được nói rõ ngay trên bảng.
   //
-  // `snapshotUpperBound` bắt buộc ở cả hai: snapshot của ngày cuối khoảng
-  // thường được ghi vào ngày hôm sau (xem `lib/data/site-channels.ts`), thiếu
-  // nó là kỳ đó hụt mất ngày cuối.
+  // Hai lời gọi viết giống hệt nhau, chỉ khác `comparison.a`/`comparison.b` —
+  // cùng lý do như mọi chỗ khác trong lượt so sánh này.
   let comparisonSummaryA = comparisonA
   let comparisonSummaryB = comparisonB
   if (
@@ -167,18 +165,24 @@ export default async function ChannelDetailPage({
     comparisonA &&
     comparisonB
   ) {
-    const [statsA, statsB] = await Promise.all([
-      getTiktokVideoRangeStats(detail.connectionId, {
+    const [postedA, postedB] = await Promise.all([
+      getTiktokVideosPostedInRange(detail.connectionId, {
         startDate: comparison.a.start,
         endDate: snapshotUpperBound(comparison.a.end),
       }),
-      getTiktokVideoRangeStats(detail.connectionId, {
+      getTiktokVideosPostedInRange(detail.connectionId, {
         startDate: comparison.b.start,
         endDate: snapshotUpperBound(comparison.b.end),
       }),
     ])
-    comparisonSummaryA = { ...comparisonA, extra: { ...comparisonA.extra, ...aggregateVideoRangeGrowth(statsA) } }
-    comparisonSummaryB = { ...comparisonB, extra: { ...comparisonB.extra, ...aggregateVideoRangeGrowth(statsB) } }
+    comparisonSummaryA = {
+      ...comparisonA,
+      extra: { ...comparisonA.extra, ...aggregateVideosPostedInRange(postedA) },
+    }
+    comparisonSummaryB = {
+      ...comparisonB,
+      extra: { ...comparisonB.extra, ...aggregateVideosPostedInRange(postedB) },
+    }
   }
 
   const channelSwitcher =
