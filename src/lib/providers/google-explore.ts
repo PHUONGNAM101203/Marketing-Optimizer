@@ -12,7 +12,6 @@ import type { Ga4ExploreDimension } from '@/lib/domain/explore-dimension'
 import {
   MAX_TOP_ALL_TIME,
   MIN_TRENDING_VIEWS,
-  TRENDING_WINDOW_DAYS,
   type VideoGrowthSummary,
   type VideoSummary,
   type VideoTrendingResult,
@@ -914,7 +913,6 @@ const fetchYoutubeDailyViews = async (
   return byVideo
 }
 
-const TRENDING_WINDOW_KEYS = ['week', 'month', 'year'] as const
 
 /**
  * "Top mọi thời gian" và "tăng nhanh" (tuần/tháng/năm) cho YouTube — gọi
@@ -928,6 +926,7 @@ const TRENDING_WINDOW_KEYS = ['week', 'month', 'year'] as const
 export const getYoutubeVideoTrending = async (
   accessToken: string,
   channelId: string,
+  range: { readonly startDate: string; readonly endDate: string },
 ): Promise<VideoTrendingResult> => {
   const [allTime, dailyViews] = await Promise.all([
     fetchYoutubeAllTimeMetrics(accessToken, channelId),
@@ -950,32 +949,35 @@ export const getYoutubeVideoTrending = async (
     }
   }
 
-  // Tính MỘT LẦN MỖI REQUEST (không phải hằng số module) — tiến trình server
-  // sống lâu, hằng số module sẽ đóng băng ngày "hôm nay" ở lần import đầu
-  // tiên và sai dần cho mọi request sau đó.
-  const recentDates = Array.from({ length: 365 }, (_, i) => daysAgo(i))
-  const sumRecentViews = (days: ReadonlyMap<string, number>, windowDays: number): number => {
+  // Cộng views theo ĐÚNG khoảng ngày trang đang chọn. Bản trước cộng ba cửa
+  // sổ cố định tính từ hôm nay (tuần/tháng/năm) và UI có nút chuyển giữa
+  // chúng — độc lập với khoảng ngày, nên chọn tháng 7 vẫn ra video tháng 8.
+  // Chuỗi views-theo-ngày có sẵn ở đây nên cộng theo khoảng bất kỳ là chuyện
+  // đơn giản, không cần gọi thêm API.
+  const sumRangeViews = (days: ReadonlyMap<string, number>): number => {
     let total = 0
-    for (let i = 0; i < windowDays; i += 1) total += days.get(recentDates[i]!) ?? 0
+    for (const [date, views] of days) {
+      if (date >= range.startDate && date <= range.endDate) total += views
+    }
     return total
   }
 
-  const trendingFast = { week: [] as VideoGrowthSummary[], month: [] as VideoGrowthSummary[], year: [] as VideoGrowthSummary[] }
+  const trendingFast: VideoGrowthSummary[] = []
   for (const [videoId, days] of dailyViews) {
     const meta = allTime.get(videoId)
     if (!meta) continue
 
-    for (const windowKey of TRENDING_WINDOW_KEYS) {
-      const growthDelta = sumRecentViews(days, TRENDING_WINDOW_DAYS[windowKey])
-      const startViews = meta.views - growthDelta
-      if (startViews < MIN_TRENDING_VIEWS) continue
+    const growthDelta = sumRangeViews(days)
+    if (growthDelta === 0) continue
+    // Mốc đầu khoảng = tổng cộng dồn trừ đi phần tăng trong khoảng. Dưới
+    // ngưỡng thì bỏ, cùng lý do `MIN_TRENDING_VIEWS` tồn tại: video từ 2 lên
+    // 6 view ra +200% và đè lên mọi video thật.
+    const startViews = meta.views - growthDelta
+    if (startViews < MIN_TRENDING_VIEWS) continue
 
-      trendingFast[windowKey].push({ ...meta, growthDelta, growthPct: growthDelta / startViews })
-    }
+    trendingFast.push({ ...meta, growthDelta, growthPct: growthDelta / startViews })
   }
-  for (const windowKey of TRENDING_WINDOW_KEYS) {
-    trendingFast[windowKey].sort((a, b) => (b.growthPct ?? 0) - (a.growthPct ?? 0))
-  }
+  trendingFast.sort((a, b) => (b.growthPct ?? 0) - (a.growthPct ?? 0))
 
   return { topAllTime, trendingFast, earliestSnapshotAt, latestSnapshotAt }
 }

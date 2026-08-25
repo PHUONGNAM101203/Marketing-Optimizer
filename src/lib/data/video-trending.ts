@@ -49,61 +49,136 @@ const toIsoDate = (date: Date): string => date.toISOString().slice(0, 10)
 
 const EMPTY_RESULT = (): VideoTrendingResult => ({
   topAllTime: [],
-  trendingFast: { week: [], month: [], year: [] },
+  trendingFast: [],
   earliestSnapshotAt: null,
   latestSnapshotAt: null,
 })
 
-/**
- * Tăng trưởng của MỘT video cho MỘT cửa sổ, từ cặp (ngày, views) tại mốc cắt
- * — nếu video chưa có snapshot nào cũ đến mốc cắt đó (`cutoffDate` null,
- * connection mới/chưa đủ lịch sử), lùi về snapshot sớm nhất đang có —
- * "tăng trưởng từ lúc bắt đầu theo dõi", chấp nhận đánh giá thấp hơn tăng
- * trưởng thật thay vì không hiện gì.
- */
-const computeGrowth = (
-  row: VideoTrendingRow,
-  cutoffDate: string | null,
-  cutoffViews: number | null,
-): VideoGrowthSummary | null => {
-  const startDate = cutoffDate ?? row.earliest_date
-  const startViews = cutoffDate !== null ? cutoffViews : row.earliest_views
-  // `earliest_*` chỉ null khi video hoàn toàn không có snapshot nào — không
-  // thể xảy ra ở đây vì `row` đến từ nhánh `latest` (JOIN vào `earliest`),
-  // nhưng kiểu SQL LEFT JOIN vẫn khai báo nullable nên kiểm tra cho chắc.
-  if (startDate === null || startViews === null) return null
-  if (startDate === row.latest_date) return null
-  if (startViews < MIN_TRENDING_VIEWS) return null
 
-  const growthDelta = row.latest_views - startViews
-  return { ...toSummary(row), growthDelta, growthPct: growthDelta / startViews }
+/** Số lượt xem tối thiểu ở mốc đầu khoảng để một video được xếp vào "tăng
+ * nhanh". Không có ngưỡng thì một video từ 2 lên 6 view ra +200% và đứng trên
+ * mọi video thật — đúng lớp nhiễu mà `MIN_TRENDING_VIEWS` sinh ra để chặn. */
+const MIN_RANGE_BASELINE_VIEWS = MIN_TRENDING_VIEWS
+
+/**
+ * Video tăng nhanh TRONG ĐÚNG một khoảng ngày.
+ *
+ * Dùng CHUNG RPC `get_video_range_snapshots` với `getTiktokVideoRangeStats`,
+ * nên định nghĩa "tăng trưởng trong khoảng" ở hai chỗ không thể lệch nhau —
+ * cùng cặp mốc `baseline_*` (đầu khoảng) và `end_*` (cuối khoảng).
+ *
+ * Video KHÔNG có `baseline_views` bị loại: nó mới đăng trong khoảng này nên
+ * chưa có mốc đầu để so. Xếp nó vào "tăng nhanh" với growthPct vô cực sẽ đẩy
+ * mọi video cũ xuống dưới, biến bảng thành danh sách "video mới đăng" — đã có
+ * khối riêng cho việc đó.
+ */
+export const getTiktokVideoRangeGrowth = async (
+  connectionId: string,
+  range: { readonly startDate: string; readonly endDate: string },
+): Promise<readonly VideoGrowthSummary[]> => {
+  const supabase = await createClient()
+  // `get_video_range_growth`, KHÔNG phải `get_video_range_snapshots`: hàm kia
+  // chỉ nhận mốc đầu nằm TRƯỚC khoảng và trả null khi không có. Snapshot
+  // TikTok mới có từ 13/8/2026 nên mọi khoảng bắt đầu trước đó đều null —
+  // kể cả tháng 8. Hàm mới lùi về snapshot sớm nhất TRONG khoảng khi cần.
+  const { data, error } = await supabase.rpc('get_video_range_growth', {
+    p_connection_id: connectionId,
+    p_range_start: range.startDate,
+    p_range_end: range.endDate,
+  })
+
+  if (error) {
+    console.error(
+      `Không đọc được tăng trưởng video theo khoảng (connection ${connectionId}): ${error.message}`,
+    )
+    return []
+  }
+
+  // Kiểu riêng, KHÔNG dùng lại `VideoRangeRow`: RPC mới trả ít cột hơn (không
+  // có `end_date` và các mốc likes/comments/shares đầu khoảng — bảng này chỉ
+  // xếp hạng theo views). Ép về `VideoRangeRow` là nói dối trình biên dịch.
+  type RangeGrowthRow = {
+    readonly external_video_id: string
+    readonly title: string | null
+    readonly cover_image_url: string | null
+    readonly posted_at: string | null
+    readonly permalink_url: string | null
+    readonly end_views: number
+    readonly end_likes: number
+    readonly end_comments: number
+    readonly end_shares: number
+    readonly baseline_views: number | null
+  }
+
+  return ((data ?? []) as readonly RangeGrowthRow[])
+    .flatMap((row): VideoGrowthSummary[] => {
+      const baseline = row.baseline_views
+      if (baseline === null || baseline < MIN_RANGE_BASELINE_VIEWS) return []
+      const growthDelta = Math.max(0, row.end_views - baseline)
+      if (growthDelta === 0) return []
+
+      return [
+        {
+          externalVideoId: row.external_video_id,
+          title: row.title ?? '(không có chú thích)',
+          thumbnailUrl: row.cover_image_url,
+          views: row.end_views,
+          likes: row.end_likes,
+          comments: row.end_comments,
+          shares: row.end_shares,
+          createdAt: row.posted_at,
+          permalinkUrl: row.permalink_url,
+          growthDelta,
+          growthPct: growthDelta / baseline,
+        },
+      ]
+    })
+    .sort((a, b) => (b.growthPct ?? 0) - (a.growthPct ?? 0))
+    .slice(0, MAX_RANGE_RESULTS)
 }
 
 /**
- * "Top mọi thời gian" và "tăng nhanh" (tuần/tháng/năm) cho TikTok. Không
- * nhận tham số ngày — `topAllTime` luôn là snapshot mới nhất mỗi video,
- * `trendingFast` luôn tính đúng 3 cửa sổ cố định, độc lập với khoảng ngày
- * trang đang chọn (xem
- * docs/superpowers/specs/2026-08-14-video-snapshot-pipeline-design.md).
+ * "Top mọi thời gian" và "tăng nhanh" cho TikTok.
  *
- * Đọc qua RPC `get_video_trending_snapshots` (không phải `.from(...).select(...)`
- * đọc trực tiếp `video_metrics_daily`) — bảng đó có thể có hàng nghìn dòng
- * mỗi connection (video × ngày), vượt xa giới hạn `max_rows` mặc định của
- * PostgREST (1000) chỉ sau vài chục ngày theo dõi vài video. RPC trả về
- * ĐÚNG MỘT DÒNG MỖI VIDEO (không nhân theo ngày lịch sử lẫn không nhân theo
- * "vai trò") — xem
- * `supabase/migrations/20260814000004_video_trending_snapshots_fn.sql`.
+ * `topAllTime` luôn là snapshot mới nhất mỗi video (không phụ thuộc khoảng
+ * ngày — "mọi thời gian" đúng nghĩa). `trendingFast` thì NGƯỢC LẠI: tính đúng
+ * trong `range` đang chọn.
+ *
+ * Bản trước `trendingFast` là ba cửa sổ cố định tuần/tháng/năm tính từ HÔM
+ * NAY, cố ý độc lập với khoảng ngày. Người dùng chọn tháng 7 nhưng danh sách
+ * vẫn toàn video tháng 8, ngay cạnh những khối số liệu khác đều theo tháng 7 —
+ * không thể đọc được là đang nói về cái gì.
+ *
+ * Hai RPC chạy song song vì đo hai thứ khác nhau:
+ * `get_video_trending_snapshots` cho ảnh cộng dồn mới nhất mỗi video (và biên
+ * ngày snapshot), `get_video_range_snapshots` cho cặp mốc đầu/cuối TRONG
+ * khoảng — cùng RPC mà `getTiktokVideoRangeStats` đã dùng, nên hai chỗ không
+ * thể lệch nhau về định nghĩa "tăng trưởng trong khoảng".
+ *
+ * Đọc qua RPC chứ không `.from(...).select(...)`: `video_metrics_daily` có thể
+ * có hàng nghìn dòng mỗi connection (video × ngày), vượt xa `max_rows` mặc
+ * định của PostgREST (1000) chỉ sau vài chục ngày. RPC trả ĐÚNG MỘT DÒNG MỖI
+ * VIDEO.
  */
-export const getTiktokVideoTrending = async (connectionId: string): Promise<VideoTrendingResult> => {
+export const getTiktokVideoTrending = async (
+  connectionId: string,
+  range: { readonly startDate: string; readonly endDate: string },
+): Promise<VideoTrendingResult> => {
   const supabase = await createClient()
+  // `p_cutoffs` vẫn phải truyền đủ ba mốc (RPC trả ba cặp cột cutoff0/1/2) dù
+  // giờ không dùng tới — đổi chữ ký RPC là một migration riêng, không đáng
+  // cho một tham số bị bỏ qua.
   const cutoffs = TRENDING_WINDOW_KEYS.map((key) =>
     toIsoDate(new Date(Date.now() - TRENDING_WINDOW_DAYS[key] * 86_400_000)),
   )
 
-  const { data, error } = await supabase.rpc('get_video_trending_snapshots', {
-    p_connection_id: connectionId,
-    p_cutoffs: cutoffs,
-  })
+  const [{ data, error }, rangeGrowth] = await Promise.all([
+    supabase.rpc('get_video_trending_snapshots', {
+      p_connection_id: connectionId,
+      p_cutoffs: cutoffs,
+    }),
+    getTiktokVideoRangeGrowth(connectionId, range),
+  ])
 
   // Không throw — một trang chi tiết kênh không được sập chỉ vì phần
   // trending lỗi (thiếu quyền EXECUTE, cache schema PostgREST cũ, sai kiểu
@@ -111,11 +186,11 @@ export const getTiktokVideoTrending = async (connectionId: string): Promise<Vide
   // liệu" — hai trạng thái nhìn giống hệt nhau nếu không log.
   if (error) {
     console.error(`Không đọc được video trending (connection ${connectionId}): ${error.message}`)
-    return EMPTY_RESULT()
+    return { ...EMPTY_RESULT(), trendingFast: rangeGrowth }
   }
 
   const rows = data ?? []
-  if (rows.length === 0) return EMPTY_RESULT()
+  if (rows.length === 0) return { ...EMPTY_RESULT(), trendingFast: rangeGrowth }
 
   const topAllTime = rows
     .map(toSummary)
@@ -124,7 +199,6 @@ export const getTiktokVideoTrending = async (connectionId: string): Promise<Vide
 
   let earliestSnapshotAt: string | null = null
   let latestSnapshotAt: string | null = null
-  const trendingFast = { week: [] as VideoGrowthSummary[], month: [] as VideoGrowthSummary[], year: [] as VideoGrowthSummary[] }
 
   for (const row of rows) {
     if (row.earliest_date !== null) {
@@ -135,19 +209,9 @@ export const getTiktokVideoTrending = async (connectionId: string): Promise<Vide
     if (latestSnapshotAt === null || row.latest_date > latestSnapshotAt) {
       latestSnapshotAt = row.latest_date
     }
-
-    const weekGrowth = computeGrowth(row, row.cutoff0_date, row.cutoff0_views)
-    if (weekGrowth) trendingFast.week.push(weekGrowth)
-    const monthGrowth = computeGrowth(row, row.cutoff1_date, row.cutoff1_views)
-    if (monthGrowth) trendingFast.month.push(monthGrowth)
-    const yearGrowth = computeGrowth(row, row.cutoff2_date, row.cutoff2_views)
-    if (yearGrowth) trendingFast.year.push(yearGrowth)
-  }
-  for (const windowKey of TRENDING_WINDOW_KEYS) {
-    trendingFast[windowKey].sort((a, b) => (b.growthPct ?? 0) - (a.growthPct ?? 0))
   }
 
-  return { topAllTime, trendingFast, earliestSnapshotAt, latestSnapshotAt }
+  return { topAllTime, trendingFast: rangeGrowth, earliestSnapshotAt, latestSnapshotAt }
 }
 
 interface VideoRangeRow {

@@ -65,7 +65,16 @@ export function ChannelComparisonPanel({
   // 0" trong khi thực chất là không có dữ liệu. Các nền tảng khác đã được nạp
   // lùi một năm nên không gặp cảnh này.
   const isSnapshotProvider = SNAPSHOT_PROVIDERS.has(provider)
-  const compareIsEmpty = metrics.every((metric) => (metric.getValue(compareSummary) ?? 0) === 0)
+  // Kiểm tra CẢ HAI kỳ. Bản đầu chỉ nhìn `compareSummary` (kỳ B) — nhưng kỳ
+  // rỗng thường là kỳ CŨ HƠN, mà người dùng hay đặt kỳ cũ ở cột A. Đúng
+  // trường hợp đã gặp: A = tháng 7 rỗng, B = tháng 8 có số, cảnh báo không
+  // hiện dù đó chính là lúc cần nó nhất.
+  const isEmpty = (candidate: ChannelSummary): boolean =>
+    metrics.every((metric) => (metric.getValue(candidate) ?? 0) === 0)
+  const emptyLabels = [
+    isEmpty(summary) ? currentLabel : null,
+    isEmpty(compareSummary) ? compareLabel : null,
+  ].filter((label): label is string => label !== null)
 
   return (
     <section className="flex flex-col gap-4">
@@ -74,8 +83,8 @@ export function ChannelComparisonPanel({
         title="Đối chiếu hai khoảng ngày"
         description="Cạnh nhau để biết chênh lệch bao nhiêu, không phải chỉ một con số % rời rạc."
       />
-      {isSnapshotProvider && compareIsEmpty ? (
-        <Callout tone="caution" title={`${compareLabel} không có dữ liệu`}>
+      {isSnapshotProvider && emptyLabels.length > 0 ? (
+        <Callout tone="caution" title={`${emptyLabels.join(' và ')} không có dữ liệu`}>
           Nền tảng này không cung cấp báo cáo lịch sử — API chỉ trả về trạng thái tại thời điểm
           hỏi, nên không thể lấy lùi số liệu của quá khứ như GA4 hay Search Console. Số liệu chỉ có
           từ ngày kênh được kết nối và app bắt đầu tự ghi lại hằng ngày. Số 0 dưới đây là do thiếu

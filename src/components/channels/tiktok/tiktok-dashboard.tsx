@@ -89,7 +89,7 @@ export function TiktokDashboard({
 
       <VideoTrendingWidget
         trendingFast={trending.trendingFast}
-        earliestSnapshotAt={trending.earliestSnapshotAt}
+        rangeLabel={rangeLabel}
         likelyBroken={videoSnapshotsLikelyBroken}
       />
 

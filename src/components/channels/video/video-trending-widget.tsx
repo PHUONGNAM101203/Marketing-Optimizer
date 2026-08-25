@@ -1,39 +1,31 @@
-'use client'
-
-import { useState } from 'react'
 import { Card, CardHeader } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
 import { EmptyState } from '@/components/ui/feedback'
 import { formatCompact, formatDate, formatNumber } from '@/lib/format'
-import {
-  hasEnoughHistory,
-  type VideoGrowthSummary,
-  type VideoTrendingWindows,
-} from '@/lib/providers/video-trending-types'
-
-const WINDOW_LABELS: Readonly<Record<keyof VideoTrendingWindows, string>> = {
-  week: 'Tuần',
-  month: 'Tháng',
-  year: 'Năm',
-}
-
-const WINDOW_KEYS = Object.keys(WINDOW_LABELS) as readonly (keyof VideoTrendingWindows)[]
+import type { VideoGrowthSummary } from '@/lib/providers/video-trending-types'
 
 /* Hallmark · component: video-trending-widget · theme: studied-DNA (Ink & Signal)
  *
- * Dùng chung cho TikTok/YouTube (chuyển từ `tiktok-trending-widget.tsx` cũ,
- * chỉ đổi tên — logic giữ nguyên, đã platform-agnostic từ đầu vì chỉ đọc
- * `VideoTrendingWindows`). Ba cửa sổ đã có sẵn trong MỘT payload (xem
- * `VideoTrendingResult`) — chuyển đổi ở đây là state client thuần, không
- * gọi lại server.
+ * Dùng chung cho TikTok/YouTube.
+ *
+ * Bản trước có ba nút Tuần/Tháng/Năm, mỗi nút một cửa sổ cố định tính từ HÔM
+ * NAY và độc lập với khoảng ngày trang đang chọn. Đã bỏ: chọn tháng 7 mà danh
+ * sách vẫn toàn video tháng 8, ngay cạnh những khối khác đều theo tháng 7 —
+ * người đọc không có cách nào biết bảng này đang nói về khoảng nào. Giờ nó
+ * theo đúng khoảng ngày đang chọn, và ba nút kia trùng chức năng với chính bộ
+ * chọn khoảng ngày ở topbar nên không còn lý do tồn tại.
+ *
+ * Không còn `'use client'`/`useState` — không còn state nào để giữ.
  */
 export function VideoTrendingWidget({
   trendingFast,
-  earliestSnapshotAt,
+  rangeLabel,
   likelyBroken = false,
 }: {
-  readonly trendingFast: VideoTrendingWindows
-  readonly earliestSnapshotAt: string | null
+  /** Đã tính sẵn theo khoảng ngày đang chọn ở tầng data. */
+  readonly trendingFast: readonly VideoGrowthSummary[]
+  /** Nhãn khoảng ngày đang xem, hiện ngay trên thẻ để không phải suy đoán
+   * bảng này đang nói về khoảng nào. */
+  readonly rangeLabel: string
   /** `true` khi kết nối đã đủ lâu mà vẫn không có snapshot nào — dấu hiệu
    * lỗi ghi THẬT (thiếu quyền, token hỏng...) bị nuốt im lặng trước đây,
    * KHÁC "chưa đủ thời gian tích luỹ". Tính sẵn phía server (xem
@@ -45,52 +37,21 @@ export function VideoTrendingWidget({
    * giữ nguyên thông điệp "đang tích luỹ" cũ. */
   readonly likelyBroken?: boolean
 }) {
-  const [activeWindow, setActiveWindow] = useState<keyof VideoTrendingWindows>('week')
-
   // Backend không tự loại video đứng yên/giảm — yêu cầu gốc là "thay đổi
   // đáng tích cực", nên lọc ở đây.
-  const positiveEntries = trendingFast[activeWindow]
-    .filter((entry) => (entry.growthPct ?? 0) > 0)
-    .slice(0, 5)
-
-  const enoughHistory = hasEnoughHistory(earliestSnapshotAt, activeWindow)
+  const positiveEntries = trendingFast.filter((entry) => (entry.growthPct ?? 0) > 0).slice(0, 5)
 
   return (
     <Card>
-      <CardHeader
-        title="Video có xu hướng tăng nhanh"
-        action={
-          <div className="flex gap-1">
-            {WINDOW_KEYS.map((key) => (
-              <Button
-                key={key}
-                type="button"
-                variant={activeWindow === key ? 'primary' : 'secondary'}
-                size="sm"
-                onClick={() => setActiveWindow(key)}
-              >
-                {WINDOW_LABELS[key]}
-              </Button>
-            ))}
-          </div>
-        }
-      />
+      <CardHeader title="Video có xu hướng tăng nhanh" description={rangeLabel} />
       <div className="flex flex-col gap-3 px-5 pb-5">
         {positiveEntries.length === 0 ? (
           <EmptyState
-            title={
-              likelyBroken
-                ? 'Không lấy được video'
-                : enoughHistory
-                  ? 'Chưa có video tăng trưởng tích cực'
-                  : 'Đang tích lũy dữ liệu'
-            }
+            title={likelyBroken ? 'Không lấy được video' : 'Chưa có video tăng trưởng'}
             description={
               likelyBroken
                 ? 'Kết nối đã đủ lâu nhưng vẫn chưa có snapshot video nào — có thể quyền truy cập video đã bị thu hồi hoặc chưa được cấp. Thử ngắt kết nối và kết nối lại.'
-                : enoughHistory
-                  ? `Chưa có video nào tăng trưởng tích cực trong ${WINDOW_LABELS[activeWindow].toLowerCase()} này.`
-                  : `Kết nối chưa đủ lịch sử cho khung ${WINDOW_LABELS[activeWindow].toLowerCase()} — quay lại sau khi đồng bộ thêm.`
+                : `Không có video nào tăng trưởng trong ${rangeLabel}. Nếu khoảng này nằm trước ngày kênh được kết nối thì chưa có dữ liệu để so.`
             }
           />
         ) : (

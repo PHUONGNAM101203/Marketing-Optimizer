@@ -1301,6 +1301,26 @@ export type Database = {
           permalink: string
         }[]
       }
+      get_video_range_growth: {
+        Args: {
+          p_connection_id: string
+          p_range_end: string
+          p_range_start: string
+        }
+        Returns: {
+          baseline_date: string
+          baseline_views: number
+          cover_image_url: string
+          end_comments: number
+          end_likes: number
+          end_shares: number
+          end_views: number
+          external_video_id: string
+          permalink_url: string
+          posted_at: string
+          title: string
+        }[]
+      }
       get_video_range_snapshots: {
         Args: {
           p_connection_id: string

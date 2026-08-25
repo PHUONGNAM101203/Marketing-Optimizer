@@ -36,18 +36,17 @@ export interface VideoGrowthSummary extends VideoSummary {
   readonly growthPct: number | null
 }
 
-/** Ba cửa sổ CỐ ĐỊNH cho "tăng nhanh" — độc lập với khoảng ngày trang đang
- * chọn (khác mọi số liệu khác trên trang), để UI tự chuyển đổi phía client
- * không cần gọi lại server. */
-export interface VideoTrendingWindows {
-  readonly week: readonly VideoGrowthSummary[]
-  readonly month: readonly VideoGrowthSummary[]
-  readonly year: readonly VideoGrowthSummary[]
-}
-
 export interface VideoTrendingResult {
   readonly topAllTime: readonly VideoSummary[]
-  readonly trendingFast: VideoTrendingWindows
+  /** Video tăng nhanh TRONG ĐÚNG khoảng ngày trang đang chọn.
+   *
+   * Trước đây đây là ba cửa sổ cố định (tuần/tháng/năm tính từ HÔM NAY) và UI
+   * có nút tự chuyển giữa chúng — cố ý độc lập với khoảng ngày đang chọn.
+   * Nhưng người dùng đọc bảng này cạnh mọi số liệu khác trên trang, vốn đều
+   * theo khoảng đã chọn: chọn tháng 7 mà danh sách toàn video tháng 8 thì
+   * không đọc được là đang nói về cái gì. Giờ nó theo đúng khoảng, và nút
+   * tuần/tháng/năm bỏ đi vì đã trùng chức năng với bộ chọn khoảng ngày. */
+  readonly trendingFast: readonly VideoGrowthSummary[]
   /** Ngày (YYYY-MM-DD) sớm nhất TRONG TẬP DỮ LIỆU ĐÃ LẤY VỀ. TikTok: ngày
    * snapshot sớm nhất THẬT SỰ có (không còn bị chặn dưới ở 366 ngày như
    * bản đầu — xem `get_video_trending_snapshots` trong

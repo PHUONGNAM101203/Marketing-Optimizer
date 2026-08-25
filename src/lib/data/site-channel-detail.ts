@@ -482,7 +482,7 @@ export const getChannelDetail = async (
         fetchYoutubeExplore(tokenResult.accessToken, connection.external_account_id, range),
         // Không truyền `range` — trending có 3 cửa sổ cố định riêng, độc lập
         // với khoảng ngày trang đang chọn (xem Task 4/6 trong plan này).
-        getYoutubeVideoTrending(tokenResult.accessToken, connection.external_account_id),
+        getYoutubeVideoTrending(tokenResult.accessToken, connection.external_account_id, range),
       ])
       return { kind: 'youtube', connectionId: resolvedConnectionId, accountName, externalAccountId, avatarUrl, data, trending }
     }
@@ -610,9 +610,11 @@ export const getChannelDetail = async (
       // (`video-trending.ts`, đọc `video_metrics_daily` theo `posted_at`,
       // không gọi Display API sống nữa) — không chặn phần còn lại của trang.
       const [trending, rangeStats] = await Promise.all([
-        // Không truyền `range` — trending có 3 cửa sổ cố định riêng, độc lập
-        // với khoảng ngày trang đang chọn (xem Task 4/5 trong plan này).
-        getTiktokVideoTrending(connection.id),
+        // Truyền `range`: `trendingFast` giờ tính đúng trong khoảng ngày đang
+        // chọn. Cùng `snapshotUpperBound` như `rangeStats` ngay dưới — hai
+        // khối nằm cạnh nhau trên cùng một trang, lệch biên trên là chúng nói
+        // hai chuyện khác nhau về cùng một khoảng.
+        getTiktokVideoTrending(connection.id, { ...range, endDate: snapshotUpperBound(range.endDate) }),
         // Đọc riêng từ snapshot đã lưu, không phải `data.topVideos` — xem
         // docblock `rangeStats` trên `ChannelDetail`. `snapshotUpperBound`
         // (không phải `range.endDate` suông): mọi preset (trừ "Hôm nay") cố
