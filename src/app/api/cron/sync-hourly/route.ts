@@ -27,9 +27,9 @@ export async function GET(request: NextRequest) {
 
   const { data: connections } = await admin
     .from('connections')
-    .select('id, provider')
+    .select('id, provider, backfilled_at')
     .in('provider', HOURLY_PROVIDERS)
-    .or(`last_synced_at.is.null,last_synced_at.lt.${staleBefore}`)
+    .or(`last_synced_at.is.null,last_synced_at.lt.${staleBefore},backfilled_at.is.null`)
 
   const result = await syncMany((connections ?? []) as SyncTarget[])
 

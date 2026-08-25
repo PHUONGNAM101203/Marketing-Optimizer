@@ -1,7 +1,7 @@
 import 'server-only'
 
 import { hasUsableData, type ConnectionStatus } from '@/lib/domain/connection'
-import { PROVIDERS, isProviderId, type ProviderId } from '@/lib/domain/providers'
+import { PROVIDERS, SNAPSHOT_PROVIDERS, isProviderId, type ProviderId } from '@/lib/domain/providers'
 import {
   collectKlaviyoExtras,
   collectMetaFollowerCounts,
@@ -46,21 +46,9 @@ export interface ChannelSummary {
   readonly currency: string | null
 }
 
-/** Nền tảng mà `extra` là TRẠNG THÁI TẠI THỜI ĐIỂM đồng bộ (snapshot), không
- * phải chỉ số phát sinh mỗi ngày — cộng dồn nhiều ngày lại là nhân sai số.
- * Merchant Center: số sản phẩm đã duyệt/bị từ chối là trạng thái NGAY LÚC
- * ĐÓ. TikTok (Display API — Login Kit) cũng vậy: KHÔNG có endpoint báo cáo
- * lịch sử theo ngày như YouTube Analytics hay Meta Page Insights,
- * `fetchDailyMetrics` chỉ đọc được TRẠNG THÁI HIỆN TẠI (follower/video/like
- * count cộng dồn từ trước tới giờ) mỗi lần đồng bộ — xem `tiktok-metrics.ts`.
- * Facebook KHÔNG nằm trong danh sách này — Page Insights (cùng Graph API với
- * Instagram) có `period=day` thật, xem `facebook-metrics.ts`.
- *
- * Export ra ngoài để `data/entities.ts`'s `getChannelSummariesForAgent` dùng
- * lại đúng tập này (trước đây tự định nghĩa một bản sao `AGENT_SNAPSHOT_PROVIDERS`
- * giống hệt, rủi ro lệch nhau khi có nền tảng snapshot mới chỉ được thêm ở
- * một trong hai file). */
-export const SNAPSHOT_PROVIDERS: ReadonlySet<ProviderId> = new Set(['merchant-center', 'tiktok'])
+/** Re-export: định nghĩa đã chuyển sang `domain/providers.ts` (tầng ghi cũng
+ * cần nó), giữ lối import cũ ở đây để không phải sửa mọi nơi gọi. */
+export { SNAPSHOT_PROVIDERS }
 
 const toIsoDate = (date: Date): string => date.toISOString().slice(0, 10)
 

@@ -6,6 +6,9 @@ import { syncConnection } from './sync-connection'
 export interface SyncTarget {
   readonly id: string
   readonly provider: ProviderId
+  /** `null` = chưa nạp lịch sử; `syncConnection` sẽ kéo cửa sổ rộng cho lượt
+   * này. Dùng ở đây CHỈ để đếm và giới hạn số lượt nạp mỗi lần cron. */
+  readonly backfilled_at?: string | null
 }
 
 export interface SyncManyResult {
@@ -18,6 +21,9 @@ export interface SyncManyResult {
    * lỗi thật. */
   readonly skipped: number
   readonly total: number
+  /** Connection bị hoãn sang lượt cron sau vì đã chạm `MAX_BACKFILLS_PER_RUN`.
+   * > 0 nghĩa là việc nạp lịch sử còn dở, chưa phải lỗi. */
+  readonly deferred: number
 }
 
 /**
@@ -37,9 +43,31 @@ export interface SyncManyResult {
  * trước đây một site nhiều kết nối Meta/TikTok vẫn phải xếp hàng sau toàn bộ
  * Google mới tới lượt.
  */
+/** Trần số connection được nạp lịch sử trong MỘT lượt cron.
+ *
+ * Nạp một cửa sổ 365 ngày là 4-5 lượt gọi API cho mỗi connection, mất vài giây
+ * mỗi cái — thả trần thì một site nhiều kết nối sẽ ăn hết `maxDuration = 800`
+ * ngay lượt đầu và bị Vercel giết giữa chừng, để lại phần nạp dở. Chặn ở đây
+ * thì các connection còn lại nạp ở lượt sau: cron chạy mỗi giờ nên toàn bộ
+ * xong trong vài giờ, và mỗi lượt đều kết thúc gọn ghẽ.
+ *
+ * Đặt ở tầng này chứ không trong `syncConnection` vì nó là quyết định về NGÂN
+ * SÁCH CỦA MỘT LƯỢT CHẠY, không phải về một connection đơn lẻ. */
+const MAX_BACKFILLS_PER_RUN = 4
+
 export const syncMany = async (targets: readonly SyncTarget[]): Promise<SyncManyResult> => {
+  // Hoãn phần vượt trần sang lượt cron sau. Lọc TRƯỚC khi chia family để trần
+  // áp cho cả lượt chạy, không phải cho từng family.
+  let backfillBudget = MAX_BACKFILLS_PER_RUN
+  const admitted = targets.filter((target) => {
+    if (target.backfilled_at !== null && target.backfilled_at !== undefined) return true
+    if (backfillBudget <= 0) return false
+    backfillBudget -= 1
+    return true
+  })
+
   const byFamily = new Map<string, SyncTarget[]>()
-  for (const target of targets) {
+  for (const target of admitted) {
     const family = familyOf(target.provider)
     const bucket = byFamily.get(family)
     if (bucket) bucket.push(target)
@@ -75,6 +103,7 @@ export const syncMany = async (targets: readonly SyncTarget[]): Promise<SyncMany
     synced: perFamily.reduce((sum, entry) => sum + entry.synced, 0),
     failed: perFamily.reduce((sum, entry) => sum + entry.failed, 0),
     skipped: perFamily.reduce((sum, entry) => sum + entry.skipped, 0),
-    total: targets.length,
+    total: admitted.length,
+    deferred: targets.length - admitted.length,
   }
 }

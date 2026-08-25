@@ -276,3 +276,21 @@ export const hasCapability = (
   id: ProviderId,
   capability: ProviderCapability,
 ): boolean => PROVIDER_META[id].capabilities.includes(capability)
+
+/** Nền tảng mà `extra` là TRẠNG THÁI TẠI THỜI ĐIỂM đồng bộ (snapshot), không
+ * phải chỉ số phát sinh mỗi ngày — cộng dồn nhiều ngày lại là nhân sai số.
+ * Merchant Center: số sản phẩm đã duyệt/bị từ chối là trạng thái NGAY LÚC
+ * ĐÓ. TikTok (Display API — Login Kit) cũng vậy: KHÔNG có endpoint báo cáo
+ * lịch sử theo ngày như YouTube Analytics hay Meta Page Insights,
+ * `fetchDailyMetrics` chỉ đọc được TRẠNG THÁI HIỆN TẠI (follower/video/like
+ * count cộng dồn từ trước tới giờ) mỗi lần đồng bộ — xem `tiktok-metrics.ts`.
+ * Facebook KHÔNG nằm trong danh sách này — Page Insights (cùng Graph API với
+ * Instagram) có `period=day` thật, xem `facebook-metrics.ts`.
+ *
+ * Đặt ở tầng domain (không I/O) vì CẢ tầng đọc lẫn tầng ghi đều cần: tầng
+ * đọc để không cộng dồn snapshot qua nhiều ngày, tầng ghi (`sync/backfill.ts`)
+ * để KHÔNG nạp lịch sử cho nhóm này — nạp sẽ ghi số của HÔM NAY xuống một
+ * ngày trong quá khứ, tức bịa ra lịch sử, tệ hơn hẳn việc để trống. Một bản
+ * sao thứ hai của danh sách này ở file khác là rủi ro lệch nhau khi có nền
+ * tảng snapshot mới. */
+export const SNAPSHOT_PROVIDERS: ReadonlySet<ProviderId> = new Set(['merchant-center', 'tiktok'])

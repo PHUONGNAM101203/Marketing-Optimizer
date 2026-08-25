@@ -14,6 +14,117 @@ export type Database = {
   }
   public: {
     Tables: {
+      agent_runs: {
+        Row: {
+          agent_id: string
+          finished_at: string | null
+          id: string
+          site_id: string
+          started_at: string
+          status: string
+          steps: Json
+          summary: string | null
+          tokens_used: number | null
+          trigger: string
+        }
+        Insert: {
+          agent_id: string
+          finished_at?: string | null
+          id?: string
+          site_id: string
+          started_at?: string
+          status: string
+          steps?: Json
+          summary?: string | null
+          tokens_used?: number | null
+          trigger: string
+        }
+        Update: {
+          agent_id?: string
+          finished_at?: string | null
+          id?: string
+          site_id?: string
+          started_at?: string
+          status?: string
+          steps?: Json
+          summary?: string | null
+          tokens_used?: number | null
+          trigger?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "agent_runs_agent_id_fkey"
+            columns: ["agent_id"]
+            isOneToOne: false
+            referencedRelation: "agents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "agent_runs_site_id_fkey"
+            columns: ["site_id"]
+            isOneToOne: false
+            referencedRelation: "sites"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      agents: {
+        Row: {
+          created_at: string
+          description: string
+          enabled: boolean
+          id: string
+          last_run_at: string | null
+          name: string
+          prompt_id: string
+          role: string
+          schedule: Json | null
+          site_id: string
+          tools: Json
+        }
+        Insert: {
+          created_at?: string
+          description?: string
+          enabled?: boolean
+          id?: string
+          last_run_at?: string | null
+          name: string
+          prompt_id: string
+          role: string
+          schedule?: Json | null
+          site_id: string
+          tools?: Json
+        }
+        Update: {
+          created_at?: string
+          description?: string
+          enabled?: boolean
+          id?: string
+          last_run_at?: string | null
+          name?: string
+          prompt_id?: string
+          role?: string
+          schedule?: Json | null
+          site_id?: string
+          tools?: Json
+        }
+        Relationships: [
+          {
+            foreignKeyName: "agents_prompt_id_fkey"
+            columns: ["prompt_id"]
+            isOneToOne: false
+            referencedRelation: "prompts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "agents_site_id_fkey"
+            columns: ["site_id"]
+            isOneToOne: false
+            referencedRelation: "sites"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       audit_runs: {
         Row: {
           aeo_score: number | null
@@ -100,6 +211,56 @@ export type Database = {
           },
         ]
       }
+      citation_checks: {
+        Row: {
+          checked_at: string
+          cited: boolean
+          cited_url: string | null
+          competitors_cited: string[]
+          date: string
+          engine: string
+          excerpt: string | null
+          id: string
+          position: number | null
+          prompt_id: string
+          sentiment: string | null
+        }
+        Insert: {
+          checked_at?: string
+          cited: boolean
+          cited_url?: string | null
+          competitors_cited?: string[]
+          date?: string
+          engine: string
+          excerpt?: string | null
+          id?: string
+          position?: number | null
+          prompt_id: string
+          sentiment?: string | null
+        }
+        Update: {
+          checked_at?: string
+          cited?: boolean
+          cited_url?: string | null
+          competitors_cited?: string[]
+          date?: string
+          engine?: string
+          excerpt?: string | null
+          id?: string
+          position?: number | null
+          prompt_id?: string
+          sentiment?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "citation_checks_prompt_id_fkey"
+            columns: ["prompt_id"]
+            isOneToOne: false
+            referencedRelation: "tracked_prompts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       connection_secrets: {
         Row: {
           access_token_enc: string
@@ -136,6 +297,7 @@ export type Database = {
         Row: {
           account_name: string
           avatar_url: string | null
+          backfilled_at: string | null
           connected_at: string
           connected_by: string | null
           error_at: string | null
@@ -152,6 +314,7 @@ export type Database = {
         Insert: {
           account_name: string
           avatar_url?: string | null
+          backfilled_at?: string | null
           connected_at?: string
           connected_by?: string | null
           error_at?: string | null
@@ -168,6 +331,7 @@ export type Database = {
         Update: {
           account_name?: string
           avatar_url?: string | null
+          backfilled_at?: string | null
           connected_at?: string
           connected_by?: string | null
           error_at?: string | null
@@ -191,52 +355,138 @@ export type Database = {
           },
         ]
       }
-      pending_google_connections: {
+      content_metrics_daily: {
         Row: {
-          access_token_enc: string
-          account_name: string
+          comments: number
+          connection_id: string
+          date: string
+          external_post_id: string
+          image_url: string | null
+          likes: number
+          message: string | null
+          permalink: string | null
+          posted_at: string | null
+          provider: string
+          shares: number
+          synced_at: string
+        }
+        Insert: {
+          comments?: number
+          connection_id: string
+          date: string
+          external_post_id: string
+          image_url?: string | null
+          likes?: number
+          message?: string | null
+          permalink?: string | null
+          posted_at?: string | null
+          provider: string
+          shares?: number
+          synced_at?: string
+        }
+        Update: {
+          comments?: number
+          connection_id?: string
+          date?: string
+          external_post_id?: string
+          image_url?: string | null
+          likes?: number
+          message?: string | null
+          permalink?: string | null
+          posted_at?: string | null
+          provider?: string
+          shares?: number
+          synced_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "content_metrics_daily_connection_id_fkey"
+            columns: ["connection_id"]
+            isOneToOne: false
+            referencedRelation: "connections"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      deployments: {
+        Row: {
+          created_at: string
+          id: string
+          owner: string
+          plan_item_id: string | null
+          providers: string[]
+          scheduled_at: string
+          site_id: string
+          status: string
+          title: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          owner: string
+          plan_item_id?: string | null
+          providers?: string[]
+          scheduled_at: string
+          site_id: string
+          status?: string
+          title: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          owner?: string
+          plan_item_id?: string | null
+          providers?: string[]
+          scheduled_at?: string
+          site_id?: string
+          status?: string
+          title?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "deployments_plan_item_id_fkey"
+            columns: ["plan_item_id"]
+            isOneToOne: false
+            referencedRelation: "plan_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "deployments_site_id_fkey"
+            columns: ["site_id"]
+            isOneToOne: false
+            referencedRelation: "sites"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      insight_actions: {
+        Row: {
+          action: string
           created_at: string
           created_by: string | null
-          detail: string | null
-          expires_at: string | null
-          external_account_id: string
           id: string
-          provider: string
-          refresh_token_enc: string | null
-          scopes: string[]
+          insight_id: string
           site_id: string
         }
         Insert: {
-          access_token_enc: string
-          account_name: string
+          action: string
           created_at?: string
           created_by?: string | null
-          detail?: string | null
-          expires_at?: string | null
-          external_account_id: string
           id?: string
-          provider: string
-          refresh_token_enc?: string | null
-          scopes?: string[]
+          insight_id: string
           site_id: string
         }
         Update: {
-          access_token_enc?: string
-          account_name?: string
+          action?: string
           created_at?: string
           created_by?: string | null
-          detail?: string | null
-          expires_at?: string | null
-          external_account_id?: string
           id?: string
-          provider?: string
-          refresh_token_enc?: string | null
-          scopes?: string[]
+          insight_id?: string
           site_id?: string
         }
         Relationships: [
           {
-            foreignKeyName: "pending_google_connections_site_id_fkey"
+            foreignKeyName: "insight_actions_site_id_fkey"
             columns: ["site_id"]
             isOneToOne: false
             referencedRelation: "sites"
@@ -294,6 +544,212 @@ export type Database = {
           },
         ]
       }
+      pending_actions: {
+        Row: {
+          action_kind: string
+          created_at: string
+          decided_at: string | null
+          decided_by: string | null
+          decision: string | null
+          diff: Json
+          id: string
+          provider: string
+          rationale: string
+          run_id: string
+          summary: string
+          target_entity_id: string
+          target_entity_name: string
+          tool: string
+        }
+        Insert: {
+          action_kind: string
+          created_at?: string
+          decided_at?: string | null
+          decided_by?: string | null
+          decision?: string | null
+          diff?: Json
+          id?: string
+          provider: string
+          rationale: string
+          run_id: string
+          summary: string
+          target_entity_id: string
+          target_entity_name: string
+          tool: string
+        }
+        Update: {
+          action_kind?: string
+          created_at?: string
+          decided_at?: string | null
+          decided_by?: string | null
+          decision?: string | null
+          diff?: Json
+          id?: string
+          provider?: string
+          rationale?: string
+          run_id?: string
+          summary?: string
+          target_entity_id?: string
+          target_entity_name?: string
+          tool?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pending_actions_run_id_fkey"
+            columns: ["run_id"]
+            isOneToOne: false
+            referencedRelation: "agent_runs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      pending_google_connections: {
+        Row: {
+          access_token_enc: string
+          account_name: string
+          created_at: string
+          created_by: string | null
+          detail: string | null
+          expires_at: string | null
+          external_account_id: string
+          id: string
+          provider: string
+          refresh_token_enc: string | null
+          scopes: string[]
+          site_id: string
+        }
+        Insert: {
+          access_token_enc: string
+          account_name: string
+          created_at?: string
+          created_by?: string | null
+          detail?: string | null
+          expires_at?: string | null
+          external_account_id: string
+          id?: string
+          provider: string
+          refresh_token_enc?: string | null
+          scopes?: string[]
+          site_id: string
+        }
+        Update: {
+          access_token_enc?: string
+          account_name?: string
+          created_at?: string
+          created_by?: string | null
+          detail?: string | null
+          expires_at?: string | null
+          external_account_id?: string
+          id?: string
+          provider?: string
+          refresh_token_enc?: string | null
+          scopes?: string[]
+          site_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pending_google_connections_site_id_fkey"
+            columns: ["site_id"]
+            isOneToOne: false
+            referencedRelation: "sites"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      plan_items: {
+        Row: {
+          budget_micros: number
+          campaign_name: string
+          end_date: string
+          id: string
+          kpi_targets: Json
+          notes: string | null
+          objective: string
+          plan_id: string
+          provider: string
+          start_date: string
+        }
+        Insert: {
+          budget_micros: number
+          campaign_name: string
+          end_date: string
+          id?: string
+          kpi_targets?: Json
+          notes?: string | null
+          objective: string
+          plan_id: string
+          provider: string
+          start_date: string
+        }
+        Update: {
+          budget_micros?: number
+          campaign_name?: string
+          end_date?: string
+          id?: string
+          kpi_targets?: Json
+          notes?: string | null
+          objective?: string
+          plan_id?: string
+          provider?: string
+          start_date?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "plan_items_plan_id_fkey"
+            columns: ["plan_id"]
+            isOneToOne: false
+            referencedRelation: "plans"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      plans: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          id: string
+          name: string
+          period_end: string | null
+          period_start: string
+          site_id: string
+          source: string
+          status: string
+          total_budget_micros: number
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          name: string
+          period_end?: string | null
+          period_start: string
+          site_id: string
+          source?: string
+          status?: string
+          total_budget_micros?: number
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          name?: string
+          period_end?: string | null
+          period_start?: string
+          site_id?: string
+          source?: string
+          status?: string
+          total_budget_micros?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "plans_site_id_fkey"
+            columns: ["site_id"]
+            isOneToOne: false
+            referencedRelation: "sites"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       profiles: {
         Row: {
           avatar_url: string | null
@@ -323,6 +779,161 @@ export type Database = {
           {
             foreignKeyName: "profiles_last_site_id_fkey"
             columns: ["last_site_id"]
+            isOneToOne: false
+            referencedRelation: "sites"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      prompt_runs: {
+        Row: {
+          id: string
+          inputs: Json
+          latency_ms: number
+          model: string
+          output: string
+          prompt_id: string
+          ran_at: string
+          ran_by: string | null
+          rating: number | null
+          tokens_in: number
+          tokens_out: number
+          version_id: string
+        }
+        Insert: {
+          id?: string
+          inputs?: Json
+          latency_ms: number
+          model: string
+          output: string
+          prompt_id: string
+          ran_at?: string
+          ran_by?: string | null
+          rating?: number | null
+          tokens_in: number
+          tokens_out: number
+          version_id: string
+        }
+        Update: {
+          id?: string
+          inputs?: Json
+          latency_ms?: number
+          model?: string
+          output?: string
+          prompt_id?: string
+          ran_at?: string
+          ran_by?: string | null
+          rating?: number | null
+          tokens_in?: number
+          tokens_out?: number
+          version_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "prompt_runs_prompt_id_fkey"
+            columns: ["prompt_id"]
+            isOneToOne: false
+            referencedRelation: "prompts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "prompt_runs_version_id_fkey"
+            columns: ["version_id"]
+            isOneToOne: false
+            referencedRelation: "prompt_versions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      prompt_versions: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          id: string
+          notes: string | null
+          prompt_id: string
+          system_prompt: string
+          user_template: string
+          version: number
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          notes?: string | null
+          prompt_id: string
+          system_prompt: string
+          user_template: string
+          version: number
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          notes?: string | null
+          prompt_id?: string
+          system_prompt?: string
+          user_template?: string
+          version?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "prompt_versions_prompt_id_fkey"
+            columns: ["prompt_id"]
+            isOneToOne: false
+            referencedRelation: "prompts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      prompts: {
+        Row: {
+          category: string
+          created_at: string
+          current_version_id: string | null
+          description: string
+          id: string
+          name: string
+          site_id: string
+          tags: string[]
+          updated_at: string
+          variables: Json
+        }
+        Insert: {
+          category: string
+          created_at?: string
+          current_version_id?: string | null
+          description?: string
+          id?: string
+          name: string
+          site_id: string
+          tags?: string[]
+          updated_at?: string
+          variables?: Json
+        }
+        Update: {
+          category?: string
+          created_at?: string
+          current_version_id?: string | null
+          description?: string
+          id?: string
+          name?: string
+          site_id?: string
+          tags?: string[]
+          updated_at?: string
+          variables?: Json
+        }
+        Relationships: [
+          {
+            foreignKeyName: "prompts_current_version_fk"
+            columns: ["current_version_id"]
+            isOneToOne: false
+            referencedRelation: "prompt_versions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "prompts_site_id_fkey"
+            columns: ["site_id"]
             isOneToOne: false
             referencedRelation: "sites"
             referencedColumns: ["id"]
@@ -367,7 +978,39 @@ export type Database = {
           {
             foreignKeyName: "site_ai_keys_site_id_fkey"
             columns: ["site_id"]
-            isOneToOne: false
+            isOneToOne: true
+            referencedRelation: "sites"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      site_invite_links: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          role: Database["public"]["Enums"]["site_role"]
+          site_id: string
+          token: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          role?: Database["public"]["Enums"]["site_role"]
+          site_id: string
+          token: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          role?: Database["public"]["Enums"]["site_role"]
+          site_id?: string
+          token?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "site_invite_links_site_id_fkey"
+            columns: ["site_id"]
+            isOneToOne: true
             referencedRelation: "sites"
             referencedColumns: ["id"]
           },
@@ -494,73 +1137,6 @@ export type Database = {
         }
         Relationships: []
       }
-      site_invite_links: {
-        Row: {
-          created_at: string
-          created_by: string | null
-          role: Database["public"]["Enums"]["site_role"]
-          site_id: string
-          token: string
-        }
-        Insert: {
-          created_at?: string
-          created_by?: string | null
-          role?: Database["public"]["Enums"]["site_role"]
-          site_id: string
-          token: string
-        }
-        Update: {
-          created_at?: string
-          created_by?: string | null
-          role?: Database["public"]["Enums"]["site_role"]
-          site_id?: string
-          token?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "site_invite_links_site_id_fkey"
-            columns: ["site_id"]
-            isOneToOne: true
-            referencedRelation: "sites"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      insight_actions: {
-        Row: {
-          action: string
-          created_at: string
-          created_by: string | null
-          id: string
-          insight_id: string
-          site_id: string
-        }
-        Insert: {
-          action: string
-          created_at?: string
-          created_by?: string | null
-          id?: string
-          insight_id: string
-          site_id: string
-        }
-        Update: {
-          action?: string
-          created_at?: string
-          created_by?: string | null
-          id?: string
-          insight_id?: string
-          site_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "insight_actions_site_id_fkey"
-            columns: ["site_id"]
-            isOneToOne: false
-            referencedRelation: "sites"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       tracked_prompts: {
         Row: {
           cadence: string
@@ -601,254 +1177,6 @@ export type Database = {
             columns: ["site_id"]
             isOneToOne: false
             referencedRelation: "sites"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      citation_checks: {
-        Row: {
-          checked_at: string
-          cited: boolean
-          cited_url: string | null
-          competitors_cited: string[]
-          date: string
-          engine: string
-          excerpt: string | null
-          id: string
-          position: number | null
-          prompt_id: string
-          sentiment: string | null
-        }
-        Insert: {
-          checked_at?: string
-          cited: boolean
-          cited_url?: string | null
-          competitors_cited?: string[]
-          date?: string
-          engine: string
-          excerpt?: string | null
-          id?: string
-          position?: number | null
-          prompt_id: string
-          sentiment?: string | null
-        }
-        Update: {
-          checked_at?: string
-          cited?: boolean
-          cited_url?: string | null
-          competitors_cited?: string[]
-          date?: string
-          engine?: string
-          excerpt?: string | null
-          id?: string
-          position?: number | null
-          prompt_id?: string
-          sentiment?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "citation_checks_prompt_id_fkey"
-            columns: ["prompt_id"]
-            isOneToOne: false
-            referencedRelation: "tracked_prompts"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      plans: {
-        Row: {
-          created_at: string
-          created_by: string | null
-          id: string
-          name: string
-          period_end: string | null
-          period_start: string
-          site_id: string
-          source: string
-          status: string
-          total_budget_micros: number
-        }
-        Insert: {
-          created_at?: string
-          created_by?: string | null
-          id?: string
-          name: string
-          period_end?: string | null
-          period_start: string
-          site_id: string
-          source?: string
-          status?: string
-          total_budget_micros?: number
-        }
-        Update: {
-          created_at?: string
-          created_by?: string | null
-          id?: string
-          name?: string
-          period_end?: string | null
-          period_start?: string
-          site_id?: string
-          source?: string
-          status?: string
-          total_budget_micros?: number
-        }
-        Relationships: [
-          {
-            foreignKeyName: "plans_site_id_fkey"
-            columns: ["site_id"]
-            isOneToOne: false
-            referencedRelation: "sites"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      plan_items: {
-        Row: {
-          budget_micros: number
-          campaign_name: string
-          end_date: string
-          id: string
-          kpi_targets: Json
-          notes: string | null
-          objective: string
-          plan_id: string
-          provider: string
-          start_date: string
-        }
-        Insert: {
-          budget_micros: number
-          campaign_name: string
-          end_date: string
-          id?: string
-          kpi_targets?: Json
-          notes?: string | null
-          objective: string
-          plan_id: string
-          provider: string
-          start_date: string
-        }
-        Update: {
-          budget_micros?: number
-          campaign_name?: string
-          end_date?: string
-          id?: string
-          kpi_targets?: Json
-          notes?: string | null
-          objective?: string
-          plan_id?: string
-          provider?: string
-          start_date?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "plan_items_plan_id_fkey"
-            columns: ["plan_id"]
-            isOneToOne: false
-            referencedRelation: "plans"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      deployments: {
-        Row: {
-          created_at: string
-          id: string
-          owner: string
-          plan_item_id: string | null
-          providers: string[]
-          scheduled_at: string
-          site_id: string
-          status: string
-          title: string
-        }
-        Insert: {
-          created_at?: string
-          id?: string
-          owner: string
-          plan_item_id?: string | null
-          providers?: string[]
-          scheduled_at: string
-          site_id: string
-          status?: string
-          title: string
-        }
-        Update: {
-          created_at?: string
-          id?: string
-          owner?: string
-          plan_item_id?: string | null
-          providers?: string[]
-          scheduled_at?: string
-          site_id?: string
-          status?: string
-          title?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "deployments_plan_item_id_fkey"
-            columns: ["plan_item_id"]
-            isOneToOne: false
-            referencedRelation: "plan_items"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "deployments_site_id_fkey"
-            columns: ["site_id"]
-            isOneToOne: false
-            referencedRelation: "sites"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      content_metrics_daily: {
-        Row: {
-          comments: number
-          connection_id: string
-          date: string
-          external_post_id: string
-          image_url: string | null
-          likes: number
-          message: string | null
-          permalink: string | null
-          posted_at: string | null
-          provider: string
-          shares: number
-          synced_at: string
-        }
-        Insert: {
-          comments?: number
-          connection_id: string
-          date: string
-          external_post_id: string
-          image_url?: string | null
-          likes?: number
-          message?: string | null
-          permalink?: string | null
-          posted_at?: string | null
-          provider: string
-          shares?: number
-          synced_at?: string
-        }
-        Update: {
-          comments?: number
-          connection_id?: string
-          date?: string
-          external_post_id?: string
-          image_url?: string | null
-          likes?: number
-          message?: string | null
-          permalink?: string | null
-          posted_at?: string | null
-          provider?: string
-          shares?: number
-          synced_at?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "content_metrics_daily_connection_id_fkey"
-            columns: ["connection_id"]
-            isOneToOne: false
-            referencedRelation: "connections"
             referencedColumns: ["id"]
           },
         ]
@@ -906,331 +1234,6 @@ export type Database = {
           },
         ]
       }
-      prompts: {
-        Row: {
-          category: string
-          created_at: string
-          current_version_id: string | null
-          description: string
-          id: string
-          name: string
-          site_id: string
-          tags: string[]
-          updated_at: string
-          variables: Json
-        }
-        Insert: {
-          category: string
-          created_at?: string
-          current_version_id?: string | null
-          description?: string
-          id?: string
-          name: string
-          site_id: string
-          tags?: string[]
-          updated_at?: string
-          variables?: Json
-        }
-        Update: {
-          category?: string
-          created_at?: string
-          current_version_id?: string | null
-          description?: string
-          id?: string
-          name?: string
-          site_id?: string
-          tags?: string[]
-          updated_at?: string
-          variables?: Json
-        }
-        Relationships: [
-          {
-            foreignKeyName: "prompts_current_version_fk"
-            columns: ["current_version_id"]
-            isOneToOne: false
-            referencedRelation: "prompt_versions"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "prompts_site_id_fkey"
-            columns: ["site_id"]
-            isOneToOne: false
-            referencedRelation: "sites"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      prompt_versions: {
-        Row: {
-          created_at: string
-          created_by: string | null
-          id: string
-          notes: string | null
-          prompt_id: string
-          system_prompt: string
-          user_template: string
-          version: number
-        }
-        Insert: {
-          created_at?: string
-          created_by?: string | null
-          id?: string
-          notes?: string | null
-          prompt_id: string
-          system_prompt: string
-          user_template: string
-          version: number
-        }
-        Update: {
-          created_at?: string
-          created_by?: string | null
-          id?: string
-          notes?: string | null
-          prompt_id?: string
-          system_prompt?: string
-          user_template?: string
-          version?: number
-        }
-        Relationships: [
-          {
-            foreignKeyName: "prompt_versions_prompt_id_fkey"
-            columns: ["prompt_id"]
-            isOneToOne: false
-            referencedRelation: "prompts"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      prompt_runs: {
-        Row: {
-          id: string
-          inputs: Json
-          latency_ms: number
-          model: string
-          output: string
-          prompt_id: string
-          ran_at: string
-          ran_by: string | null
-          rating: number | null
-          tokens_in: number
-          tokens_out: number
-          version_id: string
-        }
-        Insert: {
-          id?: string
-          inputs?: Json
-          latency_ms: number
-          model: string
-          output: string
-          prompt_id: string
-          ran_at?: string
-          ran_by?: string | null
-          rating?: number | null
-          tokens_in: number
-          tokens_out: number
-          version_id: string
-        }
-        Update: {
-          id?: string
-          inputs?: Json
-          latency_ms?: number
-          model?: string
-          output?: string
-          prompt_id?: string
-          ran_at?: string
-          ran_by?: string | null
-          rating?: number | null
-          tokens_in?: number
-          tokens_out?: number
-          version_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "prompt_runs_prompt_id_fkey"
-            columns: ["prompt_id"]
-            isOneToOne: false
-            referencedRelation: "prompts"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "prompt_runs_version_id_fkey"
-            columns: ["version_id"]
-            isOneToOne: false
-            referencedRelation: "prompt_versions"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      agents: {
-        Row: {
-          created_at: string
-          description: string
-          enabled: boolean
-          id: string
-          last_run_at: string | null
-          name: string
-          prompt_id: string
-          role: string
-          schedule: Json | null
-          site_id: string
-          tools: Json
-        }
-        Insert: {
-          created_at?: string
-          description?: string
-          enabled?: boolean
-          id?: string
-          last_run_at?: string | null
-          name: string
-          prompt_id: string
-          role: string
-          schedule?: Json | null
-          site_id: string
-          tools?: Json
-        }
-        Update: {
-          created_at?: string
-          description?: string
-          enabled?: boolean
-          id?: string
-          last_run_at?: string | null
-          name?: string
-          prompt_id?: string
-          role?: string
-          schedule?: Json | null
-          site_id?: string
-          tools?: Json
-        }
-        Relationships: [
-          {
-            foreignKeyName: "agents_prompt_id_fkey"
-            columns: ["prompt_id"]
-            isOneToOne: false
-            referencedRelation: "prompts"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "agents_site_id_fkey"
-            columns: ["site_id"]
-            isOneToOne: false
-            referencedRelation: "sites"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      agent_runs: {
-        Row: {
-          agent_id: string
-          finished_at: string | null
-          id: string
-          site_id: string
-          started_at: string
-          status: string
-          steps: Json
-          summary: string | null
-          tokens_used: number | null
-          trigger: string
-        }
-        Insert: {
-          agent_id: string
-          finished_at?: string | null
-          id?: string
-          site_id: string
-          started_at?: string
-          status: string
-          steps?: Json
-          summary?: string | null
-          tokens_used?: number | null
-          trigger: string
-        }
-        Update: {
-          agent_id?: string
-          finished_at?: string | null
-          id?: string
-          site_id?: string
-          started_at?: string
-          status?: string
-          steps?: Json
-          summary?: string | null
-          tokens_used?: number | null
-          trigger?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "agent_runs_agent_id_fkey"
-            columns: ["agent_id"]
-            isOneToOne: false
-            referencedRelation: "agents"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "agent_runs_site_id_fkey"
-            columns: ["site_id"]
-            isOneToOne: false
-            referencedRelation: "sites"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      pending_actions: {
-        Row: {
-          action_kind: string
-          created_at: string
-          decided_at: string | null
-          decided_by: string | null
-          decision: string | null
-          diff: Json
-          id: string
-          provider: string
-          rationale: string
-          run_id: string
-          summary: string
-          target_entity_id: string
-          target_entity_name: string
-          tool: string
-        }
-        Insert: {
-          action_kind: string
-          created_at?: string
-          decided_at?: string | null
-          decided_by?: string | null
-          decision?: string | null
-          diff?: Json
-          id?: string
-          provider: string
-          rationale: string
-          run_id: string
-          summary: string
-          target_entity_id: string
-          target_entity_name: string
-          tool: string
-        }
-        Update: {
-          action_kind?: string
-          created_at?: string
-          decided_at?: string | null
-          decided_by?: string | null
-          decision?: string | null
-          diff?: Json
-          id?: string
-          provider?: string
-          rationale?: string
-          run_id?: string
-          summary?: string
-          target_entity_id?: string
-          target_entity_name?: string
-          tool?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "pending_actions_run_id_fkey"
-            columns: ["run_id"]
-            isOneToOne: false
-            referencedRelation: "agent_runs"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
     }
     Views: {
       [_ in never]: never
@@ -1242,6 +1245,10 @@ export type Database = {
           p_campaign_name: string
           p_end_date: string
           p_kpi_targets: Json
+          // SỬA TAY: codegen sinh `string`, nhưng tham số hàm Postgres luôn
+          // nullable (không khai `NOT NULL` cho param được) và chữ ký thật là
+          // `p_notes text` — xem migration 20260813000011. Sinh lại file này
+          // thì phải sửa lại dòng này.
           p_notes: string | null
           p_objective: string
           p_owner: string
@@ -1249,7 +1256,24 @@ export type Database = {
           p_provider: string
           p_start_date: string
         }
-        Returns: Database["public"]["Tables"]["plan_items"]["Row"]
+        Returns: {
+          budget_micros: number
+          campaign_name: string
+          end_date: string
+          id: string
+          kpi_targets: Json
+          notes: string | null
+          objective: string
+          plan_id: string
+          provider: string
+          start_date: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "plan_items"
+          isOneToOne: true
+          isSetofReturn: false
+        }
       }
       get_content_trending_snapshots: {
         Args: {
@@ -1258,91 +1282,88 @@ export type Database = {
           p_provider: string
         }
         Returns: {
+          cutoff0_date: string
+          cutoff0_score: number
+          cutoff1_date: string
+          cutoff1_score: number
+          cutoff2_date: string
+          cutoff2_score: number
+          earliest_date: string
+          earliest_score: number
           external_post_id: string
-          message: string | null
-          image_url: string | null
-          permalink: string | null
-          latest_posted_at: string | null
+          image_url: string
+          latest_comments: number
           latest_date: string
           latest_likes: number
-          latest_comments: number
+          latest_posted_at: string
           latest_shares: number
-          earliest_date: string | null
-          earliest_score: number | null
-          cutoff0_date: string | null
-          cutoff0_score: number | null
-          cutoff1_date: string | null
-          cutoff1_score: number | null
-          cutoff2_date: string | null
-          cutoff2_score: number | null
+          message: string
+          permalink: string
         }[]
       }
       get_video_range_snapshots: {
         Args: {
           p_connection_id: string
-          p_range_start: string
           p_range_end: string
+          p_range_start: string
         }
         Returns: {
-          external_video_id: string
-          title: string | null
-          cover_image_url: string | null
-          posted_at: string | null
-          permalink_url: string | null
-          end_date: string
-          end_views: number
-          end_likes: number
+          baseline_comments: number
+          baseline_date: string
+          baseline_likes: number
+          baseline_shares: number
+          baseline_views: number
+          cover_image_url: string
           end_comments: number
+          end_date: string
+          end_likes: number
           end_shares: number
-          baseline_date: string | null
-          baseline_views: number | null
-          baseline_likes: number | null
-          baseline_comments: number | null
-          baseline_shares: number | null
+          end_views: number
+          external_video_id: string
+          permalink_url: string
+          posted_at: string
+          title: string
         }[]
       }
       get_video_trending_snapshots: {
-        Args: {
-          p_connection_id: string
-          p_cutoffs: string[]
-        }
+        Args: { p_connection_id: string; p_cutoffs: string[] }
         Returns: {
+          cover_image_url: string
+          cutoff0_date: string
+          cutoff0_views: number
+          cutoff1_date: string
+          cutoff1_views: number
+          cutoff2_date: string
+          cutoff2_views: number
+          earliest_date: string
+          earliest_views: number
           external_video_id: string
-          title: string | null
-          cover_image_url: string | null
-          posted_at: string | null
-          permalink_url: string | null
-          latest_date: string
-          latest_views: number
-          latest_likes: number
           latest_comments: number
+          latest_date: string
+          latest_likes: number
           latest_shares: number
-          earliest_date: string | null
-          earliest_views: number | null
-          cutoff0_date: string | null
-          cutoff0_views: number | null
-          cutoff1_date: string | null
-          cutoff1_views: number | null
-          cutoff2_date: string | null
-          cutoff2_views: number | null
+          latest_views: number
+          permalink_url: string
+          posted_at: string
+          title: string
         }[]
       }
       get_videos_posted_in_range: {
         Args: {
           p_connection_id: string
-          p_range_start: string
           p_range_end: string
+          p_range_start: string
         }
         Returns: {
-          external_video_id: string
-          title: string | null
-          cover_image_url: string | null
-          posted_at: string | null
-          permalink_url: string | null
-          views: number
-          likes: number
           comments: number
+          cover_image_url: string
+          external_video_id: string
+          likes: number
+          permalink_url: string
+          posted_at: string
           shares: number
+          title: string
+          views: number
         }[]
       }
       has_site_role: {

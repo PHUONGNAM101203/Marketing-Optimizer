@@ -3,8 +3,9 @@ import 'server-only'
 import { after } from 'next/server'
 
 import { getGoogleAdsDeveloperToken } from '@/lib/data/site-oauth-apps'
-import { isProviderId } from '@/lib/domain/providers'
+import { SNAPSHOT_PROVIDERS, isProviderId } from '@/lib/domain/providers'
 import { METRICS_ADAPTERS } from '@/lib/providers'
+import type { DailyMetricRow, MetricsAdapter } from '@/lib/providers/metrics-types'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { resolveAccessToken, resolvePageAccessToken } from './access-token'
 import { syncContentSnapshots } from './sync-content-snapshots'
@@ -25,18 +26,70 @@ import { syncTiktokVideoSnapshots } from './sync-video-snapshots'
 
 const SYNC_WINDOW_DAYS = 30
 
+/** Cửa sổ nạp lịch sử, chạy ĐÚNG MỘT LẦN cho mỗi connection (đóng dấu bằng
+ * `connections.backfilled_at`). Không nới thẳng `SYNC_WINDOW_DAYS` lên 365 vì
+ * như vậy MỌI lượt đồng bộ hằng giờ đều kéo lại nguyên một năm — tốn quota API
+ * và thời gian cron cho phần dữ liệu đã có sẵn từ lượt trước. */
+const BACKFILL_WINDOW_DAYS = 365
+
+/** Cắt lượt nạp thành từng đoạn thay vì hỏi 365 ngày trong một request: Meta
+ * Insights giới hạn độ dài `time_range` mỗi lần gọi, và Search Console có trần
+ * số hàng trả về. Đoạn 90 ngày nằm dưới cả hai ngưỡng cho mọi nền tảng đang
+ * dùng. */
+const BACKFILL_CHUNK_DAYS = 90
+
 const toIsoDate = (date: Date): string => date.toISOString().slice(0, 10)
 
 export type SyncResult =
   | { readonly ok: true; readonly rows: number }
   | { readonly ok: false; readonly error: string }
 
+/**
+ * Nạp một khoảng dài bằng nhiều lượt gọi liên tiếp, gộp kết quả.
+ *
+ * TUẦN TỰ, không `Promise.all`: cùng một connection nghĩa là cùng một tài
+ * khoản nền tảng, bắn 5 request song song vào đó là cách nhanh nhất để ăn
+ * rate limit — đúng lớp lỗi đã gặp với Klaviyo Reporting API. Nạp lịch sử chỉ
+ * chạy một lần nên chậm hơn vài giây không đáng đánh đổi.
+ *
+ * Một đoạn lỗi thì NÉM ra ngoài chứ không nuốt: nuốt lỗi sẽ nạp thiếu một
+ * quãng giữa mà vẫn đóng dấu `backfilled_at`, để lại một lỗ hổng vĩnh viễn
+ * không ai biết. Ném ra thì lượt cron sau nạp lại từ đầu.
+ */
+const fetchInChunks = async (
+  adapter: MetricsAdapter,
+  params: {
+    readonly accessToken: string
+    readonly externalAccountId: string
+    readonly startDate: Date
+    readonly endDate: Date
+    readonly developerToken?: string
+  },
+): Promise<readonly DailyMetricRow[]> => {
+  const all: DailyMetricRow[] = []
+  const chunkMs = BACKFILL_CHUNK_DAYS * 86_400_000
+
+  for (let from = params.startDate.getTime(); from <= params.endDate.getTime(); from += chunkMs) {
+    const to = Math.min(from + chunkMs - 86_400_000, params.endDate.getTime())
+    const rows = await adapter.fetchDailyMetrics({
+      accessToken: params.accessToken,
+      externalAccountId: params.externalAccountId,
+      startDate: toIsoDate(new Date(from)),
+      endDate: toIsoDate(new Date(to)),
+      developerToken: params.developerToken,
+    })
+    all.push(...rows)
+  }
+
+  return all
+}
+
 export async function syncConnection(connectionId: string): Promise<SyncResult> {
   const admin = createAdminClient()
 
   const { data: connection } = await admin
     .from('connections')
-    .select('id, site_id, provider, external_account_id')
+    .select('id, site_id, provider, external_account_id, backfilled_at')
     .eq('id', connectionId)
     .maybeSingle()
 
@@ -106,17 +159,35 @@ export async function syncConnection(connectionId: string): Promise<SyncResult> 
     developerToken = token
   }
 
+  // Nạp lịch sử khi connection này chưa từng được nạp. CỐ TÌNH loại
+  // `SNAPSHOT_PROVIDERS`: API của merchant-center/tiktok không có báo cáo lịch
+  // sử, hỏi khoảng ngày quá khứ thì chúng vẫn trả TRẠNG THÁI HIỆN TẠI rồi gắn
+  // nhãn ngày cuối khoảng (đã đo thật 25/8/2026: cả hai trả đúng 1 hàng gắn
+  // nhãn 2026-06-30). Nạp nhóm đó là ghi số của hôm nay xuống quá khứ — bịa ra
+  // lịch sử, tệ hơn hẳn việc để trống.
+  const shouldBackfill =
+    !connection.backfilled_at && !SNAPSHOT_PROVIDERS.has(connection.provider)
+
   const endDate = new Date()
-  const startDate = new Date(endDate.getTime() - (SYNC_WINDOW_DAYS - 1) * 86_400_000)
+  const windowDays = shouldBackfill ? BACKFILL_WINDOW_DAYS : SYNC_WINDOW_DAYS
+  const startDate = new Date(endDate.getTime() - (windowDays - 1) * 86_400_000)
 
   try {
-    const rows = await metricsAdapter.fetchDailyMetrics({
-      accessToken,
-      externalAccountId: connection.external_account_id,
-      startDate: toIsoDate(startDate),
-      endDate: toIsoDate(endDate),
-      developerToken,
-    })
+    const rows = shouldBackfill
+      ? await fetchInChunks(metricsAdapter, {
+          accessToken,
+          externalAccountId: connection.external_account_id,
+          startDate,
+          endDate,
+          developerToken,
+        })
+      : await metricsAdapter.fetchDailyMetrics({
+          accessToken,
+          externalAccountId: connection.external_account_id,
+          startDate: toIsoDate(startDate),
+          endDate: toIsoDate(endDate),
+          developerToken,
+        })
 
     if (rows.length > 0) {
       const { error: upsertError } = await admin.from('metrics_daily').upsert(
@@ -148,6 +219,19 @@ export async function syncConnection(connectionId: string): Promise<SyncResult> 
       .from('connections')
       .update({
         status: 'connected',
+        // Đóng dấu cho MỌI provider, không riêng nhóm vừa nạp. Cột này nghĩa
+        // là "đã xử lý xong việc nạp lịch sử", không phải "đã nạp": với
+        // `SNAPSHOT_PROVIDERS` thì kết luận là KHÔNG CÓ GÌ để nạp, và đó cũng
+        // là một kết luận đã xử lý xong.
+        //
+        // Bỏ sót nhóm snapshot ở đây thì `backfilled_at` của chúng vĩnh viễn
+        // NULL, mà hai route cron lại chọn theo `backfilled_at.is.null` — tức
+        // chúng khớp ở MỌI lượt chạy và bộ lọc `last_synced_at` thành vô
+        // nghĩa với riêng nhóm đó.
+        //
+        // Tới được dòng này nghĩa là đã ghi đủ: mọi lỗi phía trên đều `return`
+        // sớm hoặc ném ra ngoài.
+        backfilled_at: new Date().toISOString(),
         last_synced_at: new Date().toISOString(),
         error_code: null,
         error_message: null,
