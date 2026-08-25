@@ -7,7 +7,8 @@ import {
   type ComparisonFormatter,
 } from '@/lib/domain/channel-comparison-metrics'
 import type { ChannelSummary } from '@/lib/data/site-channels'
-import type { ProviderId } from '@/lib/domain/providers'
+import { SNAPSHOT_PROVIDERS, type ProviderId } from '@/lib/domain/providers'
+import { Callout } from '@/components/ui/feedback'
 
 /* Hallmark · component: channel-comparison-panel · theme: studied-DNA (Ink & Signal)
  *
@@ -57,6 +58,15 @@ export function ChannelComparisonPanel({
   const metrics = channelComparisonMetrics(provider)
   if (metrics.length === 0) return null
 
+  // Nền tảng snapshot KHÔNG nạp được lịch sử: API của chúng không có báo cáo
+  // theo ngày trong quá khứ, chỉ trả trạng thái hiện tại (xem
+  // `SNAPSHOT_PROVIDERS`). Số liệu vì vậy chỉ tồn tại từ ngày app bắt đầu tự
+  // chụp snapshot, và mọi khoảng trước đó ra 0 — trông y hệt "hiệu suất bằng
+  // 0" trong khi thực chất là không có dữ liệu. Các nền tảng khác đã được nạp
+  // lùi một năm nên không gặp cảnh này.
+  const isSnapshotProvider = SNAPSHOT_PROVIDERS.has(provider)
+  const compareIsEmpty = metrics.every((metric) => (metric.getValue(compareSummary) ?? 0) === 0)
+
   return (
     <section className="flex flex-col gap-4">
       <SectionHead
@@ -64,6 +74,15 @@ export function ChannelComparisonPanel({
         title="Đối chiếu hai khoảng ngày"
         description="Cạnh nhau để biết chênh lệch bao nhiêu, không phải chỉ một con số % rời rạc."
       />
+      {isSnapshotProvider && compareIsEmpty ? (
+        <Callout tone="caution" title={`${compareLabel} không có dữ liệu`}>
+          Nền tảng này không cung cấp báo cáo lịch sử — API chỉ trả về trạng thái tại thời điểm
+          hỏi, nên không thể lấy lùi số liệu của quá khứ như GA4 hay Search Console. Số liệu chỉ có
+          từ ngày kênh được kết nối và app bắt đầu tự ghi lại hằng ngày. Số 0 dưới đây là do thiếu
+          dữ liệu, không phải hiệu suất bằng 0.
+        </Callout>
+      ) : null}
+
       <Card className="overflow-hidden">
         <TableScroller aria-label="So sánh hai khoảng ngày">
           <Table>

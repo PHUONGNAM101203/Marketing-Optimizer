@@ -63,6 +63,24 @@ Every table follows the same split: normal tables (`connections`, `metrics_daily
 
 There are three cron jobs, declared in `vercel.json` (the Hobby-era one-cron-per-day limit no longer applies — the project is on Vercel Pro): `sync-hourly` (fresh-data providers), `run-agents` (agent dispatch, offset 20 minutes so it reads metrics the same hour's sync just wrote), and `sync-daily` (`LOW_FREQUENCY_PROVIDERS` + the AI model cache). All three cap at `maxDuration = 800`, the Pro/Fluid Compute ceiling. Connection syncing goes through `syncMany` (`src/lib/sync/sync-many.ts`), which runs provider families concurrently but keeps each family sequential — rate-limit quotas are per-platform, so this does not raise the concurrency any one platform sees. Time-sensitive work that must run for every connection (like the TikTok video snapshot) is wired into `syncConnection` itself rather than getting a separate schedule, and is wrapped in Next's `after()` where it doesn't need to block the caller's response (see the TikTok snapshot call site in `sync-connection.ts` for the pattern — `after()` needs to be called from live request scope, which every one of `syncConnection`'s six call sites provides).
 
+`syncConnection` fetches `SYNC_WINDOW_DAYS = 30` normally, but runs one wide
+365-day pass first for each connection, stamped by `connections.backfilled_at`.
+Without it `metrics_daily` never holds anything older than 30 days before a
+connection's first sync, so any date range further back reads as zeros — which
+is indistinguishable from real zeros. Do **not** just widen `SYNC_WINDOW_DAYS`:
+that re-fetches a year on every hourly run. The pass is chunked at 90 days
+(Meta caps `time_range` length, Search Console caps returned rows) and the
+chunks run sequentially, since one connection is one platform account and
+concurrent requests to it hit rate limits.
+
+Providers in `SNAPSHOT_PROVIDERS` (`merchant-center`, `tiktok`) are excluded
+from the backfill and must stay excluded. Their APIs have no historical
+report — asked for a past range they return *today's* cumulative counters
+labelled with the range's end date, so backfilling them fabricates history.
+`backfilled_at` is still stamped for them: it means "backfill resolved", and
+leaving it null would match the crons' `backfilled_at.is.null` clause forever,
+disabling the staleness filter for exactly those two.
+
 Each cron's provider list comes from `DAILY_PROVIDERS`/`HOURLY_PROVIDERS` in
 `src/lib/sync/cron-providers.ts`, derived from `PROVIDERS` split by
 `LOW_FREQUENCY_PROVIDERS`. Do **not** derive it from `Object.keys(METRICS_ADAPTERS)`
