@@ -1,5 +1,6 @@
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
+import { LAST_SITE_COOKIE, parseLastSiteCookie } from '@/lib/last-site-cookie'
 
 /**
  * Làm mới phiên đăng nhập trên mỗi request và chặn các route cần đăng nhập.
@@ -66,6 +67,36 @@ export async function proxy(request: NextRequest) {
 
   const { pathname } = request.nextUrl
   const isPublic = PUBLIC_PREFIXES.some((prefix) => pathname.startsWith(prefix))
+
+  // Mở app từ màn hình chính luôn vào `/` (`start_url` trong `manifest.ts`).
+  // Trang `/` phải xác thực, đọc danh sách site, đọc `last_site_id` rồi mới
+  // `redirect()` — và redirect bắt trình duyệt đi thêm một vòng HTTP nữa, nên
+  // mở app tốn HAI lượt gọi hàm server thay vì một, mỗi lượt đều có thể dính
+  // cold start.
+  //
+  // Ở đây đã biết người dùng là ai và đang ở edge (không có lượt gọi hàm nào),
+  // nên nếu cookie có site mở gần nhất thì chuyển hướng thẳng, bỏ hẳn lượt
+  // đầu. Cookie sai/hết hạn thì rơi về đường cũ — trang `/` vẫn xử lý đúng.
+  if (user && pathname === '/') {
+    const lastSiteId = parseLastSiteCookie(request.cookies.get(LAST_SITE_COOKIE)?.value)
+    if (lastSiteId) {
+      const target = request.nextUrl.clone()
+      target.pathname = `/${lastSiteId}/overview`
+
+      // PHẢI chép cookie từ `response` sang. `getUser()` ở trên có thể vừa
+      // làm mới access token và ghi cookie mới vào `response` (xem `setAll`);
+      // `NextResponse.redirect()` tạo một response HOÀN TOÀN MỚI, không mang
+      // theo gì. Trả thẳng nó đi là vứt luôn token vừa làm mới — lượt sau
+      // dùng lại token cũ đã hết hạn và người dùng bị đăng xuất giữa chừng,
+      // đúng lớp lỗi mà `proxy.ts` sinh ra để tránh.
+      //
+      // Nhánh redirect sang `/sign-in` bên dưới không cần việc này: ở đó
+      // `user` là null, không có phiên nào để giữ.
+      const redirectResponse = NextResponse.redirect(target)
+      for (const cookie of response.cookies.getAll()) redirectResponse.cookies.set(cookie)
+      return redirectResponse
+    }
+  }
 
   if (!user && !isPublic) {
     const redirectUrl = request.nextUrl.clone()
