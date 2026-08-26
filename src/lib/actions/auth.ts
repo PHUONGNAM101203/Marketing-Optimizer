@@ -4,7 +4,9 @@ import { redirect } from 'next/navigation'
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import { createClient } from '@/lib/supabase/server'
+import { LAST_SITE_COOKIE } from '@/lib/last-site-cookie'
 import { getAppOrigin } from '@/lib/http/origin'
+import { cookies } from 'next/headers'
 
 /**
  * Server action cho đăng nhập / đăng ký.
@@ -114,6 +116,15 @@ export async function signUp(
 export async function signOut(): Promise<never> {
   const supabase = await createClient()
   await supabase.auth.signOut()
+
+  // Xoá cookie site-gần-nhất. `proxy.ts` dùng nó để chuyển hướng `/` thẳng
+  // tới một site mà KHÔNG truy vấn gì (xem `lib/last-site-cookie.ts`). Giữ
+  // lại sau khi đăng xuất thì người đăng nhập tiếp theo trên cùng trình duyệt
+  // sẽ bị đẩy tới site của người trước — không lộ dữ liệu (RLS vẫn chặn,
+  // layout trả 404) nhưng họ mắc kẹt ở trang 404, và mỗi lần về `/` lại bị
+  // đẩy đúng vào đó. Server Action được phép sửa cookie, khác Server Component.
+  ;(await cookies()).delete(LAST_SITE_COOKIE)
+
   revalidatePath('/', 'layout')
   redirect('/sign-in')
 }

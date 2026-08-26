@@ -1,6 +1,10 @@
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
-import { LAST_SITE_COOKIE, parseLastSiteCookie } from '@/lib/last-site-cookie'
+import {
+  LAST_SITE_COOKIE,
+  LAST_SITE_COOKIE_MAX_AGE,
+  parseLastSiteCookie,
+} from '@/lib/last-site-cookie'
 
 /**
  * Làm mới phiên đăng nhập trên mỗi request và chặn các route cần đăng nhập.
@@ -95,6 +99,25 @@ export async function proxy(request: NextRequest) {
       const redirectResponse = NextResponse.redirect(target)
       for (const cookie of response.cookies.getAll()) redirectResponse.cookies.set(cookie)
       return redirectResponse
+    }
+  }
+
+  // Ghi cookie NGAY TẠI ĐÂY, không phải trong layout của Site.
+  // Server Component KHÔNG được sửa cookie — Next ném
+  // "Cookies can only be modified in a Server Action or Route Handler" và cả
+  // trang đổ. Middleware thì được, và đặt ở đây còn gọn hơn: một chỗ vừa đọc
+  // vừa ghi cookie này.
+  //
+  // `siteId` lấy từ chính đường dẫn, không cần truy vấn gì. Chỉ ghi khi khác
+  // giá trị đang có để không gửi `Set-Cookie` thừa ở mọi request.
+  if (user) {
+    const siteId = parseLastSiteCookie(pathname.split('/')[1])
+    if (siteId && request.cookies.get(LAST_SITE_COOKIE)?.value !== siteId) {
+      response.cookies.set(LAST_SITE_COOKIE, siteId, {
+        maxAge: LAST_SITE_COOKIE_MAX_AGE,
+        sameSite: 'lax',
+        path: '/',
+      })
     }
   }
 

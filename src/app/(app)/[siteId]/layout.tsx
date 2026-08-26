@@ -1,6 +1,5 @@
 import { notFound, redirect } from 'next/navigation'
 import { after } from 'next/server'
-import { cookies } from 'next/headers'
 import type { ReactNode } from 'react'
 import { SideRail } from '@/components/layout/side-rail'
 import { Topbar } from '@/components/layout/topbar'
@@ -11,7 +10,6 @@ import { getCurrentProfile, getSite, listSites, setLastSiteId } from '@/lib/data
 import { getConnectionSummary } from '@/lib/data/connections'
 import { isAwaitingFirstSync } from '@/lib/domain/connection'
 import { createClient } from '@/lib/supabase/server'
-import { LAST_SITE_COOKIE, LAST_SITE_COOKIE_MAX_AGE } from '@/lib/last-site-cookie'
 
 /**
  * Shell của khu vực ứng dụng.
@@ -53,17 +51,6 @@ export default async function SiteLayout({
     const supabase = await createClient()
     after(() => setLastSiteId(supabase, profile.userId, site.id))
   }
-
-  // Cùng thông tin, nhưng ghi thêm vào cookie để `proxy.ts` đọc được NGAY TẠI
-  // EDGE và chuyển hướng `/` mà không phải gọi hàm server rồi mới biết đích —
-  // xem `lib/last-site-cookie.ts`. Ghi mỗi lượt render (không gói trong điều
-  // kiện ở trên) vì cookie có thể hết hạn hoặc bị xoá độc lập với hàng trong
-  // `profiles`; ghi lại là thao tác rẻ và giữ hai nguồn không lệch nhau.
-  ;(await cookies()).set(LAST_SITE_COOKIE, site.id, {
-    maxAge: LAST_SITE_COOKIE_MAX_AGE,
-    sameSite: 'lax',
-    path: '/',
-  })
 
   return (
     // `h-dvh overflow-hidden` (không phải `min-h-dvh` cũ) — bắt buộc để
