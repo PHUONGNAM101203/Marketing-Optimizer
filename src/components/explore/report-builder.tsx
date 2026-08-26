@@ -1,6 +1,13 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useMemo, useState, useSyncExternalStore } from 'react'
+import {
+  serverExplorePrefs,
+  snapshotExplorePrefs,
+  subscribeExplorePrefs,
+  writeExplorePrefs,
+  type ExplorePrefs,
+} from '@/lib/explore-prefs'
 import { cn } from '@/lib/cn'
 import { Card } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -369,6 +376,10 @@ const buildExploreRows = (
 export interface ReportBuilderProps {
   readonly source: ExploreSource
   readonly currency: string
+  /** Nền tảng của tab này — khoá để nhớ lựa chọn RIÊNG cho từng tab, xem
+   * `lib/explore-prefs.ts`. Component không dùng nó vào việc gì khác; mọi
+   * khác biệt giữa các nền tảng vẫn đến từ `source` có field nào. */
+  readonly family: string
 }
 
 // Số hàng chọn được (10-1000) là số hàng CẮT RA từ dữ liệu đã fetch sẵn —
@@ -376,7 +387,7 @@ export interface ReportBuilderProps {
 // xuống một bảng dài vô tận.
 const PAGE_SIZE = 50
 
-export function ReportBuilder({ source, currency }: ReportBuilderProps) {
+export function ReportBuilder({ source, currency, family }: ReportBuilderProps) {
   const groups = useMemo(() => {
     const list: string[] = []
     // Mỗi connection góp MỘT giá trị group riêng (xem `groupLabel`) — site
@@ -402,13 +413,58 @@ export function ReportBuilder({ source, currency }: ReportBuilderProps) {
     return list
   }, [source])
 
-  const [rowLimit, setRowLimit] = useState<ExploreRowLimit>(DEFAULT_EXPLORE_ROW_LIMIT)
-  const [ga4Dimension, setGa4Dimension] = useState<Ga4ExploreDimension>(DEFAULT_GA4_EXPLORE_DIMENSION)
-  const [gscDimension, setGscDimension] = useState<GscExploreDimension>(DEFAULT_GSC_EXPLORE_DIMENSION)
-  const [selectedMetrics, setSelectedMetrics] =
-    useState<readonly MetricKey[]>(DEFAULT_METRICS)
+  // Năm lựa chọn dưới đây nhớ RIÊNG theo nền tảng và lấy `localStorage` làm
+  // nguồn sự thật DUY NHẤT — không mirror sang `useState`.
+  //
+  // Cách thường thấy (state + `useEffect` nạp lại sau mount) vừa bị eslint
+  // chặn (`react-hooks/set-state-in-effect`) vừa có hai nguồn phải giữ đồng
+  // bộ. Đọc thẳng qua `useSyncExternalStore` thì chỉ còn một nguồn, và
+  // `serverExplorePrefs` trả object rỗng cố định nên HTML server khớp với
+  // lượt hydrate đầu tiên, không lệch.
+  //
+  // `activeGroups` KHÔNG nhớ: nó là danh sách connection thật của site, thay
+  // đổi khi thêm/xoá kênh. Nhớ lại một danh sách cũ sẽ lọc theo những kênh
+  // không còn tồn tại và bảng trống trơn mà không rõ vì sao.
+  const stored = useSyncExternalStore(
+    subscribeExplorePrefs,
+    () => snapshotExplorePrefs(family),
+    serverExplorePrefs,
+  )
+
+  const rowLimit: ExploreRowLimit = EXPLORE_ROW_LIMITS.some((limit) => limit === stored.rowLimit)
+    ? (stored.rowLimit as ExploreRowLimit)
+    : DEFAULT_EXPLORE_ROW_LIMIT
+  const ga4Dimension: Ga4ExploreDimension = GA4_EXPLORE_DIMENSIONS.some((d) => d === stored.ga4Dimension)
+    ? (stored.ga4Dimension as Ga4ExploreDimension)
+    : DEFAULT_GA4_EXPLORE_DIMENSION
+  const gscDimension: GscExploreDimension = GSC_EXPLORE_DIMENSIONS.some((d) => d === stored.gscDimension)
+    ? (stored.gscDimension as GscExploreDimension)
+    : DEFAULT_GSC_EXPLORE_DIMENSION
+  // Mảng rỗng bị bỏ qua: bảng không còn cột nào là ngõ cụt, người dùng không
+  // còn gì để bấm mà bật lại.
+  const storedMetrics = COLUMNS.filter((column) => stored.metrics?.includes(column.key)).map((c) => c.key)
+  const selectedMetrics: readonly MetricKey[] = storedMetrics.length > 0 ? storedMetrics : DEFAULT_METRICS
+  const sortBy: MetricKey = COLUMNS.some((column) => column.key === stored.sortBy)
+    ? (stored.sortBy as MetricKey)
+    : 'costMicros'
+
+  const savePrefs = (patch: Partial<ExplorePrefs>): void => {
+    writeExplorePrefs(family, {
+      rowLimit,
+      ga4Dimension,
+      gscDimension,
+      metrics: selectedMetrics,
+      sortBy,
+      ...patch,
+    })
+  }
+  const setRowLimit = (value: ExploreRowLimit) => savePrefs({ rowLimit: value })
+  const setGa4Dimension = (value: Ga4ExploreDimension) => savePrefs({ ga4Dimension: value })
+  const setGscDimension = (value: GscExploreDimension) => savePrefs({ gscDimension: value })
+  const setSelectedMetrics = (value: readonly MetricKey[]) => savePrefs({ metrics: value })
+  const setSortBy = (value: MetricKey) => savePrefs({ sortBy: value })
+
   const [activeGroups, setActiveGroups] = useState<readonly string[]>(groups)
-  const [sortBy, setSortBy] = useState<MetricKey>('costMicros')
   const [page, setPage] = useState(1)
 
   const rows = useMemo(

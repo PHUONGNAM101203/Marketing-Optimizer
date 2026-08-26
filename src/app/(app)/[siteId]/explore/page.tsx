@@ -115,7 +115,7 @@ export default async function ExplorePage({
             tabs={familyTabs.map((tab) => ({
               id: tab.id,
               label: tab.label,
-              panel: <ReportBuilder source={tab.source} currency={site.currency} />,
+              panel: <ReportBuilder source={tab.source} currency={site.currency} family={tab.family} />,
             }))}
           />
         ) : null}
