@@ -14,6 +14,7 @@ import { TiktokChannelHeader } from '@/components/channels/tiktok/tiktok-channel
 import { MetaChannelHeader } from '@/components/channels/meta/meta-channel-header'
 import { ChannelSwitcher } from '@/components/channels/channel-switcher'
 import { ChannelComparisonPanel } from '@/components/channels/channel-comparison-panel'
+import { GscLagNotice } from '@/components/channels/gsc/gsc-lag-notice'
 import { channelConnectionCookieName } from '@/lib/domain/channel-connection-cookie'
 import { getSite } from '@/lib/data/sites'
 import { getChannelDetail, listChannelConnections } from '@/lib/data/site-channel-detail'
@@ -25,7 +26,7 @@ import {
 import { aggregateVideosPostedInRange, getTiktokVideosPostedInRange } from '@/lib/data/video-trending'
 import { parseCustomRangeParams, parseRangeParam } from '@/lib/domain/date-range-param'
 import { parseComparisonParams } from '@/lib/domain/comparison-param'
-import { resolveDateRange } from '@/mock/dates'
+import { resolveDateRange, toIsoDate } from '@/mock/dates'
 import { PROVIDER_META, isProviderId } from '@/lib/domain/providers'
 import { formatDateRange } from '@/lib/format'
 
@@ -263,6 +264,10 @@ export default async function ChannelDetailPage({
           />
         </div>
       )}
+
+      {provider === 'gsc' && summary?.connected ? (
+        <GscLagNotice rangeStart={range.start} rangeEnd={range.end} today={toIsoDate(new Date())} />
+      ) : null}
 
       {comparison && summary?.connected && comparisonSummaryA && comparisonSummaryB ? (
         <ChannelComparisonPanel

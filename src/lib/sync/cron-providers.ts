@@ -10,11 +10,22 @@ import { PROVIDERS, type ProviderId } from '@/lib/domain/providers'
  *
  * - `gsc`: Search Console có độ trễ báo cáo nội tại ~2-3 ngày từ phía Google
  *   — đồng bộ mỗi giờ không lấy được số mới hơn, chỉ tốn quota.
- * - `gtm`, `merchant-center`: capabilities chỉ có 'tagging'/'catalog' (xem
- *   `lib/domain/providers.ts`) — đây là trạng thái cấu hình/danh mục hiện
- *   tại, KHÔNG phải chỉ số chuỗi thời gian, nên tần suất cao không có lợi gì.
+ * - `gtm`: capability chỉ có 'tagging' — trạng thái cấu hình, không phải chỉ
+ *   số chuỗi thời gian, tần suất cao không có lợi gì.
+ *
+ * `merchant-center` ĐÃ CHUYỂN sang nhóm hàng giờ. Lập luận cũ ("chỉ là trạng
+ * thái danh mục, không cần tần suất cao") đúng về bản chất dữ liệu nhưng bỏ
+ * sót hệ quả trên giao diện: mỗi hàng là snapshot của ĐÚNG NGÀY chạy đồng bộ,
+ * nên khi người dùng chọn "Hôm nay" thì trước 20:00 UTC chưa có hàng nào của
+ * hôm nay. Đo thật (26/8/2026, 03:00 UTC): 0/2 kết nối merchant-center có
+ * hàng hôm nay, trong khi TikTok — cũng là snapshot nhưng chạy hàng giờ — có
+ * đủ 3/3. Chạy hàng giờ thì "Hôm nay" là trạng thái danh mục THẬT LÚC NÀY.
+ *
+ * `gsc` thì KHÔNG chuyển và không nên chuyển: Search Console có độ trễ báo
+ * cáo nội tại 2-3 ngày từ phía Google, đồng bộ dày hơn không lấy được số mới
+ * hơn, chỉ tốn quota.
  */
-export const LOW_FREQUENCY_PROVIDERS: ReadonlySet<ProviderId> = new Set(['gsc', 'gtm', 'merchant-center'])
+export const LOW_FREQUENCY_PROVIDERS: ReadonlySet<ProviderId> = new Set(['gsc', 'gtm'])
 
 /**
  * Danh sách provider của TỪNG cron, suy thẳng từ `PROVIDERS` (đủ 11 nền tảng)
