@@ -648,6 +648,42 @@ const dayAfter = (isoDate: string): string => {
   return next.toISOString().slice(0, 10)
 }
 
+/** Trần cứng của Klaviyo cho values-reports: "Passed in timeframe is greater
+ * than 1 year". Tính theo biên NỬA MỞ [start, end), nên 365 ngày là tối đa. */
+const KLAVIYO_MAX_TIMEFRAME_DAYS = 365
+
+/**
+ * Dựng `timeframe` nửa mở và KẸP lại nếu dài quá một năm.
+ *
+ * Kẹp ở tầng này chứ không tin nơi gọi: khi biên trên đổi thành loại-trừ, một
+ * lời gọi vốn đúng tròn 365 ngày (`allTimeRange` ở `site-channel-detail.ts`)
+ * lập tức thành 366 và bị Klaviyo từ chối — lỗi thật đã xảy ra, và nó chỉ lộ
+ * ra ở production. Kẹp ở đây thì không nơi gọi nào tái lập được nữa, dù có
+ * thêm lời gọi mới về sau.
+ *
+ * Cắt phần ĐẦU chứ không phải phần cuối: dữ liệu gần hiện tại luôn là thứ
+ * người dùng đang nhìn, mất phần cũ nhất ít tai hại hơn mất hôm nay.
+ */
+const toReportTimeframe = (range: {
+  readonly startDate: string
+  readonly endDate: string
+}): { readonly start: string; readonly end: string } => {
+  const end = dayAfter(range.endDate)
+  const endMs = Date.parse(`${end}T00:00:00Z`)
+  const startMs = Date.parse(`${range.startDate}T00:00:00Z`)
+  const maxMs = KLAVIYO_MAX_TIMEFRAME_DAYS * 86_400_000
+
+  if (Number.isNaN(endMs) || Number.isNaN(startMs) || endMs - startMs <= maxMs) {
+    return { start: range.startDate, end }
+  }
+
+  const clamped = new Date(endMs - maxMs).toISOString().slice(0, 10)
+  console.warn(
+    `Khoảng Klaviyo ${range.startDate}..${range.endDate} vượt trần 1 năm — cắt bớt phần đầu, dùng ${clamped}.`,
+  )
+  return { start: clamped, end }
+}
+
 /** BÀI HỌC THỰC TẾ (8/2026): bản đầu `return` cả kết quả LỖI từ trong hàm
  * cache — `unstable_cache` coi đó là một kết quả THÀNH CÔNG bình thường và
  * cache y nguyên 6 giờ. Khi bug `page[size]` ở `/metrics` bị sửa xong và
@@ -670,7 +706,8 @@ const fetchKlaviyoPerformanceCached = unstable_cache(
       throw new Error(metricResult.error)
     }
 
-    // Biên trên là ngày SAU `endDate`, không phải `endDate`. Sửa hai lỗi
+    // Biên trên là ngày SAU `endDate`, không phải `endDate`; và kẹp lại nếu
+    // vượt trần 1 năm (xem `toReportTimeframe`). Sửa hai lỗi
     // cùng lúc:
     //   - Chọn "Hôm nay" cho start == end, và Klaviyo trả HTTP 400 "Start of
     //     timeframe must be before end of timeframe". Lỗi đó THROW, mà
@@ -681,7 +718,7 @@ const fetchKlaviyoPerformanceCached = unstable_cache(
     //     end='25-08' nghĩa là tính tới 25-08T00:00:00, tức bỏ cả ngày 25.
     // `fetchKlaviyoNewProfileCount` bên dưới đã làm đúng từ đầu; chỗ này bị
     // bỏ sót.
-    const reportRange = { start: range.startDate, end: dayAfter(range.endDate) }
+    const reportRange = toReportTimeframe(range)
     // TUẦN TỰ, không Promise.all — Reporting API chỉ cho ~1 request/giây,
     // gọi campaign+flow đồng thời từng gây 429 thật (8/2026). `fetchValuesReport`
     // tự retry khi bị throttle rồi, nhưng giãn cách sẵn ở đây để KHÔNG PHẢI

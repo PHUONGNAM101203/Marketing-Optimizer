@@ -519,8 +519,12 @@ export const getChannelDetail = async (
       // hạn ~1 request/giây, xem `fetchKlaviyoPerformance`); gọi song song sẽ
       // tái diễn đúng lỗi 429 vừa sửa ở tầng dưới.
       const performance = await fetchKlaviyoPerformance(tokenResult.accessToken, range)
+      // -364, KHÔNG phải -365. Biên trên của Klaviyo là LOẠI TRỪ nên
+      // `fetchKlaviyoPerformance` gửi đi ngày SAU `endDate`; để -365 thì
+      // khoảng thật là 366 ngày và Klaviyo trả 400 "Passed in timeframe is
+      // greater than 1 year". Với -364, khoảng nửa mở đúng tròn 365 ngày.
       const allTimeRange = {
-        startDate: toIsoDate(addDays(new Date(), -365)),
+        startDate: toIsoDate(addDays(new Date(), -364)),
         endDate: toIsoDate(new Date()),
       }
       const allTimePerformance = await fetchKlaviyoPerformance(tokenResult.accessToken, allTimeRange)
