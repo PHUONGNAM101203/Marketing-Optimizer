@@ -635,6 +635,19 @@ export interface KlaviyoPerformanceOutcome {
  * cần tự tay bump tag. */
 const KLAVIYO_REPORT_REVALIDATE_SECONDS = 6 * 60 * 60
 
+/** Ngày kế tiếp, dạng 'YYYY-MM-DD'.
+ *
+ * Klaviyo dùng biên trên LOẠI TRỪ ở cả hai chỗ: filter `created` của
+ * `/profiles` (chỉ có `less-than`) và `timeframe.end` của values-reports.
+ * Chứng cứ cho vế thứ hai là chính API: gửi khoảng một-ngày (start == end)
+ * bị trả về HTTP 400 "Start of timeframe must be before end of timeframe" —
+ * nếu biên trên bao gồm thì một-ngày đã là khoảng hợp lệ. */
+const dayAfter = (isoDate: string): string => {
+  const next = new Date(`${isoDate}T00:00:00Z`)
+  next.setUTCDate(next.getUTCDate() + 1)
+  return next.toISOString().slice(0, 10)
+}
+
 /** BÀI HỌC THỰC TẾ (8/2026): bản đầu `return` cả kết quả LỖI từ trong hàm
  * cache — `unstable_cache` coi đó là một kết quả THÀNH CÔNG bình thường và
  * cache y nguyên 6 giờ. Khi bug `page[size]` ở `/metrics` bị sửa xong và
@@ -657,7 +670,18 @@ const fetchKlaviyoPerformanceCached = unstable_cache(
       throw new Error(metricResult.error)
     }
 
-    const reportRange = { start: range.startDate, end: range.endDate }
+    // Biên trên là ngày SAU `endDate`, không phải `endDate`. Sửa hai lỗi
+    // cùng lúc:
+    //   - Chọn "Hôm nay" cho start == end, và Klaviyo trả HTTP 400 "Start of
+    //     timeframe must be before end of timeframe". Lỗi đó THROW, mà
+    //     `unstable_cache` không lưu promise bị reject — nên MỖI lần render
+    //     lại gọi Klaviyo từ đầu: hai request cộng `sleep(1100)` ở dưới,
+    //     khoảng 4 giây mỗi lượt tải trang.
+    //   - Ngay cả khoảng nhiều ngày cũng đang HỤT ngày cuối, âm thầm: gửi
+    //     end='25-08' nghĩa là tính tới 25-08T00:00:00, tức bỏ cả ngày 25.
+    // `fetchKlaviyoNewProfileCount` bên dưới đã làm đúng từ đầu; chỗ này bị
+    // bỏ sót.
+    const reportRange = { start: range.startDate, end: dayAfter(range.endDate) }
     // TUẦN TỰ, không Promise.all — Reporting API chỉ cho ~1 request/giây,
     // gọi campaign+flow đồng thời từng gây 429 thật (8/2026). `fetchValuesReport`
     // tự retry khi bị throttle rồi, nhưng giãn cách sẵn ở đây để KHÔNG PHẢI
@@ -670,8 +694,52 @@ const fetchKlaviyoPerformanceCached = unstable_cache(
     if (error) throw new Error(error)
     return { campaignPerformance: campaigns.rows, flowPerformance: flows.rows }
   },
-  ['klaviyo-performance', 'v2'],
+  ['klaviyo-performance', 'v3'],
   { revalidate: KLAVIYO_REPORT_REVALIDATE_SECONDS },
+)
+
+/** Bao lâu thì một lượt LỖI được nhớ lại, thay vì gọi Klaviyo lần nữa.
+ *
+ * Không cache lỗi (bản trước) tránh được chuyện đóng băng lỗi cũ 6 giờ, nhưng
+ * đổi lại một cái giá không ai thấy: khi Klaviyo hỏng thật, MỌI lượt tải trang
+ * đều trả đủ giá — hai request cộng `sleep(1100)` chống-429, khoảng 4 giây
+ * mỗi lần, cho một kết quả chắc chắn vẫn hỏng. Đúng thứ người dùng báo là
+ * "chậm hẳn đi".
+ *
+ * 90 giây là điểm giữa: đủ ngắn để một lần hỏng thoáng qua tự khỏi mà không
+ * ai kịp nhận ra, đủ dài để trang không phải trả 4 giây cho mỗi lần bấm đổi
+ * khoảng ngày. Thành công vẫn giữ nguyên 6 giờ ở tầng cache bên trong. */
+const KLAVIYO_FAILURE_MEMO_SECONDS = 90
+
+/** Lớp cache thứ hai, CHỈ để nhớ thất bại trong thời gian ngắn.
+ *
+ * Tầng trong (`fetchKlaviyoPerformanceCached`) vẫn THROW khi lỗi và vẫn cache
+ * thành công 6 giờ — không đụng tới. Tầng này bắt lỗi rồi trả về một giá trị
+ * BÌNH THƯỜNG, nên `unstable_cache` chịu lưu nó. Khi thành công, tầng này hết
+ * hạn sau 90 giây rồi gọi lại tầng trong — vốn vẫn còn cache 6 giờ, nên gần
+ * như miễn phí. */
+const fetchKlaviyoPerformanceMemoized = unstable_cache(
+  async (
+    apiKey: string,
+    range: { readonly startDate: string; readonly endDate: string },
+  ): Promise<KlaviyoPerformanceOutcome> => {
+    try {
+      const result = await fetchKlaviyoPerformanceCached(apiKey, range)
+      return {
+        campaignPerformance: result.campaignPerformance,
+        flowPerformance: result.flowPerformance,
+        error: null,
+      }
+    } catch (error) {
+      return {
+        campaignPerformance: null,
+        flowPerformance: null,
+        error: error instanceof Error ? error.message : String(error),
+      }
+    }
+  },
+  ['klaviyo-performance-memo', 'v1'],
+  { revalidate: KLAVIYO_FAILURE_MEMO_SECONDS },
 )
 
 export const fetchKlaviyoPerformance = async (
@@ -679,9 +747,10 @@ export const fetchKlaviyoPerformance = async (
   range: { readonly startDate: string; readonly endDate: string },
 ): Promise<KlaviyoPerformanceOutcome> => {
   try {
-    const result = await fetchKlaviyoPerformanceCached(apiKey, range)
-    return { campaignPerformance: result.campaignPerformance, flowPerformance: result.flowPerformance, error: null }
+    return await fetchKlaviyoPerformanceMemoized(apiKey, range)
   } catch (error) {
+    // Lớp chắn cuối: lỗi hạ tầng của chính cache (không phải lỗi Klaviyo) vẫn
+    // không được kéo sập trang chi tiết kênh.
     return {
       campaignPerformance: null,
       flowPerformance: null,
@@ -748,11 +817,9 @@ export const fetchKlaviyoNewProfileCount = unstable_cache(
     apiKey: string,
     range: { readonly startDate: string; readonly endDate: string },
   ): Promise<KlaviyoProfileCount> => {
-    const dayAfterEnd = new Date(`${range.endDate}T00:00:00Z`)
-    dayAfterEnd.setUTCDate(dayAfterEnd.getUTCDate() + 1)
     return countKlaviyoProfiles(apiKey, {
       createdAfterIso: `${range.startDate}T00:00:00Z`,
-      createdBeforeIso: `${dayAfterEnd.toISOString().slice(0, 10)}T00:00:00Z`,
+      createdBeforeIso: `${dayAfter(range.endDate)}T00:00:00Z`,
     })
   },
   ['klaviyo-new-profile-count'],
