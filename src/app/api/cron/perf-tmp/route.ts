@@ -36,8 +36,9 @@ export async function GET(request: NextRequest) {
   }
 
   const admin = createAdminClient()
-  const { data: sites } = await admin.from('sites').select('id').limit(1)
-  const siteId = sites?.[0]?.id
+  const wanted = request.nextUrl.searchParams.get('domain') ?? 'handdn.com'
+  const { data: sites } = await admin.from('sites').select('id, domain')
+  const siteId = (sites ?? []).find((s) => s.domain === wanted)?.id ?? sites?.[0]?.id
   if (!siteId) return NextResponse.json({ error: 'no-site' }, { status: 404 })
 
   const range = { start: '2026-07-28', end: '2026-08-24' }
