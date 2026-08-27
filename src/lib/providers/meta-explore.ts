@@ -52,6 +52,8 @@ interface InstagramMediaItem {
   readonly timestamp?: string
   readonly permalink?: string
   readonly media_url?: string
+  readonly media_type?: string
+  readonly thumbnail_url?: string
 }
 
 /** `since`/`until` là mốc NGÀY (YYYY-MM-DD), Graph API tự hiểu — cùng cách
@@ -65,7 +67,12 @@ export const fetchInstagramExplore = async (
   range: { readonly startDate: string; readonly endDate: string },
 ): Promise<InstagramExplore> => {
   const url = new URL(`https://graph.facebook.com/${GRAPH_VERSION}/${externalAccountId}/media`)
-  url.searchParams.set('fields', 'caption,like_count,comments_count,timestamp,permalink,media_url')
+  // `thumbnail_url`: với media dạng VIDEO/REELS thì `media_url` là FILE VIDEO,
+  // không phải ảnh — xem chú thích ở `meta-content.ts`.
+  url.searchParams.set(
+    'fields',
+    'caption,like_count,comments_count,timestamp,permalink,media_url,media_type,thumbnail_url',
+  )
   url.searchParams.set('since', range.startDate)
   url.searchParams.set('until', range.endDate)
   url.searchParams.set('limit', '25')
@@ -86,7 +93,8 @@ export const fetchInstagramExplore = async (
       comments: item.comments_count ?? 0,
       createdAt: item.timestamp ?? null,
       permalinkUrl: item.permalink ?? null,
-      thumbnailUrl: item.media_url ?? null,
+      thumbnailUrl:
+        item.media_type === 'VIDEO' ? (item.thumbnail_url ?? null) : (item.media_url ?? null),
     }))
     .sort((a, b) => b.likes + b.comments - (a.likes + a.comments))
     .slice(0, 10)
@@ -128,6 +136,11 @@ interface FacebookPostItem {
   readonly shares?: { readonly count?: number }
   readonly permalink_url?: string
   readonly full_picture?: string
+  readonly attachments?: {
+    readonly data?: readonly {
+      readonly media?: { readonly image?: { readonly src?: string } }
+    }[]
+  }
 }
 
 /** `since`/`until` cùng cơ chế Instagram ở trên — lọc theo `created_time`
@@ -137,16 +150,26 @@ export const fetchFacebookContentExplore = async (
   pageId: string,
   range: { readonly startDate: string; readonly endDate: string },
 ): Promise<FacebookExplore> => {
-  const url = new URL(`https://graph.facebook.com/${GRAPH_VERSION}/${pageId}/published_posts`)
-  url.searchParams.set(
-    'fields',
-    'message,created_time,reactions.summary(total_count).limit(0),comments.summary(total_count).limit(0),shares,permalink_url,full_picture',
-  )
-  url.searchParams.set('since', range.startDate)
-  url.searchParams.set('until', range.endDate)
-  url.searchParams.set('limit', '25')
+  const baseFields =
+    'message,created_time,reactions.summary(total_count).limit(0),comments.summary(total_count).limit(0),shares,permalink_url,full_picture'
 
-  const response = await fetch(url.toString(), { headers: { authorization: `Bearer ${accessToken}` } })
+  const request = async (fields: string): Promise<Response> => {
+    const url = new URL(`https://graph.facebook.com/${GRAPH_VERSION}/${pageId}/published_posts`)
+    url.searchParams.set('fields', fields)
+    url.searchParams.set('since', range.startDate)
+    url.searchParams.set('until', range.endDate)
+    url.searchParams.set('limit', '25')
+    return fetch(url.toString(), { headers: { authorization: `Bearer ${accessToken}` } })
+  }
+
+  // `attachments` cho ảnh Ở KÍCH THƯỚC ĐĂNG, `full_picture` chỉ là bản thu nhỏ
+  // — xem chú thích ở `meta-content.ts`. Xin thêm một trường mà Graph từ chối
+  // là hỏng CẢ request, nên thử lại không kèm nó thay vì đổi ảnh nét lấy một
+  // widget trống.
+  let response = await request(`${baseFields},attachments{media{image{src}}}`)
+  if (!response.ok) {
+    response = await request(baseFields)
+  }
   if (!response.ok) {
     return { topPosts: [], fetchError: await describeGraphFailure('Facebook', response) }
   }
@@ -161,7 +184,7 @@ export const fetchFacebookContentExplore = async (
       shares: item.shares?.count ?? 0,
       createdAt: item.created_time ?? null,
       permalinkUrl: item.permalink_url ?? null,
-      thumbnailUrl: item.full_picture ?? null,
+      thumbnailUrl: item.attachments?.data?.[0]?.media?.image?.src ?? item.full_picture ?? null,
     }))
     .sort(
       (a, b) =>

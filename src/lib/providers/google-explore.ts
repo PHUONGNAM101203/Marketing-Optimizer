@@ -17,6 +17,33 @@ import {
   type VideoTrendingResult,
 } from './video-trending-types'
 
+/**
+ * Ảnh xem trước LỚN NHẤT mà YouTube có cho video đó.
+ *
+ * Trước đây lấy thẳng `medium` = 320x180, trong khi cùng response đã kèm sẵn
+ * `maxres` (1280x720) và `standard` (640x480) — không tốn thêm request nào.
+ * 320x180 hiển thị trong thẻ rộng ~300px trên màn hình retina là mờ hẳn.
+ *
+ * Thứ tự giảm dần và có đường lui đầy đủ vì `maxres`/`standard` KHÔNG phải lúc
+ * nào cũng có: YouTube chỉ sinh chúng cho video đủ độ phân giải, video cũ hoặc
+ * quay dọc thường chỉ có tới `high`.
+ */
+interface YoutubeThumbnails {
+  readonly maxres?: { readonly url?: string }
+  readonly standard?: { readonly url?: string }
+  readonly high?: { readonly url?: string }
+  readonly medium?: { readonly url?: string }
+  readonly default?: { readonly url?: string }
+}
+
+const pickLargestThumbnail = (thumbnails: YoutubeThumbnails | undefined): string | null =>
+  thumbnails?.maxres?.url ??
+  thumbnails?.standard?.url ??
+  thumbnails?.high?.url ??
+  thumbnails?.medium?.url ??
+  thumbnails?.default?.url ??
+  null
+
 const authHeader = (accessToken: string) => ({ authorization: `Bearer ${accessToken}` })
 
 // ─── GA4 ────────────────────────────────────────────────────────────────────
@@ -617,10 +644,7 @@ export const fetchYoutubeExplore = async (
         readonly snippet?: {
           readonly title?: string
           readonly publishedAt?: string
-          readonly thumbnails?: {
-            readonly medium?: { readonly url?: string }
-            readonly default?: { readonly url?: string }
-          }
+          readonly thumbnails?: YoutubeThumbnails
         }
       }[]
     }
@@ -629,7 +653,7 @@ export const fetchYoutubeExplore = async (
       metaById.set(item.id, {
         title: item.snippet?.title ?? item.id,
         thumbnailUrl:
-          item.snippet?.thumbnails?.medium?.url ?? item.snippet?.thumbnails?.default?.url ?? null,
+          pickLargestThumbnail(item.snippet?.thumbnails),
         publishedAt: item.snippet?.publishedAt ?? null,
       })
     }
@@ -713,10 +737,7 @@ const fetchYoutubeMetaBatch = async (
         readonly snippet?: {
           readonly title?: string
           readonly publishedAt?: string
-          readonly thumbnails?: {
-            readonly medium?: { readonly url?: string }
-            readonly default?: { readonly url?: string }
-          }
+          readonly thumbnails?: YoutubeThumbnails
         }
       }[]
     }
@@ -725,7 +746,7 @@ const fetchYoutubeMetaBatch = async (
       metaById.set(item.id, {
         title: item.snippet?.title ?? item.id,
         thumbnailUrl:
-          item.snippet?.thumbnails?.medium?.url ?? item.snippet?.thumbnails?.default?.url ?? null,
+          pickLargestThumbnail(item.snippet?.thumbnails),
         publishedAt: item.snippet?.publishedAt ?? null,
       })
     }

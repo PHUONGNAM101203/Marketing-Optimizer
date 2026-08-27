@@ -209,8 +209,12 @@ const tryMirror = async (
 export const mediaPathForVideo = (externalVideoId: string): string =>
   `tiktok/v3/${encodeURIComponent(externalVideoId)}`
 
+/** `v2`: bản v1 lưu ảnh `full_picture` của Facebook (đo được 368x411 tới
+ * 755x503) và `media_url` của Instagram — với bài video thì trường đó là file
+ * video nên không có ảnh nào cả. Đổi thư mục để chép lại đúng một lần từ nguồn
+ * mới; xem `fetchAllFacebookPosts` và `fetchAllInstagramMedia`. */
 export const mediaPathForPost = (externalPostId: string): string =>
-  `meta/${encodeURIComponent(externalPostId)}`
+  `meta/v2/${encodeURIComponent(externalPostId)}`
 
 /** Ảnh đại diện đặt theo CONNECTION, không theo ID tài khoản của nền tảng: một
  * connection luôn là một tài khoản, mà `connectionId` là UUID nên chắc chắn hợp

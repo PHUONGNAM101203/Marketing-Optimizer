@@ -59,11 +59,22 @@ const isGraphApiUrl = (url: string): boolean => {
   }
 }
 
+interface GraphPageOutcome {
+  readonly items: readonly Record<string, unknown>[]
+  /** Trang ĐẦU lỗi — khác hẳn "tài khoản không có bài nào", mà `items` rỗng thì
+   * hai trường hợp nhìn giống hệt nhau. Nơi gọi cần phân biệt để lui về bộ
+   * trường cũ khi Graph từ chối một trường mới. Lỗi ở trang giữa chừng không
+   * tính: những bài đã lấy được vẫn dùng tốt. Cùng khuôn với
+   * `TiktokAllVideosOutcome.error`. */
+  readonly firstPageFailed: boolean
+}
+
 const paginateGraph = async (
   initialUrl: string,
   accessToken: string,
-): Promise<readonly Record<string, unknown>[]> => {
+): Promise<GraphPageOutcome> => {
   const items: Record<string, unknown>[] = []
+  let firstPageFailed = false
   let url: string | null = initialUrl
   let pages = 0
   const visited = new Set<string>()
@@ -80,6 +91,7 @@ const paginateGraph = async (
       console.error(
         `Graph API trả lỗi HTTP ${response.status}${errorBody?.error?.message ? ` — ${errorBody.error.message}` : ''} khi phân trang ${url}`,
       )
+      if (pages === 1) firstPageFailed = true
       break
     }
 
@@ -102,13 +114,18 @@ const paginateGraph = async (
     url = nextUrl && isGraphApiUrl(nextUrl) ? nextUrl : null
   }
 
-  return items
+  return { items, firstPageFailed }
 }
 
 interface FacebookPostItem {
   readonly id?: string
   readonly message?: string
   readonly full_picture?: string
+  readonly attachments?: {
+    readonly data?: readonly {
+      readonly media?: { readonly image?: { readonly src?: string } }
+    }[]
+  }
   readonly permalink_url?: string
   readonly created_time?: string
   readonly reactions?: { readonly summary?: { readonly total_count?: number } }
@@ -119,26 +136,51 @@ interface FacebookPostItem {
 /** Đọc like/comment/share thẳng từ NODE của post, cùng lựa chọn với
  * `fetchFacebookContentExplore` (xem docblock ở đó) — field trên node bài
  * viết ổn định hơn cạnh `insights` qua các đợt Meta khai tử metric. */
+const FACEBOOK_POST_FIELDS =
+  'message,full_picture,permalink_url,created_time,reactions.summary(total_count).limit(0),comments.summary(total_count).limit(0),shares'
+
+/**
+ * `attachments` cho ảnh Ở KÍCH THƯỚC ĐĂNG, `full_picture` thì không.
+ *
+ * `full_picture` nghe như ảnh đầy đủ nhưng Graph trả bản đã thu nhỏ — đo thật
+ * ngày 27/8/2026 trên 193 ảnh đã lưu: từ 368x411 tới 755x503, trung vị 44 KB.
+ * `attachments{media{image{src}}}` trỏ tới ảnh gốc của bài đăng.
+ *
+ * Tách riêng khỏi `FACEBOOK_POST_FIELDS` để lui lại được: `attachments` cần
+ * quyền `pages_read_engagement`, mà một Page kết nối bằng bộ quyền cũ sẽ khiến
+ * Graph từ chối CẢ request — tức mất trắng phần đồng bộ bài đăng chỉ vì muốn
+ * ảnh nét hơn. Lui về bộ trường cũ giữ cho tệ nhất cũng chỉ là ảnh như trước.
+ */
+const FACEBOOK_ATTACHMENT_FIELD = 'attachments{media{image{src}}}'
+
 export const fetchAllFacebookPosts = async (
   accessToken: string,
   pageId: string,
 ): Promise<readonly ContentPostSnapshot[]> => {
-  const url = new URL(`https://graph.facebook.com/${GRAPH_VERSION}/${pageId}/published_posts`)
-  url.searchParams.set(
-    'fields',
-    'message,full_picture,permalink_url,created_time,reactions.summary(total_count).limit(0),comments.summary(total_count).limit(0),shares',
+  const buildUrl = (fields: string): string => {
+    const url = new URL(`https://graph.facebook.com/${GRAPH_VERSION}/${pageId}/published_posts`)
+    url.searchParams.set('fields', fields)
+    url.searchParams.set('limit', String(PAGE_LIMIT))
+    return url.toString()
+  }
+
+  let outcome = await paginateGraph(
+    buildUrl(`${FACEBOOK_POST_FIELDS},${FACEBOOK_ATTACHMENT_FIELD}`),
+    accessToken,
   )
-  url.searchParams.set('limit', String(PAGE_LIMIT))
+  if (outcome.firstPageFailed) {
+    console.error('Graph từ chối trường attachments — thử lại không kèm ảnh gốc')
+    outcome = await paginateGraph(buildUrl(FACEBOOK_POST_FIELDS), accessToken)
+  }
 
-  const rawItems = await paginateGraph(url.toString(), accessToken)
-
-  return rawItems
+  return outcome.items
     .map((raw) => raw as FacebookPostItem)
     .filter((item): item is FacebookPostItem & { readonly id: string } => Boolean(item.id))
     .map((item) => ({
       externalPostId: item.id,
+      // Ảnh gốc trước, `full_picture` là đường lui.
+      imageUrl: item.attachments?.data?.[0]?.media?.image?.src ?? item.full_picture ?? null,
       message: item.message ? item.message.slice(0, 500) : null,
-      imageUrl: item.full_picture ?? null,
       permalink: item.permalink_url ?? null,
       postedAt: item.created_time ?? null,
       likes: item.reactions?.summary?.total_count ?? 0,
@@ -151,6 +193,8 @@ interface InstagramMediaItem {
   readonly id?: string
   readonly caption?: string
   readonly media_url?: string
+  readonly media_type?: string
+  readonly thumbnail_url?: string
   readonly permalink?: string
   readonly timestamp?: string
   readonly like_count?: number
@@ -168,18 +212,26 @@ export const fetchAllInstagramMedia = async (
   igUserId: string,
 ): Promise<readonly ContentPostSnapshot[]> => {
   const url = new URL(`https://graph.facebook.com/${GRAPH_VERSION}/${igUserId}/media`)
-  url.searchParams.set('fields', 'caption,media_url,permalink,timestamp,like_count,comments_count')
+  // `thumbnail_url` là BẮT BUỘC, không phải tuỳ chọn: với media dạng VIDEO/REELS
+  // thì `media_url` trỏ tới FILE VIDEO chứ không phải ảnh. Thiếu nó thì bước chép
+  // ảnh nhận về `video/mp4`, loại đi vì không phải ảnh, và bài video vĩnh viễn
+  // không có ảnh minh hoạ. Instagram bỏ qua trường này với media dạng ảnh.
+  url.searchParams.set(
+    'fields',
+    'caption,media_url,media_type,thumbnail_url,permalink,timestamp,like_count,comments_count',
+  )
   url.searchParams.set('limit', String(PAGE_LIMIT))
 
-  const rawItems = await paginateGraph(url.toString(), accessToken)
+  const { items } = await paginateGraph(url.toString(), accessToken)
 
-  return rawItems
+  return items
     .map((raw) => raw as InstagramMediaItem)
     .filter((item): item is InstagramMediaItem & { readonly id: string } => Boolean(item.id))
     .map((item) => ({
       externalPostId: item.id,
       message: item.caption ? item.caption.slice(0, 500) : null,
-      imageUrl: item.media_url ?? null,
+      imageUrl:
+        item.media_type === 'VIDEO' ? (item.thumbnail_url ?? null) : (item.media_url ?? null),
       permalink: item.permalink ?? null,
       postedAt: item.timestamp ?? null,
       likes: item.like_count ?? 0,
