@@ -25,10 +25,43 @@ export const LAST_SITE_COOKIE_MAX_AGE = 60 * 60 * 24 * 365
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
+const isUuid = (value: string): boolean => UUID_RE.test(value)
+
 /**
- * Chỉ nhận đúng dạng UUID. Thiếu kiểm tra này thì một cookie bịa như
- * `../../evil` sẽ được ghép thẳng vào đường dẫn chuyển hướng; ở đây giá trị
- * lạ rơi về đường cũ thay vì tạo ra một URL không lường trước.
+ * Giá trị cookie GẮN VỚI TÀI KHOẢN: `<userId>:<siteId>`.
+ *
+ * Không có phần `userId` thì mở app bằng một tài khoản khác trên cùng trình
+ * duyệt sẽ bị đẩy thẳng sang site của tài khoản trước, và layout `notFound()`
+ * — người dùng thấy trang 404 ngay khi vừa vào app. Đây là lỗi thật đã xảy ra,
+ * không phải phòng xa: một máy đăng nhập hai tài khoản là chuyện bình thường.
+ *
+ * Không phải cơ chế bảo mật — quyền truy cập vẫn do RLS và layout quyết định.
+ * Nó chỉ để KHÔNG điều hướng tới một nơi chắc chắn sai.
  */
-export const parseLastSiteCookie = (value: string | undefined): string | null =>
-  value && UUID_RE.test(value) ? value : null
+export const formatLastSiteCookie = (userId: string, siteId: string): string =>
+  `${userId}:${siteId}`
+
+/**
+ * Chỉ trả về siteId khi cookie hợp lệ VÀ thuộc đúng người dùng hiện tại.
+ *
+ * Kiểm tra dạng UUID để một cookie bịa như `../../evil` không bị ghép thẳng
+ * vào đường dẫn chuyển hướng. Giá trị theo định dạng CŨ (chỉ mỗi siteId, do
+ * bản trước ghi ra) không khớp và rơi về đường cũ — trang `/` tự tra
+ * `profiles.last_site_id` rồi ghi lại cookie theo định dạng mới.
+ */
+export const parseLastSiteCookie = (
+  value: string | undefined,
+  userId: string,
+): string | null => {
+  if (!value) return null
+  const separator = value.indexOf(':')
+  if (separator === -1) return null
+  const [cookieUserId, siteId] = [value.slice(0, separator), value.slice(separator + 1)]
+  if (cookieUserId !== userId || !isUuid(siteId)) return null
+  return siteId
+}
+
+/** Kiểm tra riêng phần lấy siteId TỪ ĐƯỜNG DẪN, nơi không có gì để so với
+ * tài khoản — đường dẫn là thứ người dùng đang thực sự xem. */
+export const parseSiteIdFromPath = (segment: string | undefined): string | null =>
+  segment && isUuid(segment) ? segment : null

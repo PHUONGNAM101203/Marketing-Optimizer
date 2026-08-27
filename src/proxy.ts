@@ -3,7 +3,9 @@ import { NextResponse, type NextRequest } from 'next/server'
 import {
   LAST_SITE_COOKIE,
   LAST_SITE_COOKIE_MAX_AGE,
+  formatLastSiteCookie,
   parseLastSiteCookie,
+  parseSiteIdFromPath,
 } from '@/lib/last-site-cookie'
 
 /**
@@ -82,7 +84,7 @@ export async function proxy(request: NextRequest) {
   // nên nếu cookie có site mở gần nhất thì chuyển hướng thẳng, bỏ hẳn lượt
   // đầu. Cookie sai/hết hạn thì rơi về đường cũ — trang `/` vẫn xử lý đúng.
   if (user && pathname === '/') {
-    const lastSiteId = parseLastSiteCookie(request.cookies.get(LAST_SITE_COOKIE)?.value)
+    const lastSiteId = parseLastSiteCookie(request.cookies.get(LAST_SITE_COOKIE)?.value, user.id)
     if (lastSiteId) {
       const target = request.nextUrl.clone()
       target.pathname = `/${lastSiteId}/overview`
@@ -111,9 +113,11 @@ export async function proxy(request: NextRequest) {
   // `siteId` lấy từ chính đường dẫn, không cần truy vấn gì. Chỉ ghi khi khác
   // giá trị đang có để không gửi `Set-Cookie` thừa ở mọi request.
   if (user) {
-    const siteId = parseLastSiteCookie(pathname.split('/')[1])
-    if (siteId && request.cookies.get(LAST_SITE_COOKIE)?.value !== siteId) {
-      response.cookies.set(LAST_SITE_COOKIE, siteId, {
+    const siteId = parseSiteIdFromPath(pathname.split('/')[1])
+    // Gắn kèm id người dùng: xem `formatLastSiteCookie` để biết vì sao.
+    const value = siteId ? formatLastSiteCookie(user.id, siteId) : null
+    if (value && request.cookies.get(LAST_SITE_COOKIE)?.value !== value) {
+      response.cookies.set(LAST_SITE_COOKIE, value, {
         maxAge: LAST_SITE_COOKIE_MAX_AGE,
         sameSite: 'lax',
         path: '/',
