@@ -37,38 +37,19 @@ const EXTENSION_BY_TYPE: Readonly<Record<string, string>> = {
 }
 
 /**
- * Xin bản ĐỘ PHÂN GIẢI CAO HƠN của cùng tấm ảnh, nếu CDN cho phép.
+ * ĐÃ THỬ VÀ KHÔNG ĐƯỢC: xin bản độ phân giải cao hơn.
  *
- * URL ảnh bìa TikTok nhúng luôn tham số xử lý ảnh vào đường dẫn, dạng
- * `~tplv-tiktokx-cropcenter-q:300:400:q70.jpeg` — tức 300x400, chất lượng 70.
- * Đo thật 27/8/2026: MỌI ảnh đã chép đều đúng 300x400. Đó là lý do ảnh nhìn
- * mờ khi mở to trong hộp thoại (rộng ~1000px), chứ không phải do việc chép
- * làm giảm chất lượng — chép là nguyên byte.
+ * URL ảnh bìa TikTok nhúng tham số xử lý ảnh ngay trong đường dẫn, dạng
+ * `~tplv-tiktokx-cropcenter-q:300:400:q70.jpeg`, nên nhìn qua tưởng chỉ cần
+ * sửa `300:400` thành `1080:1440` là có ảnh nét. Ngày 27/8/2026 đã triển khai
+ * đúng như vậy, có đường lui về URL gốc, rồi đo kết quả trên production: 118
+ * trên 118 ảnh ra file GIỐNG HỆT TỪNG BYTE bản cũ, tức lượt xin bản lớn bị từ
+ * chối trong mọi trường hợp — chữ ký `x-signature` phủ luôn phần kích thước.
  *
- * Trả về `null` khi URL không theo khuôn này (Meta, hoặc TikTok đổi định
- * dạng), để nơi gọi dùng thẳng URL gốc.
+ * Ghi lại ở đây để không ai (kể cả tôi) thử lại: 300x400 là mức tối đa mà
+ * Display API của TikTok cấp. Ảnh nhìn mờ khi mở to là do nguồn vốn nhỏ, không
+ * phải do việc chép — chép lưu nguyên byte, không mã hoá lại.
  */
-const TIKTOK_TEMPLATE_RE = /(~tplv-[a-z0-9-]+-q):(\d+):(\d+):q(\d+)/
-
-/** 1080 vừa đủ cho ảnh mở to trên màn hình retina mà không phình dung lượng —
- * xin quá tay thì CDN có thể từ chối, và mỗi ảnh vẫn phải tải về thật. */
-const TARGET_WIDTH = 1080
-
-const higherResolutionUrl = (url: string): string | null => {
-  const match = TIKTOK_TEMPLATE_RE.exec(url)
-  if (!match) return null
-  const [, prefix, width, height, quality] = match
-  const currentWidth = Number(width)
-  if (!currentWidth || currentWidth >= TARGET_WIDTH) return null
-  // Giữ NGUYÊN tỉ lệ khung: đổi lệch tỉ lệ thì CDN cắt ảnh khác đi, không chỉ
-  // phóng to.
-  const scaledHeight = Math.round((Number(height) / currentWidth) * TARGET_WIDTH)
-  const newQuality = Math.max(Number(quality), 90)
-  return url.replace(
-    TIKTOK_TEMPLATE_RE,
-    `${prefix}:${TARGET_WIDTH}:${scaledHeight}:q${newQuality}`,
-  )
-}
 
 /** URL công khai của bucket. Tự ghép thay vì gọi `getPublicUrl()` để hàm này
  * không cần một client chỉ để dựng một chuỗi. */
@@ -97,19 +78,7 @@ export const mirrorImage = async (
   if (!sourceUrl) return sourceUrl ?? null
   if (isAlreadyMirrored(sourceUrl)) return sourceUrl
 
-  // Thử bản nét trước, hỏng thì dùng URL gốc. Đường dẫn ảnh của TikTok có chữ
-  // ký; chữ ký đó CÓ THỂ phủ luôn phần tham số kích thước, nên bản sửa lại có
-  // khả năng bị từ chối. Thử-rồi-rơi-về là cách duy nhất biết chắc, mà không
-  // đánh đổi gì: hỏng thì vẫn được đúng tấm ảnh như trước.
-  const candidates = [higherResolutionUrl(sourceUrl), sourceUrl].filter(
-    (url): url is string => url !== null,
-  )
-
-  for (const candidate of candidates) {
-    const stored = await tryMirror(admin, candidate, pathWithoutExtension)
-    if (stored) return stored
-  }
-  return sourceUrl
+  return (await tryMirror(admin, sourceUrl, pathWithoutExtension)) ?? sourceUrl
 }
 
 /** Trả về URL nội bộ nếu chép được, `null` nếu không — nơi gọi quyết định thử
