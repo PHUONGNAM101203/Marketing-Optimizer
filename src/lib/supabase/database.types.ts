@@ -1260,6 +1260,14 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      backfill_media_targets: {
+        Args: never
+        Returns: {
+          external_id: string
+          kind: string
+          source_url: string
+        }[]
+      }
       create_plan_item_with_deployment: {
         Args: {
           p_budget_micros: number

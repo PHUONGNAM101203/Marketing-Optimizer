@@ -7,34 +7,29 @@ import { mediaPathForPost, mediaPathForVideo, mirrorImage } from '@/lib/storage/
 /**
  * Chép bù ảnh cho những hàng đã ghi TRƯỚC khi việc chép ảnh tồn tại.
  *
- * Một lượt đồng bộ thường chỉ chạm được video/bài mà API trả về trong đúng lượt
- * đó (TikTok trả ~20-36 video mỗi kênh), nên hàng cũ hơn không bao giờ tới lượt.
- * Đo lúc bắt đầu: 17 hàng đã có URL nội bộ, 980 hàng vẫn là link ngoài đang hết
- * hạn dần.
+ * Việc chia làm hai phần, và phần lớn công việc KHÔNG cần tải gì cả:
  *
- * Làm theo TỪNG VIDEO, không theo từng hàng. ~997 hàng chỉ là ~126 video duy
- * nhất — mỗi video có một hàng snapshot mỗi ngày và tất cả trỏ về CÙNG một ảnh.
- * Chép một lần rồi cập nhật MỌI hàng của video đó vừa giảm số lượt tải xuống
- * gần tám lần, vừa cứu được cả những hàng cũ mà link của chính chúng đã chết.
+ * 1. Lan URL nội bộ ra hàng cũ — do `backfill_media_targets()` làm trong
+ *    database. Mỗi video có một hàng snapshot mỗi ngày, tất cả trỏ về cùng một
+ *    ảnh, nhưng lúc đồng bộ chỉ hàng của ngày hôm đó được ghi URL nội bộ. Đo
+ *    thật 27/8/2026: bước này kéo 879 hàng video còn link ngoài xuống 56, và
+ *    2.121 hàng bài đăng xuống 12 — bằng một câu lệnh, không tải một byte nào.
  *
- * Luôn lấy URL của hàng MỚI NHẤT: link TikTok có chữ ký và hết hạn theo thời
- * gian, nên bản mới nhất là bản còn cơ hội tải được. Dùng link của hàng cũ gần
- * như chắc chắn thất bại.
+ * 2. Tải phần còn lại từ CDN — chỉ những video/bài mà nền tảng không còn trả về
+ *    nên chưa từng được chép. Sau bước 1 chỉ còn 9 mục. Đây là phần duy nhất
+ *    tốn thời gian, nên nó là phần bị giới hạn bởi `limit`.
+ *
+ * Với những link đã hết hạn thì bước 2 không cứu được gì — ảnh đã biến mất khỏi
+ * CDN. `media_backfill_failures` tồn tại để những mục đó không thử lại mãi mãi.
  */
-
-/** PostgREST mặc định trả tối đa 1000 hàng. Lấy sát trần rồi tự khử trùng lặp
- * trong TS — Postgres có `distinct on` nhưng PostgREST không phơi ra, và thêm
- * một RPC chỉ để phục vụ việc chép bù là không đáng. */
-const SCAN_ROWS = 1000
 
 /**
  * Hỏng đủ số lần này thì thôi hẳn, không thử lại nữa.
  *
  * Phải có, không phải để tiết kiệm: ảnh chép được sẽ tự rời danh sách chờ vì
  * URL trong bảng đã đổi thành URL nội bộ, còn ảnh HỎNG thì URL giữ nguyên nên
- * lượt sau lại chọn đúng nó. Không đếm số lần hỏng thì sau một hai lượt, toàn
- * bộ hạn mức mỗi lượt bị những ảnh chết chiếm giữ vĩnh viễn và phần đuôi không
- * bao giờ tới lượt.
+ * lượt sau lại chọn đúng nó. Không đếm số lần hỏng thì toàn bộ hạn mức mỗi lượt
+ * sẽ bị những ảnh chết chiếm giữ vĩnh viễn và phần đuôi không bao giờ tới lượt.
  *
  * Ba lần chứ không phải một: một lượt tải hỏng chưa chắc là ảnh đã chết — có
  * thể quá giờ chờ, CDN chập chờn, hoặc mạng lỗi. Cron chạy mỗi giờ nên ba lần
@@ -42,12 +37,8 @@ const SCAN_ROWS = 1000
  */
 const MAX_ATTEMPTS = 3
 
-type FailureKind = 'video' | 'post'
-
-const isMirrored = (url: string): boolean => url.includes('/storage/v1/object/public/media/')
-
 export interface BackfillMediaResult {
-  /** Số ảnh chép được trong lượt này. */
+  /** Số ảnh tải được từ CDN và chép về Storage trong lượt này. */
   readonly mirrored: number
   /** Tải/upload không thành công trong lượt này. */
   readonly failed: number
@@ -57,73 +48,42 @@ export interface BackfillMediaResult {
   readonly abandoned: number
 }
 
-/** Gom URL mới nhất theo từng ID, bỏ những ID đã trỏ về Storage. */
-const newestUrlById = (
-  rows: readonly { readonly id: string; readonly url: string | null }[],
-): Map<string, string> => {
-  const newest = new Map<string, string>()
-  for (const row of rows) {
-    // Hàng đầu tiên gặp = hàng mới nhất, nhờ `order by date desc` ở nơi truy vấn.
-    if (row.url && !newest.has(row.id)) newest.set(row.id, row.url)
-  }
-  return new Map([...newest].filter(([, url]) => !isMirrored(url)))
+const EMPTY_RESULT: BackfillMediaResult = {
+  mirrored: 0,
+  failed: 0,
+  remaining: 0,
+  abandoned: 0,
 }
 
 /**
- * `limit` là số ẢNH được thử trong một lượt chạy, không phải số hàng.
+ * `limit` là số ảnh được TẢI TỪ CDN trong một lượt, không phải số hàng được
+ * sửa. Bước lan URL ở trong database không bị giới hạn — nó chạy trọn vẹn mỗi
+ * lượt vì chi phí gần như bằng không khi đã bắt kịp.
  *
- * Cần trần vì việc này dùng chung ngân sách `maxDuration` với vòng đồng bộ số
- * liệu: mỗi ảnh là một lượt tải từ CDN cộng một lượt upload. Phần vượt trần để
- * lượt cron sau làm tiếp — cron chạy mỗi giờ nên vài trăm ảnh xong trong một
- * buổi, và mỗi lượt đều kết thúc gọn thay vì bị Vercel cắt giữa chừng. Cùng
- * khuôn với `MAX_BACKFILLS_PER_RUN` của phần nạp số liệu lịch sử.
+ * Cần trần cho bước tải vì nó dùng chung ngân sách `maxDuration` với vòng đồng
+ * bộ số liệu: mỗi ảnh là một lượt tải từ CDN cộng một lượt upload. Phần vượt
+ * trần để lượt cron sau làm tiếp, và mỗi lượt đều kết thúc gọn thay vì bị
+ * Vercel cắt giữa chừng. Cùng khuôn với `MAX_BACKFILLS_PER_RUN` của phần nạp
+ * số liệu lịch sử.
  */
 export const backfillMedia = async (
   admin: SupabaseClient<Database>,
   limit: number,
 ): Promise<BackfillMediaResult> => {
-  const [videoRows, postRows, failureRows] = await Promise.all([
-    admin
-      .from('video_metrics_daily')
-      .select('external_video_id, cover_image_url')
-      .not('cover_image_url', 'is', null)
-      .order('date', { ascending: false })
-      .limit(SCAN_ROWS),
-    admin
-      .from('content_metrics_daily')
-      .select('external_post_id, image_url')
-      .not('image_url', 'is', null)
-      .order('date', { ascending: false })
-      .limit(SCAN_ROWS),
-    admin.from('media_backfill_failures').select('kind, external_id, attempts'),
-  ])
+  const { data: targets, error } = await admin.rpc('backfill_media_targets')
+  if (error) {
+    console.error(`Không lấy được danh sách ảnh cần chép bù: ${error.message}`)
+    return EMPTY_RESULT
+  }
+  if (!targets || targets.length === 0) return EMPTY_RESULT
+
+  const { data: failureRows } = await admin
+    .from('media_backfill_failures')
+    .select('kind, external_id, attempts')
 
   const attemptsByKey = new Map(
-    (failureRows.data ?? []).map((row) => [`${row.kind}:${row.external_id}`, row.attempts]),
+    (failureRows ?? []).map((row) => [`${row.kind}:${row.external_id}`, row.attempts]),
   )
-
-  const targets = [
-    {
-      kind: 'video' as FailureKind,
-      path: mediaPathForVideo,
-      pending: newestUrlById(
-        (videoRows.data ?? []).map((row) => ({
-          id: row.external_video_id,
-          url: row.cover_image_url,
-        })),
-      ),
-    },
-    {
-      kind: 'post' as FailureKind,
-      path: mediaPathForPost,
-      pending: newestUrlById(
-        (postRows.data ?? []).map((row) => ({
-          id: row.external_post_id,
-          url: row.image_url,
-        })),
-      ),
-    },
-  ]
 
   let mirrored = 0
   let failed = 0
@@ -133,65 +93,75 @@ export const backfillMedia = async (
 
   // Gom lại rồi ghi một lần ở cuối: một lượt hỏng hàng loạt không đáng phải trả
   // giá bằng hàng chục lượt gọi mạng riêng lẻ giữa vòng lặp.
-  const failures: { kind: FailureKind; external_id: string; attempts: number }[] = []
+  const failures: { kind: string; external_id: string; attempts: number }[] = []
 
   for (const target of targets) {
-    for (const [externalId, sourceUrl] of target.pending) {
-      const priorAttempts = attemptsByKey.get(`${target.kind}:${externalId}`) ?? 0
-      if (priorAttempts >= MAX_ATTEMPTS) {
-        abandoned += 1
-        continue
-      }
-      if (budget <= 0) {
-        remaining += 1
-        continue
-      }
-      budget -= 1
-
-      const stored = await mirrorImage(admin, sourceUrl, target.path(externalId))
-      // `mirrorImage` trả về NGUYÊN url gốc khi không chép được (ảnh đã chết,
-      // CDN chặn, hết giờ chờ). So sánh để biết có thật sự tiến triển không,
-      // thay vì đếm mù mọi lượt gọi là thành công.
-      if (!stored || stored === sourceUrl) {
-        failures.push({ kind: target.kind, external_id: externalId, attempts: priorAttempts + 1 })
-        failed += 1
-        continue
-      }
-
-      // Cập nhật MỌI hàng của video/bài này, không riêng hàng mới nhất — đây
-      // đúng là chỗ những hàng cũ có link đã chết được cứu.
-      const { error } =
-        target.kind === 'video'
-          ? await admin
-              .from('video_metrics_daily')
-              .update({ cover_image_url: stored })
-              .eq('external_video_id', externalId)
-          : await admin
-              .from('content_metrics_daily')
-              .update({ image_url: stored })
-              .eq('external_post_id', externalId)
-
-      if (error) {
-        console.error(`Không cập nhật được URL ảnh cho ${target.kind} ${externalId}: ${error.message}`)
-        failed += 1
-        continue
-      }
-      mirrored += 1
+    const priorAttempts = attemptsByKey.get(`${target.kind}:${target.external_id}`) ?? 0
+    if (priorAttempts >= MAX_ATTEMPTS) {
+      abandoned += 1
+      continue
     }
+    if (budget <= 0) {
+      remaining += 1
+      continue
+    }
+    budget -= 1
+
+    const path =
+      target.kind === 'video'
+        ? mediaPathForVideo(target.external_id)
+        : mediaPathForPost(target.external_id)
+
+    const stored = await mirrorImage(admin, target.source_url, path)
+    // `mirrorImage` trả về NGUYÊN url gốc khi không chép được (ảnh đã chết, CDN
+    // chặn, hết giờ chờ). So sánh để biết có thật sự tiến triển không, thay vì
+    // đếm mù mọi lượt gọi là thành công.
+    if (!stored || stored === target.source_url) {
+      failures.push({
+        kind: target.kind,
+        external_id: target.external_id,
+        attempts: priorAttempts + 1,
+      })
+      failed += 1
+      continue
+    }
+
+    // Chỉ ghi hàng mới nhất là đủ: lượt chạy SAU của
+    // `backfill_media_targets()` sẽ lan URL này ra mọi hàng cũ của cùng
+    // video/bài, đúng cơ chế ở bước 1.
+    const { error: updateError } =
+      target.kind === 'video'
+        ? await admin
+            .from('video_metrics_daily')
+            .update({ cover_image_url: stored })
+            .eq('external_video_id', target.external_id)
+        : await admin
+            .from('content_metrics_daily')
+            .update({ image_url: stored })
+            .eq('external_post_id', target.external_id)
+
+    if (updateError) {
+      console.error(
+        `Không cập nhật được URL ảnh cho ${target.kind} ${target.external_id}: ${updateError.message}`,
+      )
+      failed += 1
+      continue
+    }
+    mirrored += 1
   }
 
   if (failures.length > 0) {
     const now = new Date().toISOString()
-    const { error } = await admin
+    const { error: failureError } = await admin
       .from('media_backfill_failures')
       .upsert(
         failures.map((failure) => ({ ...failure, last_attempt_at: now })),
         { onConflict: 'kind,external_id' },
       )
-    if (error) {
+    if (failureError) {
       // Không ném: lượt đồng bộ số liệu vừa chạy xong đã thành công, và lần
       // hỏng không ghi được chỉ làm lượt sau thử lại thừa một lần.
-      console.error(`Không ghi được lần chép ảnh hỏng: ${error.message}`)
+      console.error(`Không ghi được lần chép ảnh hỏng: ${failureError.message}`)
     }
   }
 
