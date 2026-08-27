@@ -2,7 +2,7 @@ import 'server-only'
 
 import { fetchAllTiktokVideos } from '@/lib/providers/tiktok'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { mediaPathForVideo, mirrorImage } from '@/lib/storage/media-mirror'
+import { mediaPathForVideo, mirrorImage, publicMediaUrl } from '@/lib/storage/media-mirror'
 
 const toIsoDate = (date: Date): string => date.toISOString().slice(0, 10)
 
@@ -49,11 +49,40 @@ export const syncTiktokVideoSnapshots = async (
   // tra chuỗi, không gọi mạng) nên lượt thường chỉ tốn vài mili-giây; còn lượt
   // đầu tiên mà bắn cả trăm request song song vào CDN TikTok là cách nhanh
   // nhất để bị chặn.
+/**
+ * URL ảnh đã chép của những mục này, để KHÔNG tải lại thứ đã có.
+ *
+ * Cần thiết vì `mirrorImage` chỉ nhận biết được "đã chép rồi" qua URL truyền
+ * vào, mà URL nền tảng trả về LUÔN là link ngoài mới ở mỗi lượt đồng bộ. Không
+ * tra lại bảng thì mỗi giờ lại tải và upload lại toàn bộ ảnh của mọi kênh.
+ *
+ * Sắp theo ngày giảm dần rồi lấy hàng đầu tiên gặp của mỗi mục: đó là bản mới
+ * nhất. Trần 1000 hàng là dư — mỗi mục chỉ có một hàng mỗi ngày, nên riêng
+ * ngày mới nhất đã phủ hết mọi mục.
+ */
+  const { data: storedRows } = await admin
+    .from('video_metrics_daily')
+    .select('external_video_id, cover_image_url')
+    .eq('connection_id', connectionId)
+    .order('date', { ascending: false })
+    .limit(1000)
+
+  const alreadyStored = new Map<string, string>()
+  for (const row of storedRows ?? []) {
+    if (alreadyStored.has(row.external_video_id) || !row.cover_image_url) continue
+    const expected = publicMediaUrl(mediaPathForVideo(row.external_video_id))
+    if (row.cover_image_url.startsWith(expected)) {
+      alreadyStored.set(row.external_video_id, row.cover_image_url)
+    }
+  }
+
   const mirroredCovers = new Map<string, string | null>()
   for (const video of uniqueVideos) {
+    const stored = alreadyStored.get(video.externalVideoId)
     mirroredCovers.set(
       video.externalVideoId,
-      await mirrorImage(admin, video.coverImageUrl, mediaPathForVideo(video.externalVideoId)),
+      stored ??
+        (await mirrorImage(admin, video.coverImageUrl, mediaPathForVideo(video.externalVideoId))),
     )
   }
 
