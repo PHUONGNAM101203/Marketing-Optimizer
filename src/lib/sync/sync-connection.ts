@@ -4,6 +4,7 @@ import { after } from 'next/server'
 
 import { getGoogleAdsDeveloperToken } from '@/lib/data/site-oauth-apps'
 import { SNAPSHOT_PROVIDERS, isProviderId } from '@/lib/domain/providers'
+import { refreshConnectionAvatar } from './refresh-avatar'
 import { METRICS_ADAPTERS } from '@/lib/providers'
 import type { DailyMetricRow, MetricsAdapter } from '@/lib/providers/metrics-types'
 import { createAdminClient } from '@/lib/supabase/admin'
@@ -89,7 +90,7 @@ export async function syncConnection(connectionId: string): Promise<SyncResult> 
 
   const { data: connection } = await admin
     .from('connections')
-    .select('id, site_id, provider, external_account_id, backfilled_at')
+    .select('id, site_id, provider, external_account_id, backfilled_at, avatar_url')
     .eq('id', connectionId)
     .maybeSingle()
 
@@ -246,6 +247,27 @@ export async function syncConnection(connectionId: string): Promise<SyncResult> 
     // resync-site, action Google/Meta Ads) dùng timeout mặc định. Đặt ở đây thì
     // snapshot chậm hay lỗi cũng không làm connection kẹt ở trạng thái cũ, và
     // không cộng thêm mili-giây nào vào response.
+    // Cùng lý do đặt trong `after()` như hai bước snapshot bên dưới: đây là
+    // việc dọn dẹp, không được cộng mili-giây nào vào response. Sau lần chép
+    // đầu tiên nó chỉ còn là một phép so chuỗi rồi thoát ngay.
+    const avatarProvider = connection.provider
+    after(() =>
+      refreshConnectionAvatar(
+        admin,
+        {
+          id: connectionId,
+          provider: avatarProvider,
+          external_account_id: connection.external_account_id,
+          avatar_url: connection.avatar_url,
+        },
+        accessToken,
+      ).catch((error) => {
+        console.error(
+          `Không làm mới được ảnh đại diện: ${error instanceof Error ? error.message : String(error)}`,
+        )
+      }),
+    )
+
     if (connection.provider === 'tiktok') {
       after(() =>
         syncTiktokVideoSnapshots(connectionId, accessToken).catch((error) => {

@@ -218,6 +218,45 @@ export const listAccessibleFacebookAdAccounts = async (
  * `resolveFacebookPageAccessToken`/`resolveInstagramPageAccessToken`, không
  * cần dò lại token trong hàm này.
  */
+/**
+ * Ảnh đại diện HIỆN TẠI của Page/tài khoản IG, gọi thẳng node bằng Page token —
+ * cùng khuôn `fetchMetaFollowerCount` ngay dưới, KHÁC `discoverMetaAccounts` ở
+ * chỗ không cần User token và không phải liệt kê toàn bộ Page.
+ *
+ * Cần vì `connections.avatar_url` chỉ được ghi MỘT LẦN lúc kết nối, mà URL ảnh
+ * của fbcdn có chữ ký và hết hạn — đo thật 27/8/2026: ảnh đại diện đang lưu trả
+ * về HTTP 403. Muốn chép được ảnh về Storage thì phải xin link còn sống trước.
+ */
+export const fetchMetaAvatarUrl = async (
+  pageAccessToken: string,
+  externalAccountId: string,
+  provider: 'facebook' | 'instagram',
+): Promise<string | null> => {
+  try {
+    const url = new URL(`https://graph.facebook.com/${GRAPH_VERSION}/${externalAccountId}`)
+    // Hai nền tảng phơi ảnh đại diện qua HAI field khác nhau: Page dùng
+    // `picture` (lồng trong `data`), tài khoản IG dùng `profile_picture_url`
+    // (chuỗi phẳng). Xin nhầm field thì Graph trả 400 chứ không bỏ qua.
+    url.searchParams.set('fields', provider === 'facebook' ? 'picture{url}' : 'profile_picture_url')
+    const response = await fetch(url.toString(), { headers: authHeader(pageAccessToken) })
+    if (!response.ok) {
+      await logGraphFailure(`Không lấy được ảnh đại diện (${externalAccountId})`, response)
+      return null
+    }
+
+    const body = (await response.json()) as {
+      readonly picture?: { readonly data?: { readonly url?: string } }
+      readonly profile_picture_url?: string
+    }
+    return (provider === 'facebook' ? body.picture?.data?.url : body.profile_picture_url) ?? null
+  } catch (error) {
+    console.error(
+      `Không lấy được ảnh đại diện (${externalAccountId}): ${error instanceof Error ? error.message : String(error)}`,
+    )
+    return null
+  }
+}
+
 export const fetchMetaFollowerCount = async (
   pageAccessToken: string,
   externalAccountId: string,

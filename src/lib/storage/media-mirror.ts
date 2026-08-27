@@ -108,3 +108,8 @@ export const mediaPathForVideo = (externalVideoId: string): string =>
 
 export const mediaPathForPost = (externalPostId: string): string =>
   `meta/${encodeURIComponent(externalPostId)}`
+
+/** Ảnh đại diện đặt theo CONNECTION, không theo ID tài khoản của nền tảng: một
+ * connection luôn là một tài khoản, mà `connectionId` là UUID nên chắc chắn hợp
+ * lệ trong đường dẫn, không như ID nền tảng. */
+export const mediaPathForAvatar = (connectionId: string): string => `avatar/${connectionId}`
