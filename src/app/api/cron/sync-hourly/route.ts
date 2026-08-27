@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { HOURLY_PROVIDERS } from '@/lib/sync/cron-providers'
 import { syncMany, type SyncTarget } from '@/lib/sync/sync-many'
+import { backfillMedia } from '@/lib/sync/backfill-media'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { cronEnv } from '@/lib/supabase/env'
 
@@ -13,6 +14,15 @@ import { cronEnv } from '@/lib/supabase/env'
  * Việc dispatch agent ĐÃ CHUYỂN sang `cron/run-agents` — xem file đó để biết
  * lý do tách.
  */
+
+/**
+ * Số ảnh chép bù mỗi lượt. Việc chép bù chỉ xử lý ảnh CŨ (ghi trước khi tính
+ * năng chép ảnh tồn tại) nên nó có điểm dừng: ~318 ảnh, hết trong khoảng sáu
+ * lượt rồi tự về 0 và gần như không tốn gì nữa. Đặt trần để một lượt cron không
+ * bao giờ chạm ngân sách 800s, thay vì cố làm hết trong một lần rồi bị cắt
+ * giữa chừng.
+ */
+const MEDIA_BACKFILL_PER_RUN = 60
 export const maxDuration = 800
 
 export async function GET(request: NextRequest) {
@@ -33,5 +43,10 @@ export async function GET(request: NextRequest) {
 
   const result = await syncMany((connections ?? []) as SyncTarget[])
 
-  return NextResponse.json(result)
+  // Sau khi đồng bộ, không phải trước: số liệu tươi là việc chính, chép ảnh cũ
+  // là việc dọn dẹp. Chép bù thất bại cũng không được phép làm hỏng lượt đồng
+  // bộ vừa chạy xong.
+  const media = await backfillMedia(admin, MEDIA_BACKFILL_PER_RUN)
+
+  return NextResponse.json({ ...result, media })
 }
