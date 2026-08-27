@@ -5,6 +5,7 @@ import { Card, CardHeader } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { EmptyState } from '@/components/ui/feedback'
 import { formatCompact, formatNumber } from '@/lib/format'
+import { ImageWithFallback } from '@/components/ui/image-with-fallback'
 import {
   hasEnoughHistory,
   type ContentGrowthSummary,
@@ -94,17 +95,11 @@ function TrendingRow({ rank, entry }: { readonly rank: number; readonly entry: C
       >
         {rank}
       </span>
-      {entry.thumbnailUrl ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          src={entry.thumbnailUrl}
-          alt=""
-          loading="lazy"
-          className="size-10 shrink-0 rounded-[var(--radius-sm)] object-cover"
-        />
-      ) : (
-        <div className="size-10 shrink-0 rounded-[var(--radius-sm)] bg-[var(--color-paper-3)]" />
-      )}
+      <ImageWithFallback
+        src={entry.thumbnailUrl}
+        className="size-10 shrink-0 rounded-[var(--radius-sm)] object-cover"
+        fallback={<div className="size-10 shrink-0 rounded-[var(--radius-sm)] bg-[var(--color-paper-3)]" />}
+      />
       <p className="min-w-0 flex-1 truncate text-[length:var(--text-sm)] text-[var(--color-ink)]" title={entry.title}>
         {entry.title}
       </p>

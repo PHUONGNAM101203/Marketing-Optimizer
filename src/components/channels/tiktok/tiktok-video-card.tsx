@@ -4,6 +4,7 @@ import { formatCompact, formatDate } from '@/lib/format'
 import { DialogRoot, DialogTrigger } from '@/components/ui/dialog'
 import { VideoDetailDialog } from '@/components/channels/video/video-detail-dialog'
 import type { TiktokVideoCardData } from './tiktok-video-grid'
+import { ImageWithFallback } from '@/components/ui/image-with-fallback'
 
 /* Hallmark · component: tiktok-video-card · theme: studied-DNA (Ink & Signal)
  *
@@ -25,14 +26,15 @@ export function TiktokVideoCard({ video }: { readonly video: TiktokVideoCardData
             'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-focus)]',
           )}
         >
-          {video.thumbnailUrl ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={video.thumbnailUrl} alt="" loading="lazy" className="size-full object-cover" />
-          ) : (
-            <div className="flex size-full items-center justify-center">
-              <Eye aria-hidden className="size-6 text-[var(--color-ink-3)]" />
-            </div>
-          )}
+          <ImageWithFallback
+            src={video.thumbnailUrl}
+            className="size-full object-cover"
+            fallback={
+              <div className="flex size-full items-center justify-center">
+                <Eye aria-hidden className="size-6 text-[var(--color-ink-3)]" />
+              </div>
+            }
+          />
 
           <span className="absolute inset-x-0 bottom-0 flex items-center gap-1 bg-gradient-to-t from-black/70 to-transparent px-2 py-1.5 text-[length:var(--text-2xs)] font-medium text-white">
             <Eye aria-hidden className="size-3" />

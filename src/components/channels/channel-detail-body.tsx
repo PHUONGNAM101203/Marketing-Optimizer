@@ -27,6 +27,7 @@ import { YoutubeDashboard } from '@/components/channels/youtube/youtube-dashboar
 import { MetaPostList, type MetaPostItem } from '@/components/channels/meta/meta-post-list'
 import { MetaDashboard, type MetaPostStats } from '@/components/channels/meta/meta-dashboard'
 import { buildMetaPostMetrics } from '@/components/channels/meta/meta-post-metrics'
+import { ImageWithFallback } from '@/components/ui/image-with-fallback'
 
 /**
  * Thân trang chi tiết kênh — MỖI nền tảng một hình dạng khác hẳn, cố tình
@@ -974,19 +975,15 @@ function VideoCardGrid({
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {videos.map((video, index) => (
             <Card key={index} className="flex flex-col overflow-hidden p-0">
-              {video.thumbnailUrl ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={video.thumbnailUrl}
-                  alt=""
-                  loading="lazy"
-                  className="aspect-video w-full object-cover"
-                />
-              ) : (
-                <div className="flex aspect-video w-full items-center justify-center bg-[var(--color-paper-3)]">
-                  <Eye aria-hidden className="size-6 text-[var(--color-ink-3)]" />
-                </div>
-              )}
+              <ImageWithFallback
+                src={video.thumbnailUrl}
+                className="aspect-video w-full object-cover"
+                fallback={
+                  <div className="flex aspect-video w-full items-center justify-center bg-[var(--color-paper-3)]">
+                    <Eye aria-hidden className="size-6 text-[var(--color-ink-3)]" />
+                  </div>
+                }
+              />
               <div className="flex flex-1 flex-col gap-3 p-4">
                 <p
                   className="line-clamp-2 text-[length:var(--text-sm)] font-medium text-[var(--color-ink)]"

@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/cn'
 import { formatCompact, formatDateTime } from '@/lib/format'
 import type { MetaPostItem } from './meta-post-list'
+import { ImageWithFallback } from '@/components/ui/image-with-fallback'
 
 /* Hallmark · component: meta-post-detail-dialog · theme: studied-DNA (Ink & Signal) */
 export function MetaPostDetailDialog({ post }: { readonly post: MetaPostItem }) {
@@ -23,15 +24,11 @@ export function MetaPostDetailDialog({ post }: { readonly post: MetaPostItem }) 
       }
     >
       <div className="flex flex-col gap-4">
-        {post.thumbnailUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={post.thumbnailUrl}
-            alt=""
-            loading="lazy"
-            className="max-h-80 w-full rounded-[var(--radius-md)] object-cover"
-          />
-        ) : null}
+        <ImageWithFallback
+          src={post.thumbnailUrl}
+          className="max-h-80 w-full rounded-[var(--radius-md)] object-cover"
+          fallback={null}
+        />
 
         <p className="text-[length:var(--text-sm)] text-[var(--color-ink)]">{post.title}</p>
 

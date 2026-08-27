@@ -1,5 +1,6 @@
 import { cn } from '@/lib/cn'
 import { ProviderMark } from '@/components/connections/provider-mark'
+import { ImageWithFallback } from '@/components/ui/image-with-fallback'
 import type { ProviderId } from '@/lib/domain/providers'
 
 /**
@@ -25,27 +26,21 @@ export function ChannelAvatar({
   readonly size?: keyof typeof SIZE_CLASS
   readonly className?: string
 }) {
-  if (avatarUrl) {
-    return (
-      // eslint-disable-next-line @next/next/no-img-element
-      <img
-        src={avatarUrl}
-        alt=""
-        loading="lazy"
-        className={cn('shrink-0 rounded-full object-cover', SIZE_CLASS[size], className)}
-      />
-    )
-  }
-
   return (
-    <span
-      className={cn(
-        'flex shrink-0 items-center justify-center rounded-full bg-[var(--color-paper-3)]',
-        SIZE_CLASS[size],
-        className,
-      )}
-    >
-      <ProviderMark provider={provider} size={size === 'lg' ? 'md' : 'sm'} />
-    </span>
+    <ImageWithFallback
+      src={avatarUrl}
+      className={cn('shrink-0 rounded-full object-cover', SIZE_CLASS[size], className)}
+      fallback={
+        <span
+          className={cn(
+            'flex shrink-0 items-center justify-center rounded-full bg-[var(--color-paper-3)]',
+            SIZE_CLASS[size],
+            className,
+          )}
+        >
+          <ProviderMark provider={provider} size={size === 'lg' ? 'md' : 'sm'} />
+        </span>
+      }
+    />
   )
 }

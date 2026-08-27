@@ -3,6 +3,7 @@ import { DialogContent } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { formatCompact, formatDateTime } from '@/lib/format'
 import type { VideoRankingItem } from './video-ranking-list'
+import { ImageWithFallback } from '@/components/ui/image-with-fallback'
 
 /* Hallmark · component: video-detail-dialog · theme: studied-DNA (Ink & Signal)
  *
@@ -38,15 +39,11 @@ export function VideoDetailDialog({
       }
     >
       <div className="flex flex-col gap-4">
-        {video.thumbnailUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={video.thumbnailUrl}
-            alt=""
-            loading="lazy"
-            className="max-h-80 w-full rounded-[var(--radius-md)] object-cover"
-          />
-        ) : null}
+        <ImageWithFallback
+          src={video.thumbnailUrl}
+          className="max-h-80 w-full rounded-[var(--radius-md)] object-cover"
+          fallback={null}
+        />
 
         <div className="grid grid-cols-2 gap-3">
           <DetailStat icon={Eye} label="Lượt xem" value={formatCompact(video.views)} />

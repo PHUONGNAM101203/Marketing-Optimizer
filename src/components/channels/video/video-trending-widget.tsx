@@ -4,6 +4,7 @@ import { DialogRoot, DialogTrigger } from '@/components/ui/dialog'
 import { VideoDetailDialog } from './video-detail-dialog'
 import { formatCompact, formatDate, formatNumber } from '@/lib/format'
 import type { VideoGrowthSummary } from '@/lib/providers/video-trending-types'
+import { ImageWithFallback } from '@/components/ui/image-with-fallback'
 
 /* Hallmark · component: video-trending-widget · theme: studied-DNA (Ink & Signal)
  *
@@ -110,17 +111,13 @@ function TrendingRow({
             >
               {rank}
             </span>
-            {entry.thumbnailUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={entry.thumbnailUrl}
-                alt=""
-                loading="lazy"
-                className="size-10 shrink-0 rounded-[var(--radius-sm)] object-cover"
-              />
-            ) : (
-              <div className="size-10 shrink-0 rounded-[var(--radius-sm)] bg-[var(--color-paper-3)]" />
-            )}
+            <ImageWithFallback
+              src={entry.thumbnailUrl}
+              className="size-10 shrink-0 rounded-[var(--radius-sm)] object-cover"
+              fallback={
+                <div className="size-10 shrink-0 rounded-[var(--radius-sm)] bg-[var(--color-paper-3)]" />
+              }
+            />
             <div className="min-w-0 flex-1">
               <p className="truncate text-[length:var(--text-sm)] text-[var(--color-ink)]" title={entry.title}>
                 {entry.title}

@@ -5,6 +5,7 @@ import { MetaPostDetailDialog } from './meta-post-detail-dialog'
 import { cn } from '@/lib/cn'
 import { formatCompact, formatDate } from '@/lib/format'
 import type { Eye } from 'lucide-react'
+import { ImageWithFallback } from '@/components/ui/image-with-fallback'
 
 export interface MetaPostMetric {
   readonly icon: typeof Eye
@@ -64,14 +65,15 @@ export function MetaPostList({
               type="button"
               className="flex flex-col overflow-hidden rounded-[var(--radius-lg)] border border-[var(--color-rule)] bg-[var(--color-paper)] text-left transition-colors duration-[var(--dur-fast)] ease-[var(--ease-out)] hover:bg-[var(--color-paper-3)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-focus)]"
             >
-              {post.thumbnailUrl ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={post.thumbnailUrl} alt="" loading="lazy" className="aspect-square w-full object-cover" />
-              ) : (
-                <div className="flex aspect-square w-full items-center justify-center bg-[var(--color-paper-3)]">
-                  <ImageOff aria-hidden className="size-6 text-[var(--color-ink-3)]" />
-                </div>
-              )}
+              <ImageWithFallback
+                src={post.thumbnailUrl}
+                className="aspect-square w-full object-cover"
+                fallback={
+                  <div className="flex aspect-square w-full items-center justify-center bg-[var(--color-paper-3)]">
+                    <ImageOff aria-hidden className="size-6 text-[var(--color-ink-3)]" />
+                  </div>
+                }
+              />
               <div className="flex flex-1 flex-col gap-2 p-4">
                 <p
                   className="line-clamp-2 text-[length:var(--text-sm)] font-medium text-[var(--color-ink)]"

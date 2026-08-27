@@ -5,6 +5,7 @@ import { DialogRoot, DialogTrigger } from '@/components/ui/dialog'
 import { MetaPostDetailDialog } from './meta-post-detail-dialog'
 import type { MetaPostItem } from './meta-post-list'
 import { formatCompact, formatDate } from '@/lib/format'
+import { ImageWithFallback } from '@/components/ui/image-with-fallback'
 
 /* Hallmark · component: meta-ranking-list · theme: studied-DNA (Ink & Signal)
  *
@@ -61,19 +62,15 @@ export function MetaRankingList({
               >
                 {index + 1}
               </span>
-              {item.thumbnailUrl ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={item.thumbnailUrl}
-                  alt=""
-                  loading="lazy"
-                  className="size-10 shrink-0 rounded-[var(--radius-sm)] object-cover"
-                />
-              ) : (
-                <div className="flex size-10 shrink-0 items-center justify-center rounded-[var(--radius-sm)] bg-[var(--color-paper-3)]">
-                  <ImageOff aria-hidden className="size-4 text-[var(--color-ink-3)]" />
-                </div>
-              )}
+              <ImageWithFallback
+                src={item.thumbnailUrl}
+                className="size-10 shrink-0 rounded-[var(--radius-sm)] object-cover"
+                fallback={
+                  <div className="flex size-10 shrink-0 items-center justify-center rounded-[var(--radius-sm)] bg-[var(--color-paper-3)]">
+                    <ImageOff aria-hidden className="size-4 text-[var(--color-ink-3)]" />
+                  </div>
+                }
+              />
               <div className="min-w-0 flex-1">
                 <p
                   className="truncate text-[length:var(--text-sm)] text-[var(--color-ink)]"

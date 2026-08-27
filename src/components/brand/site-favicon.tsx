@@ -1,7 +1,5 @@
-'use client'
-
-import { useState } from 'react'
 import { Mark } from '@/components/brand/logo'
+import { ImageWithFallback } from '@/components/ui/image-with-fallback'
 import { cn } from '@/lib/cn'
 
 /**
@@ -13,6 +11,9 @@ import { cn } from '@/lib/cn'
  *
  * Dùng dịch vụ favicon công khai của Google thay vì tự tải HTML của site đó
  * về server — tự fetch HTML của URL người dùng nhập là mở cửa cho SSRF.
+ *
+ * Ảnh 32px từ domain ngoài — cấu hình next/image cho một icon nhỏ không đáng
+ * công sức.
  */
 export interface SiteFaviconProps {
   readonly domain: string
@@ -20,22 +21,11 @@ export interface SiteFaviconProps {
 }
 
 export function SiteFavicon({ domain, className }: SiteFaviconProps) {
-  const [failed, setFailed] = useState(false)
-
-  if (failed) {
-    return <Mark className={cn(className, 'text-[var(--color-ink)]')} />
-  }
-
   return (
-    // Ảnh 32px từ domain ngoài — cấu hình next/image cho một icon nhỏ không đáng công sức.
-    // eslint-disable-next-line @next/next/no-img-element
-    <img
+    <ImageWithFallback
       src={`https://www.google.com/s2/favicons?domain=${encodeURIComponent(domain)}&sz=64`}
-      alt=""
-      aria-hidden
-      loading="lazy"
       className={cn('rounded-[4px] ring-1 ring-[var(--color-rule)]', className)}
-      onError={() => setFailed(true)}
+      fallback={<Mark className={cn(className, 'text-[var(--color-ink)]')} />}
     />
   )
 }
