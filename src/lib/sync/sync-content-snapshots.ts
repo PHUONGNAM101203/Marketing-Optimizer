@@ -1,8 +1,18 @@
 import 'server-only'
 
-import { fetchAllFacebookPosts, fetchAllInstagramMedia } from '@/lib/providers/meta-content'
+import {
+  fetchAllFacebookPosts,
+  fetchAllInstagramMedia,
+  fetchFacebookOriginalPhoto,
+} from '@/lib/providers/meta-content'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { mediaPathForPost, mirrorImage, publicMediaUrl } from '@/lib/storage/media-mirror'
+
+/** Dưới mức này thì đáng hỏi thêm node ảnh để lấy bản gốc. 1080 là bề rộng
+ * ảnh chuẩn của cả Facebook lẫn Instagram; ảnh Graph trả sẵn có trung vị 700px
+ * nên phần lớn bài sẽ đi qua nhánh này ĐÚNG MỘT LẦN, rồi lượt sau bỏ qua vì
+ * ảnh đã nằm trong Storage. */
+const MIN_ACCEPTABLE_IMAGE_WIDTH = 1080
 
 const toIsoDate = (date: Date): string => date.toISOString().slice(0, 10)
 
@@ -69,9 +79,23 @@ export const syncContentSnapshots = async (
   const mirroredImages = new Map<string, string | null>()
   for (const post of uniquePosts) {
     const stored = alreadyStored.get(post.externalPostId)
+    if (stored) {
+      mirroredImages.set(post.externalPostId, stored)
+      continue
+    }
+
+    // Hỏi ảnh gốc CHỈ ở đây, sau khi đã biết bài này thật sự cần chép — hỏi
+    // sớm hơn (lúc liệt kê bài) là tốn một lượt gọi Graph cho mỗi bài ở MỌI
+    // lượt đồng bộ, kể cả những bài đã có ảnh từ lâu.
+    const tooSmall = post.imageWidth === null || post.imageWidth < MIN_ACCEPTABLE_IMAGE_WIDTH
+    const source =
+      post.photoNodeId && tooSmall
+        ? ((await fetchFacebookOriginalPhoto(accessToken, post.photoNodeId)) ?? post.imageUrl)
+        : post.imageUrl
+
     mirroredImages.set(
       post.externalPostId,
-      stored ?? (await mirrorImage(admin, post.imageUrl, mediaPathForPost(post.externalPostId))),
+      await mirrorImage(admin, source, mediaPathForPost(post.externalPostId)),
     )
   }
 

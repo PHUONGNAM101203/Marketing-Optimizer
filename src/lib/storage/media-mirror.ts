@@ -209,12 +209,14 @@ const tryMirror = async (
 export const mediaPathForVideo = (externalVideoId: string): string =>
   `tiktok/v3/${encodeURIComponent(externalVideoId)}`
 
-/** `v2`: bản v1 lưu ảnh `full_picture` của Facebook (đo được 368x411 tới
- * 755x503) và `media_url` của Instagram — với bài video thì trường đó là file
- * video nên không có ảnh nào cả. Đổi thư mục để chép lại đúng một lần từ nguồn
- * mới; xem `fetchAllFacebookPosts` và `fetchAllInstagramMedia`. */
+/** Số phiên bản để chép lại toàn bộ đúng một lần khi nguồn ảnh đổi.
+ * v1: `full_picture` của Facebook và `media_url` của Instagram — ảnh thu nhỏ,
+ *     và bài Instagram dạng video thì không có ảnh nào cả.
+ * v2: thêm `attachments{media{image{src}}}` cho Facebook — đo ra ĐÚNG CÙNG một
+ *     tấm ảnh, không cải thiện gì (giữ lại vì vẫn là nguồn đúng đắn hơn).
+ * v3: hỏi thẳng node ảnh để lấy bản gốc — xem `fetchFacebookOriginalPhoto`. */
 export const mediaPathForPost = (externalPostId: string): string =>
-  `meta/v2/${encodeURIComponent(externalPostId)}`
+  `meta/v3/${encodeURIComponent(externalPostId)}`
 
 /** Ảnh đại diện đặt theo CONNECTION, không theo ID tài khoản của nền tảng: một
  * connection luôn là một tài khoản, mà `connectionId` là UUID nên chắc chắn hợp

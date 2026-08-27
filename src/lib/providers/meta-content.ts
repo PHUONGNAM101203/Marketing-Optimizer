@@ -44,6 +44,14 @@ export interface ContentPostSnapshot {
   readonly likes: number
   readonly comments: number
   readonly shares: number
+  /** Cạnh rộng của `imageUrl` theo Graph, `null` khi không biết. Dùng để quyết
+   * định có đáng hỏi thêm ảnh gốc hay không — xem `fetchFacebookOriginalPhoto`. */
+  readonly imageWidth: number | null
+  /** ID node ảnh của bài đăng (Facebook), `null` với Instagram hoặc bài không
+   * có ảnh. Cần để hỏi ảnh gốc; KHÔNG hỏi ngay ở đây vì bước chép ảnh mới là
+   * nơi biết bài nào thật sự cần — bài đã có ảnh trong Storage thì không nên
+   * tốn thêm một lượt gọi Graph nào nữa. */
+  readonly photoNodeId: string | null
 }
 
 /** Chỉ đi tiếp `paging.next` nếu nó THẬT SỰ trỏ về Graph API — URL này đến
@@ -123,7 +131,13 @@ interface FacebookPostItem {
   readonly full_picture?: string
   readonly attachments?: {
     readonly data?: readonly {
-      readonly media?: { readonly image?: { readonly src?: string } }
+      readonly target?: { readonly id?: string }
+      readonly media?: {
+        readonly image?: {
+          readonly src?: string
+          readonly width?: number
+        }
+      }
     }[]
   }
   readonly permalink_url?: string
@@ -151,7 +165,45 @@ const FACEBOOK_POST_FIELDS =
  * Graph từ chối CẢ request — tức mất trắng phần đồng bộ bài đăng chỉ vì muốn
  * ảnh nét hơn. Lui về bộ trường cũ giữ cho tệ nhất cũng chỉ là ảnh như trước.
  */
-const FACEBOOK_ATTACHMENT_FIELD = 'attachments{media{image{src}}}'
+const FACEBOOK_ATTACHMENT_FIELD = 'attachments{target{id},media{image{src,width}}}'
+
+/**
+ * Ảnh GỐC của một bài đăng Facebook, hỏi thẳng node ảnh.
+ *
+ * Vì sao cần dù đã có `attachments`: đo thật ngày 27/8/2026 trên 192 ảnh, cả
+ * `full_picture` lẫn `attachments{media{image{src}}}` đều trả CÙNG một bản đã
+ * thu nhỏ — trung vị cạnh dài 700px, có ảnh chỉ 368px. Node ảnh thì phơi mảng
+ * `images` gồm MỌI kích thước Facebook giữ, kể cả bản gốc.
+ *
+ * Trả `null` khi không lấy được, không ném: đây là bước nâng cấp chất lượng,
+ * hỏng thì dùng ảnh đã có chứ không được làm hỏng lượt đồng bộ.
+ */
+export const fetchFacebookOriginalPhoto = async (
+  accessToken: string,
+  photoNodeId: string,
+): Promise<string | null> => {
+  try {
+    const url = new URL(`https://graph.facebook.com/${GRAPH_VERSION}/${photoNodeId}`)
+    url.searchParams.set('fields', 'images')
+    const response = await fetch(url.toString(), {
+      headers: { authorization: `Bearer ${accessToken}` },
+    })
+    if (!response.ok) return null
+
+    const body = (await response.json()) as {
+      readonly images?: readonly { readonly source?: string; readonly width?: number }[]
+    }
+    // Graph KHÔNG cam kết thứ tự mảng này — tự chọn bản rộng nhất thay vì lấy
+    // phần tử đầu.
+    const largest = [...(body.images ?? [])].sort((a, b) => (b.width ?? 0) - (a.width ?? 0))[0]
+    return largest?.source ?? null
+  } catch (error) {
+    console.error(
+      `Không lấy được ảnh gốc Facebook (${photoNodeId}): ${error instanceof Error ? error.message : String(error)}`,
+    )
+    return null
+  }
+}
 
 export const fetchAllFacebookPosts = async (
   accessToken: string,
@@ -180,6 +232,8 @@ export const fetchAllFacebookPosts = async (
       externalPostId: item.id,
       // Ảnh gốc trước, `full_picture` là đường lui.
       imageUrl: item.attachments?.data?.[0]?.media?.image?.src ?? item.full_picture ?? null,
+      imageWidth: item.attachments?.data?.[0]?.media?.image?.width ?? null,
+      photoNodeId: item.attachments?.data?.[0]?.target?.id ?? null,
       message: item.message ? item.message.slice(0, 500) : null,
       permalink: item.permalink_url ?? null,
       postedAt: item.created_time ?? null,
@@ -232,6 +286,10 @@ export const fetchAllInstagramMedia = async (
       message: item.caption ? item.caption.slice(0, 500) : null,
       imageUrl:
         item.media_type === 'VIDEO' ? (item.thumbnail_url ?? null) : (item.media_url ?? null),
+      // Instagram trả thẳng ảnh gốc qua `media_url`, không có node ảnh riêng
+      // để hỏi thêm như Facebook.
+      imageWidth: null,
+      photoNodeId: null,
       permalink: item.permalink ?? null,
       postedAt: item.timestamp ?? null,
       likes: item.like_count ?? 0,
