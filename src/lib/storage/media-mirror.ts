@@ -51,6 +51,64 @@ const EXTENSION_BY_TYPE: Readonly<Record<string, string>> = {
  * phải do việc chép — chép lưu nguyên byte, không mã hoá lại.
  */
 
+/**
+ * Kích thước ảnh, đọc từ HEADER — không giải mã cả tấm ảnh.
+ *
+ * Cần vì oEmbed của TikTok đôi khi trả về ảnh SPRITE (nhiều khung hình ghép
+ * thành một dải) thay vì ảnh bìa. Đo thật ngày 27/8/2026: một video trả về file
+ * PNG 30792x7692, tức 236 megapixel, 2,8 MB. Trình duyệt giải mã tấm đó tốn gần
+ * 1 GB bộ nhớ và hiển thị ra một dải méo — chặn bằng dung lượng là không đủ,
+ * phải nhìn vào kích thước.
+ */
+const readImageSize = (bytes: Uint8Array): { width: number; height: number } | null => {
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
+
+  // PNG: 8 byte chữ ký, rồi chunk IHDR có rộng/cao ở offset cố định.
+  if (bytes.length > 24 && bytes[0] === 0x89 && bytes[1] === 0x50) {
+    return { width: view.getUint32(16), height: view.getUint32(20) }
+  }
+
+  // JPEG: duyệt các marker tới khối SOF (Start Of Frame) chứa kích thước.
+  if (bytes.length > 4 && bytes[0] === 0xff && bytes[1] === 0xd8) {
+    let offset = 2
+    while (offset < bytes.length - 9) {
+      if (bytes[offset] !== 0xff) {
+        offset += 1
+        continue
+      }
+      const marker = bytes[offset + 1]!
+      // SOF0/1/2/3 — các biến thể còn lại (SOF4+) không dùng cho ảnh thường.
+      if (marker >= 0xc0 && marker <= 0xc3) {
+        return { height: view.getUint16(offset + 5), width: view.getUint16(offset + 7) }
+      }
+      // Marker không có phần thân: bỏ qua 2 byte.
+      if (marker === 0xd8 || marker === 0xd9 || (marker >= 0xd0 && marker <= 0xd7)) {
+        offset += 2
+        continue
+      }
+      offset += 2 + view.getUint16(offset + 2)
+    }
+  }
+
+  // WebP/AVIF/GIF: không đọc được ở đây, và cũng chưa gặp ca bất thường nào —
+  // trả `null` nghĩa là "không biết", nơi gọi cho qua thay vì loại nhầm.
+  return null
+}
+
+/** Trần kích thước cho một ảnh bìa/đại diện. 4000px là rộng rãi so với ảnh gốc
+ * đo được (1440x2560), còn tỉ lệ thì chặn đúng thứ cần chặn: ảnh bìa video nằm
+ * quanh 9:16 hoặc 16:9, một dải sprite thì lệch hàng chục lần. */
+const MAX_DIMENSION = 4000
+const MAX_ASPECT_RATIO = 3
+
+const looksLikeCoverImage = (bytes: Uint8Array): boolean => {
+  const size = readImageSize(bytes)
+  if (!size || !size.width || !size.height) return true
+  if (size.width > MAX_DIMENSION || size.height > MAX_DIMENSION) return false
+  const ratio = size.width / size.height
+  return ratio <= MAX_ASPECT_RATIO && ratio >= 1 / MAX_ASPECT_RATIO
+}
+
 /** URL công khai của bucket. Tự ghép thay vì gọi `getPublicUrl()` để hàm này
  * không cần một client chỉ để dựng một chuỗi. */
 export const publicMediaUrl = (path: string): string =>
@@ -101,6 +159,10 @@ const tryMirror = async (
 
     const bytes = new Uint8Array(await response.arrayBuffer())
     if (bytes.byteLength === 0 || bytes.byteLength > MAX_BYTES) return null
+    if (!looksLikeCoverImage(bytes)) {
+      console.error(`Bỏ qua ảnh có kích thước bất thường: ${pathWithoutExtension}`)
+      return null
+    }
 
     const path = `${pathWithoutExtension}.${extension}`
     const { error } = await admin.storage.from(BUCKET).upload(path, bytes, {

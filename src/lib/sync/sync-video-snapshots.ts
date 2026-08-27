@@ -86,14 +86,20 @@ export const syncTiktokVideoSnapshots = async (
 
     // Ưu tiên ảnh GỐC qua oEmbed (đo được 1440x2560) thay vì `cover_image_url`
     // của Display API (luôn 300x400 và không xin lớn hơn được — xem
-    // `fetchTiktokOriginalThumbnail`). Rơi về `cover_image_url` khi oEmbed
-    // không trả ảnh: video không còn công khai thì vẫn nên giữ được tấm ảnh
-    // 300x400 cuối cùng còn lấy được, hơn là không có gì.
-    const source =
-      (await fetchTiktokOriginalThumbnail(video.permalinkUrl)) ?? video.coverImageUrl
+    // `fetchTiktokOriginalThumbnail`).
+    const path = mediaPathForVideo(video.externalVideoId)
+    const original = await fetchTiktokOriginalThumbnail(video.permalinkUrl)
+    const fromOriginal = original ? await mirrorImage(admin, original, path) : null
+
+    // Rơi về `cover_image_url` khi đường oEmbed không dùng được — hoặc vì video
+    // không còn công khai (oEmbed không trả ảnh), hoặc vì ảnh nhận được bị loại
+    // do kích thước bất thường (`mirrorImage` trả lại nguyên URL gốc khi không
+    // chép được). Ảnh 300x400 vẫn hơn không có ảnh nào.
     mirroredCovers.set(
       video.externalVideoId,
-      await mirrorImage(admin, source, mediaPathForVideo(video.externalVideoId)),
+      fromOriginal && fromOriginal !== original
+        ? fromOriginal
+        : await mirrorImage(admin, video.coverImageUrl, path),
     )
   }
 
