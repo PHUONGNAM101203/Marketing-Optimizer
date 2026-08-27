@@ -4,6 +4,12 @@ import { fetchAllTiktokVideos, fetchTiktokOriginalThumbnail } from '@/lib/provid
 import { createAdminClient } from '@/lib/supabase/admin'
 import { mediaPathForVideo, mirrorImage, publicMediaUrl } from '@/lib/storage/media-mirror'
 
+/** Ảnh bìa gốc nặng hơn trần này thì thà lấy bản 300x400: đo trên 118 ảnh
+ * thật, trung vị 114 KB và chỉ ba ảnh vượt 500 KB — hai trong đó là PNG 2,8 và
+ * 3,2 MB. Đổi vài tấm sắc nét lấy việc lưới không kéo về hàng megabyte cho một
+ * ô rộng 300px là đáng. */
+const MAX_ORIGINAL_COVER_BYTES = 1024 * 1024
+
 const toIsoDate = (date: Date): string => date.toISOString().slice(0, 10)
 
 /**
@@ -89,7 +95,9 @@ export const syncTiktokVideoSnapshots = async (
     // `fetchTiktokOriginalThumbnail`).
     const path = mediaPathForVideo(video.externalVideoId)
     const original = await fetchTiktokOriginalThumbnail(video.permalinkUrl)
-    const fromOriginal = original ? await mirrorImage(admin, original, path) : null
+    const fromOriginal = original
+      ? await mirrorImage(admin, original, path, { maxBytes: MAX_ORIGINAL_COVER_BYTES })
+      : null
 
     // Rơi về `cover_image_url` khi đường oEmbed không dùng được — hoặc vì video
     // không còn công khai (oEmbed không trả ảnh), hoặc vì ảnh nhận được bị loại

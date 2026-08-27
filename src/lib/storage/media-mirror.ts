@@ -54,11 +54,14 @@ const EXTENSION_BY_TYPE: Readonly<Record<string, string>> = {
 /**
  * Kích thước ảnh, đọc từ HEADER — không giải mã cả tấm ảnh.
  *
- * Cần vì oEmbed của TikTok đôi khi trả về ảnh SPRITE (nhiều khung hình ghép
- * thành một dải) thay vì ảnh bìa. Đo thật ngày 27/8/2026: một video trả về file
- * PNG 30792x7692, tức 236 megapixel, 2,8 MB. Trình duyệt giải mã tấm đó tốn gần
- * 1 GB bộ nhớ và hiển thị ra một dải méo — chặn bằng dung lượng là không đủ,
- * phải nhìn vào kích thước.
+ * Lưới chấp nhận ảnh từ CDN của bên thứ ba, và không có gì bảo đảm thứ nhận
+ * được là một ảnh bìa bình thường. Ảnh quá khổ hoặc tỉ lệ khung dị thường sẽ
+ * ngốn bộ nhớ của trình duyệt và hiển thị méo, mà chặn bằng dung lượng thì
+ * không phát hiện được (một ảnh vài chục megapixel vẫn có thể nén rất nhỏ).
+ *
+ * Đây là lưới an toàn, chưa từng chặn ca thật nào: mọi ảnh đo được tới ngày
+ * 27/8/2026 đều nằm trong khoảng 300x400 tới 1500x2000. Giữ lại vì chi phí
+ * bằng không — chỉ đọc vài chục byte đầu, không giải mã ảnh.
  */
 const readImageSize = (bytes: Uint8Array): { width: number; height: number } | null => {
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
@@ -132,11 +135,18 @@ export const mirrorImage = async (
   sourceUrl: string | null | undefined,
   /** Không kèm phần mở rộng — suy từ `content-type` thật của phản hồi. */
   pathWithoutExtension: string,
+  options?: {
+    /** Trần riêng, chặt hơn `MAX_BYTES`, cho nguồn ảnh mà nơi gọi CÓ đường lui.
+     * Dùng cho ảnh gốc TikTok: trung vị 114 KB nhưng đo được hai ảnh PNG 2,8 và
+     * 3,2 MB — nặng gấp hai mươi lần phần còn lại chỉ để hiển thị trong một ô
+     * rộng 300px. Vượt trần thì nơi gọi quay về ảnh 300x400 của Display API. */
+    readonly maxBytes?: number
+  },
 ): Promise<string | null> => {
   if (!sourceUrl) return sourceUrl ?? null
   if (isAlreadyMirrored(sourceUrl)) return sourceUrl
 
-  return (await tryMirror(admin, sourceUrl, pathWithoutExtension)) ?? sourceUrl
+  return (await tryMirror(admin, sourceUrl, pathWithoutExtension, options?.maxBytes)) ?? sourceUrl
 }
 
 /** Trả về URL nội bộ nếu chép được, `null` nếu không — nơi gọi quyết định thử
@@ -145,6 +155,7 @@ const tryMirror = async (
   admin: SupabaseClient<Database>,
   sourceUrl: string,
   pathWithoutExtension: string,
+  maxBytes: number = MAX_BYTES,
 ): Promise<string | null> => {
   try {
     const response = await fetch(sourceUrl, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) })
@@ -158,7 +169,7 @@ const tryMirror = async (
     if (!extension) return null
 
     const bytes = new Uint8Array(await response.arrayBuffer())
-    if (bytes.byteLength === 0 || bytes.byteLength > MAX_BYTES) return null
+    if (bytes.byteLength === 0 || bytes.byteLength > maxBytes) return null
     if (!looksLikeCoverImage(bytes)) {
       console.error(`Bỏ qua ảnh có kích thước bất thường: ${pathWithoutExtension}`)
       return null
