@@ -43,6 +43,9 @@ const toSummary = (row: VideoTrendingRow): VideoSummary => ({
   shares: row.latest_shares,
   createdAt: row.posted_at,
   permalinkUrl: row.permalink_url,
+  // Nguồn này không biết video còn được liệt kê hay không — xem
+  // chú thích của `unavailableSince`.
+  unavailableSince: null,
 })
 
 const toIsoDate = (date: Date): string => date.toISOString().slice(0, 10)
@@ -128,6 +131,9 @@ export const getTiktokVideoRangeGrowth = async (
           shares: row.end_shares,
           createdAt: row.posted_at,
           permalinkUrl: row.permalink_url,
+          // Nguồn này không biết video còn được liệt kê hay không — xem
+          // chú thích của `unavailableSince`.
+          unavailableSince: null,
           growthDelta,
           growthPct: growthDelta / baseline,
         },
@@ -283,6 +289,9 @@ export const getTiktokVideoRangeStats = async (
         shares: Math.max(0, row.end_shares - (row.baseline_shares ?? 0)),
         createdAt: row.posted_at,
         permalinkUrl: row.permalink_url,
+        // Nguồn này không biết video còn được liệt kê hay không — xem
+        // chú thích của `unavailableSince`.
+        unavailableSince: null,
       }),
     )
     .filter((summary) => summary.views > 0)
@@ -373,6 +382,8 @@ interface VideoPostedRow {
   readonly likes: number
   readonly comments: number
   readonly shares: number
+  readonly last_seen_date: string
+  readonly connection_last_seen_date: string
 }
 
 /**
@@ -410,6 +421,12 @@ export const getTiktokVideosPostedInRange = async (
       shares: row.shares,
       createdAt: row.posted_at,
       permalinkUrl: row.permalink_url,
+      // Vắng mặt ở lượt đồng bộ mới nhất của kênh = TikTok đã thôi liệt kê.
+      // So trực tiếp chứ không đặt ngưỡng vài ngày: người dùng cần biết NGAY
+      // trong ngày nó xảy ra, và câu chữ trên thẻ chỉ khẳng định đúng điều đo
+      // được ("không còn được liệt kê"), không suy diễn thành "đã bị xoá".
+      unavailableSince:
+        row.last_seen_date < row.connection_last_seen_date ? row.last_seen_date : null,
     }),
   )
 }

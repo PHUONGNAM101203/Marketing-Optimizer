@@ -830,6 +830,9 @@ const fetchYoutubeAllTimeMetrics = async (
       // chỗ dựng (ở đây để field không rỗng trên `VideoSummary` — UI vẫn tự
       // dựng lại ở nơi hiện, không đọc field này).
       permalinkUrl: `https://www.youtube.com/watch?v=${id}`,
+      // Nguồn này không biết video còn được liệt kê hay không — xem
+      // chú thích của `unavailableSince`.
+      unavailableSince: null,
     })
   }
   return result

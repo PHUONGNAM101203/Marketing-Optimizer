@@ -19,6 +19,9 @@ export interface VideoRankingItem {
   /** `null` khi nguồn dữ liệu không lưu link gốc — xem docblock
    * `video-detail-dialog.tsx`. Nút "Xem trên X" tự ẩn khi null. */
   readonly permalinkUrl: string | null
+  /** Ngày nền tảng thôi liệt kê video, `null` khi bình thường hoặc khi nguồn
+   * không biết — xem `VideoSummary.unavailableSince`. */
+  readonly unavailableSince?: string | null
 }
 
 /* Hallmark · component: video-ranking-list · theme: studied-DNA (Ink & Signal)

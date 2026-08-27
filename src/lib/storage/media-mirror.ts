@@ -128,12 +128,13 @@ const tryMirror = async (
 /** Đường dẫn ổn định theo ID của nền tảng — cùng một video luôn ra cùng một
  * đường dẫn, nên chạy lại không sinh rác. `encodeURIComponent` vì ID của Meta
  * có dạng `{pageId}_{postId}` và có thể chứa ký tự không hợp lệ trong path. */
-/** `v2` là mốc phiên bản, không phải trang trí: bản v1 đã chép ở độ phân giải
- * 300x400 của TikTok. Đổi thư mục khiến mọi ảnh được chép LẠI đúng một lần ở
- * độ phân giải cao, rồi từ đó lượt đồng bộ sau bỏ qua vì đã có. Thư mục
- * `tiktok/` cũ thành rác và xoá được sau khi mọi hàng đã trỏ sang v2. */
+/** Số phiên bản trong đường dẫn là mốc để chép LẠI toàn bộ ảnh đúng một lần,
+ * rồi từ đó lượt đồng bộ sau bỏ qua vì đã có (xem chỗ kiểm tra trong
+ * `sync-video-snapshots.ts`). v1 và v2 đều là ảnh 300x400 của Display API; v3
+ * là ảnh gốc lấy qua oEmbed, xem `fetchTiktokOriginalThumbnail`. Thư mục của
+ * phiên bản cũ thành rác và xoá được sau khi mọi hàng đã trỏ sang bản mới. */
 export const mediaPathForVideo = (externalVideoId: string): string =>
-  `tiktok/v2/${encodeURIComponent(externalVideoId)}`
+  `tiktok/v3/${encodeURIComponent(externalVideoId)}`
 
 export const mediaPathForPost = (externalPostId: string): string =>
   `meta/${encodeURIComponent(externalPostId)}`

@@ -274,6 +274,52 @@ export interface TiktokVideoSnapshot {
 // tài khoản thật, chặn ở đây rẻ hơn để cron treo.
 const MAX_VIDEO_LIST_PAGES = 50
 
+/**
+ * Ảnh bìa ĐỘ PHÂN GIẢI GỐC, lấy qua endpoint oEmbed CÔNG KHAI của TikTok.
+ *
+ * Vì sao không dùng `cover_image_url` của Display API: trường đó luôn trả bản
+ * 300x400 (kích thước nhúng sẵn trong đường dẫn dạng
+ * `~tplv-tiktokx-cropcenter-q:300:400:q70`), và sửa con số đó thì CDN từ chối
+ * vì chữ ký phủ luôn phần kích thước — đã thử trên production và đo được
+ * 118/118 ảnh ra file y hệt bản cũ. oEmbed thì trả template
+ * `~tplv-tiktokx-origin`: đo thật ngày 27/8/2026 ra ảnh 1440x2560, tức gấp
+ * khoảng 30 lần số điểm ảnh.
+ *
+ * Không cần token, không tính vào hạn mức của app OAuth — đây là endpoint mở
+ * mà TikTok dành cho việc nhúng video.
+ *
+ * Trả `null` khi video KHÔNG còn công khai (nháp, riêng tư, đã xoá): oEmbed
+ * vẫn trả JSON nhưng không có `thumbnail_url`. Nơi gọi phải rơi về
+ * `cover_image_url` chứ không coi là lỗi.
+ */
+const OEMBED_ENDPOINT = 'https://www.tiktok.com/oembed'
+
+/** Endpoint công khai, không nằm trong đường render trang, nhưng vẫn phải có
+ * trần: nó chạy tuần tự cho từng video trong lượt đồng bộ. */
+const OEMBED_TIMEOUT_MS = 10_000
+
+export const fetchTiktokOriginalThumbnail = async (
+  permalinkUrl: string | null,
+): Promise<string | null> => {
+  if (!permalinkUrl) return null
+  try {
+    // Bỏ query: link lưu trong database mang theo tham số `utm_*` do Display
+    // API gắn vào, và oEmbed đối chiếu URL chính xác.
+    const cleanUrl = permalinkUrl.split('?')[0]!
+    const url = `${OEMBED_ENDPOINT}?url=${encodeURIComponent(cleanUrl)}`
+    const response = await fetch(url, { signal: AbortSignal.timeout(OEMBED_TIMEOUT_MS) })
+    if (!response.ok) return null
+
+    const body = (await response.json()) as { readonly thumbnail_url?: string }
+    return body.thumbnail_url ?? null
+  } catch (error) {
+    console.error(
+      `Không lấy được ảnh bìa gốc qua oEmbed: ${error instanceof Error ? error.message : String(error)}`,
+    )
+    return null
+  }
+}
+
 export interface TiktokAllVideosOutcome {
   readonly videos: readonly TiktokVideoSnapshot[]
   /** Lỗi THẬT ở trang đầu (HTTP hoặc mã lỗi thân JSON của TikTok) — trước đây

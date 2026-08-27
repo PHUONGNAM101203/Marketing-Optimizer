@@ -26,6 +26,19 @@ export interface VideoSummary {
    * suy ra được chỉ từ ID vì cần username); YouTube: dựng thuần từ
    * `externalVideoId`. `null` cùng điều kiện với `createdAt`. */
   readonly permalinkUrl: string | null
+  /**
+   * Ngày cuối cùng nền tảng còn liệt kê video này, khi khác với lượt đồng bộ
+   * mới nhất của kênh — tức video KHÔNG còn khả dụng.
+   *
+   * `null` nghĩa là vẫn bình thường HOẶC nguồn không biết: YouTube Analytics
+   * trả theo khoảng ngày chứ không phải danh sách hiện có, nên không suy ra
+   * được điều này và luôn để `null`. Đừng đọc `null` thành "chắc chắn còn".
+   *
+   * Display API của TikTok KHÔNG có trường trạng thái, nên không phân biệt
+   * được video đã xoá, chuyển riêng tư, hay đưa về nháp — cả ba đều biểu hiện
+   * y hệt nhau: biến mất khỏi danh sách. Giao diện phải nói đúng mức đó.
+   */
+  readonly unavailableSince: string | null
 }
 
 export interface VideoGrowthSummary extends VideoSummary {

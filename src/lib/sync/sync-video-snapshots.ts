@@ -1,6 +1,6 @@
 import 'server-only'
 
-import { fetchAllTiktokVideos } from '@/lib/providers/tiktok'
+import { fetchAllTiktokVideos, fetchTiktokOriginalThumbnail } from '@/lib/providers/tiktok'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { mediaPathForVideo, mirrorImage, publicMediaUrl } from '@/lib/storage/media-mirror'
 
@@ -79,10 +79,21 @@ export const syncTiktokVideoSnapshots = async (
   const mirroredCovers = new Map<string, string | null>()
   for (const video of uniqueVideos) {
     const stored = alreadyStored.get(video.externalVideoId)
+    if (stored) {
+      mirroredCovers.set(video.externalVideoId, stored)
+      continue
+    }
+
+    // Ưu tiên ảnh GỐC qua oEmbed (đo được 1440x2560) thay vì `cover_image_url`
+    // của Display API (luôn 300x400 và không xin lớn hơn được — xem
+    // `fetchTiktokOriginalThumbnail`). Rơi về `cover_image_url` khi oEmbed
+    // không trả ảnh: video không còn công khai thì vẫn nên giữ được tấm ảnh
+    // 300x400 cuối cùng còn lấy được, hơn là không có gì.
+    const source =
+      (await fetchTiktokOriginalThumbnail(video.permalinkUrl)) ?? video.coverImageUrl
     mirroredCovers.set(
       video.externalVideoId,
-      stored ??
-        (await mirrorImage(admin, video.coverImageUrl, mediaPathForVideo(video.externalVideoId))),
+      await mirrorImage(admin, source, mediaPathForVideo(video.externalVideoId)),
     )
   }
 

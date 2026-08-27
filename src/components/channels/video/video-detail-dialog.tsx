@@ -1,7 +1,8 @@
 import { ExternalLink, Eye, Heart, MessageCircle, Share2 } from 'lucide-react'
 import { DialogContent } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
-import { formatCompact, formatDateTime } from '@/lib/format'
+import { formatCompact, formatDate, formatDateTime } from '@/lib/format'
+import { Callout } from '@/components/ui/feedback'
 import type { VideoRankingItem } from './video-ranking-list'
 import { ImageWithFallback } from '@/components/ui/image-with-fallback'
 
@@ -39,6 +40,16 @@ export function VideoDetailDialog({
       }
     >
       <div className="flex flex-col gap-4">
+        {video.unavailableSince ? (
+          <Callout tone="caution" title={`Video không còn khả dụng trên ${platformLabel}`}>
+            Lần cuối {platformLabel} còn liệt kê video này là ngày{' '}
+            {formatDate(video.unavailableSince)}. Video có thể đã được chuyển về bản nháp, đặt
+            riêng tư, hoặc đã xoá — API của {platformLabel} không phân biệt ba trường hợp này nên
+            app cũng không thể nói chắc là trường hợp nào. Số liệu bên dưới là bản ghi cuối cùng
+            lấy được, không còn cập nhật nữa.
+          </Callout>
+        ) : null}
+
         <ImageWithFallback
           src={video.thumbnailUrl}
           className="max-h-80 w-full rounded-[var(--radius-md)] object-cover"

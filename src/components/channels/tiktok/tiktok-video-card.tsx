@@ -1,4 +1,4 @@
-import { Eye } from 'lucide-react'
+import { Eye, EyeOff } from 'lucide-react'
 import { cn } from '@/lib/cn'
 import { formatCompact, formatDate } from '@/lib/format'
 import { DialogRoot, DialogTrigger } from '@/components/ui/dialog'
@@ -46,6 +46,20 @@ export function TiktokVideoCard({ video }: { readonly video: TiktokVideoCardData
               {formatDate(video.createdAt.slice(0, 10))}
             </span>
           ) : null}
+
+          {/* Góc TRÁI, tách khỏi huy hiệu ngày ở góc phải: thẻ chỉ rộng bằng
+              1/6 lưới nên hai nhãn cạnh nhau sẽ chồng lên chữ của nhau. Nền đỏ
+              đặc chứ không mờ như huy hiệu ngày — đây là trạng thái bất thường,
+              phải đọc được cả khi đè lên ảnh sáng. */}
+          {video.unavailableSince ? (
+            <span
+              title={`TikTok không còn liệt kê video này từ ${formatDate(video.unavailableSince)}`}
+              className="absolute top-1.5 left-1.5 flex items-center gap-1 rounded-[var(--radius-sm)] bg-[var(--color-negative)] px-1.5 py-0.5 text-[length:var(--text-2xs)] font-medium text-[var(--color-ink-inverse)]"
+            >
+              <EyeOff aria-hidden className="size-3" />
+              Không khả dụng
+            </span>
+          ) : null}
         </button>
       </DialogTrigger>
 
@@ -59,6 +73,7 @@ export function TiktokVideoCard({ video }: { readonly video: TiktokVideoCardData
           shares: video.shares,
           createdAt: video.createdAt,
           permalinkUrl: video.permalinkUrl,
+          unavailableSince: video.unavailableSince,
         }}
         platformLabel="TikTok"
       />

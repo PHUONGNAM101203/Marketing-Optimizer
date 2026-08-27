@@ -1405,8 +1405,10 @@ export type Database = {
         }
         Returns: {
           comments: number
+          connection_last_seen_date: string
           cover_image_url: string
           external_video_id: string
+          last_seen_date: string
           likes: number
           permalink_url: string
           posted_at: string
