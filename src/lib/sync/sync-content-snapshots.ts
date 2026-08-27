@@ -2,6 +2,7 @@ import 'server-only'
 
 import { fetchAllFacebookPosts, fetchAllInstagramMedia } from '@/lib/providers/meta-content'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { mediaPathForPost, mirrorImage } from '@/lib/storage/media-mirror'
 
 const toIsoDate = (date: Date): string => date.toISOString().slice(0, 10)
 
@@ -35,6 +36,17 @@ export const syncContentSnapshots = async (
   const uniquePosts = [...new Map(posts.map((post) => [post.externalPostId, post])).values()]
 
   const today = toIsoDate(new Date())
+
+  // Chép ảnh về Storage trước khi ghi — cùng lý do và cùng cách làm với
+  // `syncTiktokVideoSnapshots`, xem chú thích ở đó.
+  const mirroredImages = new Map<string, string | null>()
+  for (const post of uniquePosts) {
+    mirroredImages.set(
+      post.externalPostId,
+      await mirrorImage(admin, post.imageUrl, mediaPathForPost(post.externalPostId)),
+    )
+  }
+
   const { error } = await admin.from('content_metrics_daily').upsert(
     uniquePosts.map((post) => ({
       connection_id: connectionId,
@@ -45,7 +57,7 @@ export const syncContentSnapshots = async (
       comments: post.comments,
       shares: post.shares,
       message: post.message,
-      image_url: post.imageUrl,
+      image_url: mirroredImages.get(post.externalPostId) ?? post.imageUrl,
       permalink: post.permalink,
       posted_at: post.postedAt,
       synced_at: new Date().toISOString(),

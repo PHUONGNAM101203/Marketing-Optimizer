@@ -2,6 +2,7 @@ import 'server-only'
 
 import { fetchAllTiktokVideos } from '@/lib/providers/tiktok'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { mediaPathForVideo, mirrorImage } from '@/lib/storage/media-mirror'
 
 const toIsoDate = (date: Date): string => date.toISOString().slice(0, 10)
 
@@ -37,6 +38,25 @@ export const syncTiktokVideoSnapshots = async (
   const uniqueVideos = [...new Map(videos.map((video) => [video.externalVideoId, video])).values()]
 
   const today = toIsoDate(new Date())
+
+  // Chép ảnh bìa về Storage TRƯỚC khi ghi, rồi ghi URL của chính mình vào
+  // `cover_image_url`. Link TikTok có chữ ký và hết hạn — đo thật 27/8/2026:
+  // 0/6 ảnh ở snapshot cũ nhất còn sống. Ghi thẳng URL nội bộ nghĩa là không
+  // cột mới, không đổi RPC, không đổi UI: mọi nơi đang đọc field này tự nhiên
+  // nhận được ảnh vĩnh viễn.
+  //
+  // TUẦN TỰ, không `Promise.all`: `mirrorImage` bỏ qua ngay ảnh đã chép (kiểm
+  // tra chuỗi, không gọi mạng) nên lượt thường chỉ tốn vài mili-giây; còn lượt
+  // đầu tiên mà bắn cả trăm request song song vào CDN TikTok là cách nhanh
+  // nhất để bị chặn.
+  const mirroredCovers = new Map<string, string | null>()
+  for (const video of uniqueVideos) {
+    mirroredCovers.set(
+      video.externalVideoId,
+      await mirrorImage(admin, video.coverImageUrl, mediaPathForVideo(video.externalVideoId)),
+    )
+  }
+
   const { error } = await admin.from('video_metrics_daily').upsert(
     uniqueVideos.map((video) => ({
       connection_id: connectionId,
@@ -47,7 +67,7 @@ export const syncTiktokVideoSnapshots = async (
       comments: video.comments,
       shares: video.shares,
       title: video.title,
-      cover_image_url: video.coverImageUrl,
+      cover_image_url: mirroredCovers.get(video.externalVideoId) ?? video.coverImageUrl,
       posted_at: video.createdAt,
       permalink_url: video.permalinkUrl,
       synced_at: new Date().toISOString(),
