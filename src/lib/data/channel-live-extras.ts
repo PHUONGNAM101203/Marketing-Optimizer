@@ -121,11 +121,25 @@ export const collectKlaviyoExtras = async (
       const tokenResult = await resolveKlaviyoApiKey(admin, connectionId)
       if (!tokenResult.ok) return null
 
-      const [inventory, performance, newProfiles] = await Promise.all([
-        fetchKlaviyoInventory(tokenResult.accessToken),
-        fetchKlaviyoPerformance(tokenResult.accessToken, klaviyoRange),
-        fetchKlaviyoNewProfileCount(tokenResult.accessToken, klaviyoRange),
-      ])
+      // Bọc try/catch ở ĐÂY chứ không ở từng hàm provider: `fetchKlaviyoInventory`
+      // và `fetchKlaviyoNewProfileCount` không tự bắt lỗi, nên bất cứ trục trặc
+      // mạng nào — kể cả lượt gọi hết giờ chờ — sẽ ném xuyên qua `Promise.all`
+      // của `getChannelSummaries` và làm SẬP cả trang Kênh, chỉ vì một kênh
+      // trong mười kênh không lấy được số. Mất số liệu Klaviyo thì thẻ Klaviyo
+      // hiện rỗng; đó là hỏng cục bộ, đúng mức độ của sự cố.
+      let inventory, performance, newProfiles
+      try {
+        ;[inventory, performance, newProfiles] = await Promise.all([
+          fetchKlaviyoInventory(tokenResult.accessToken),
+          fetchKlaviyoPerformance(tokenResult.accessToken, klaviyoRange),
+          fetchKlaviyoNewProfileCount(tokenResult.accessToken, klaviyoRange),
+        ])
+      } catch (error) {
+        console.error(
+          `Không lấy được số liệu Klaviyo (${connectionId}): ${error instanceof Error ? error.message : String(error)}`,
+        )
+        return null
+      }
 
       const revenueMicros =
         (performance.campaignPerformance ?? []).reduce((sum, row) => sum + row.conversionValueMicros, 0) +

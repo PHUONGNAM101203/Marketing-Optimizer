@@ -4,6 +4,23 @@ import { normalizeHostname } from '@/lib/domain/hostname'
 import type { DiscoveredAccount } from './types'
 
 /**
+ * Trần thời gian cho MỘT lượt gọi ra ngoài.
+ *
+ * Vì sao chỉ đặt ở đây mà không đặt cho mọi provider: hàm này chạy TRONG lúc
+ * render trang Kênh (`getChannelSummaries` gọi thẳng, không qua bảng nào), nên
+ * upstream treo là cả trang treo — người dùng chỉ thấy khung xám mãi không
+ * xong, không có thông báo lỗi nào. Các lượt gọi thuộc đường ĐỒNG BỘ thì khác:
+ * chúng chạy nền trong ngân sách 800s và một số báo cáo dài ngày vốn chậm thật,
+ * đặt trần ở đó là tự tạo lỗi mới.
+ *
+ * 20 giây là trần an toàn, không phải mục tiêu: đường bình thường tính bằng
+ * mili-giây. Hết giờ thì `fetch` ném ra và nơi gọi xử lý như một lượt hỏng bình
+ * thường — mất số liệu của một kênh, không mất cả trang.
+ */
+const RENDER_PATH_TIMEOUT_MS = 20_000
+
+
+/**
  * Dò tài sản Meta thật sự gắn với website của Site đang kết nối.
  *
  * Ba sản phẩm, hai mức tin cậy domain khác hẳn nhau:
@@ -238,7 +255,10 @@ export const fetchMetaAvatarUrl = async (
     // `picture` (lồng trong `data`), tài khoản IG dùng `profile_picture_url`
     // (chuỗi phẳng). Xin nhầm field thì Graph trả 400 chứ không bỏ qua.
     url.searchParams.set('fields', provider === 'facebook' ? 'picture{url}' : 'profile_picture_url')
-    const response = await fetch(url.toString(), { headers: authHeader(pageAccessToken) })
+    const response = await fetch(url.toString(), {
+      headers: authHeader(pageAccessToken),
+      signal: AbortSignal.timeout(RENDER_PATH_TIMEOUT_MS),
+    })
     if (!response.ok) {
       await logGraphFailure(`Không lấy được ảnh đại diện (${externalAccountId})`, response)
       return null
@@ -264,7 +284,10 @@ export const fetchMetaFollowerCount = async (
   try {
     const url = new URL(`https://graph.facebook.com/${GRAPH_VERSION}/${externalAccountId}`)
     url.searchParams.set('fields', 'followers_count')
-    const response = await fetch(url.toString(), { headers: authHeader(pageAccessToken) })
+    const response = await fetch(url.toString(), {
+      headers: authHeader(pageAccessToken),
+      signal: AbortSignal.timeout(RENDER_PATH_TIMEOUT_MS),
+    })
     if (!response.ok) {
       await logGraphFailure(`Không lấy được followers_count (${externalAccountId})`, response)
       return null

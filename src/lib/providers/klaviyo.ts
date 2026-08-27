@@ -3,6 +3,23 @@ import 'server-only'
 import { unstable_cache } from 'next/cache'
 
 /**
+ * Trần thời gian cho MỘT lượt gọi ra ngoài.
+ *
+ * Vì sao chỉ đặt ở đây mà không đặt cho mọi provider: hàm này chạy TRONG lúc
+ * render trang Kênh (`getChannelSummaries` gọi thẳng, không qua bảng nào), nên
+ * upstream treo là cả trang treo — người dùng chỉ thấy khung xám mãi không
+ * xong, không có thông báo lỗi nào. Các lượt gọi thuộc đường ĐỒNG BỘ thì khác:
+ * chúng chạy nền trong ngân sách 800s và một số báo cáo dài ngày vốn chậm thật,
+ * đặt trần ở đó là tự tạo lỗi mới.
+ *
+ * 20 giây là trần an toàn, không phải mục tiêu: đường bình thường tính bằng
+ * mili-giây. Hết giờ thì `fetch` ném ra và nơi gọi xử lý như một lượt hỏng bình
+ * thường — mất số liệu của một kênh, không mất cả trang.
+ */
+const RENDER_PATH_TIMEOUT_MS = 20_000
+
+
+/**
  * Klaviyo API.
  *
  * CHƯA ai chạy thử với tài khoản Klaviyo thật cho các endpoint MỚI thêm ở
@@ -50,7 +67,10 @@ export type KlaviyoVerifyOutcome = { readonly ok: true; readonly account: Klaviy
 /** Gọi MỘT lần khi người dùng dán key vào form kết nối — xác nhận key hợp
  * lệ và lấy tên tài khoản để hiện ngay, không cần chờ lượt đồng bộ đầu. */
 export const verifyKlaviyoApiKey = async (apiKey: string): Promise<KlaviyoVerifyOutcome> => {
-  const response = await fetch(`${API_BASE}/accounts`, { headers: authHeaders(apiKey) })
+  const response = await fetch(`${API_BASE}/accounts`, {
+    headers: authHeaders(apiKey),
+    signal: AbortSignal.timeout(RENDER_PATH_TIMEOUT_MS),
+  })
   if (!response.ok) {
     const bodyText = await response.text().catch(() => '')
     return {
@@ -94,7 +114,10 @@ export const verifyKlaviyoApiKey = async (apiKey: string): Promise<KlaviyoVerify
  * PHẢI fallback về 'USD' (mặc định phổ biến nhất của Klaviyo), TUYỆT ĐỐI
  * không fallback về `site.currency` — đó chính là bug vừa sửa. */
 export const fetchKlaviyoAccountCurrency = async (apiKey: string): Promise<string | null> => {
-  const response = await fetch(`${API_BASE}/accounts`, { headers: authHeaders(apiKey) })
+  const response = await fetch(`${API_BASE}/accounts`, {
+    headers: authHeaders(apiKey),
+    signal: AbortSignal.timeout(RENDER_PATH_TIMEOUT_MS),
+  })
   if (!response.ok) return null
 
   try {
@@ -142,7 +165,10 @@ const fetchPaginated = async <T>(
 
   do {
     const url = buildUrl(cursor)
-    const response = await fetch(url.toString(), { headers: authHeaders(apiKey) })
+    const response = await fetch(url.toString(), {
+      headers: authHeaders(apiKey),
+      signal: AbortSignal.timeout(RENDER_PATH_TIMEOUT_MS),
+    })
     if (!response.ok) {
       const bodyText = await response.text().catch(() => '')
       const message = `HTTP ${response.status}: ${bodyText.slice(0, 300)}`
@@ -367,6 +393,7 @@ const fetchValuesReport = async (
   // thử lại, tối đa `MAX_THROTTLE_ATTEMPTS` lần thay vì trả lỗi ngay.
   for (let attempt = 1; attempt <= MAX_THROTTLE_ATTEMPTS; attempt += 1) {
     const response = await fetch(`${API_BASE}/${resource}-values-reports`, {
+      signal: AbortSignal.timeout(RENDER_PATH_TIMEOUT_MS),
       method: 'POST',
       headers: { ...authHeaders(apiKey), 'content-type': 'application/vnd.api+json' },
       body: JSON.stringify({
@@ -510,7 +537,10 @@ export const countKlaviyoProfiles = async (
       )
     }
 
-    const response = await fetch(url.toString(), { headers: authHeaders(apiKey) })
+    const response = await fetch(url.toString(), {
+      headers: authHeaders(apiKey),
+      signal: AbortSignal.timeout(RENDER_PATH_TIMEOUT_MS),
+    })
     if (!response.ok) {
       const bodyText = await response.text().catch(() => '')
       const message = `HTTP ${response.status}: ${bodyText.slice(0, 300)}`
