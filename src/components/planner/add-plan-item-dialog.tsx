@@ -11,6 +11,7 @@ import { CurrencyConversionHint, LocalTimeHint } from '@/components/planner/live
 import { createPlanItemAction, type PlanActionState } from '@/lib/actions/plans'
 import { OBJECTIVE_LABELS } from '@/lib/domain/plan'
 import { PROVIDER_META, PROVIDERS } from '@/lib/domain/providers'
+import { Textarea } from '@/components/ui/textarea'
 
 const INITIAL_STATE: PlanActionState = { error: null, ok: false }
 
@@ -172,7 +173,7 @@ export function AddPlanItemDialog({
           </div>
 
           <FormField label="Ghi chú" htmlFor="item-notes" hint="Không bắt buộc">
-            <textarea id="item-notes" name="notes" rows={2} className={inputClass} />
+            <Textarea id="item-notes" name="notes" rows={2} className={inputClass} />
           </FormField>
 
           {state.error ? (

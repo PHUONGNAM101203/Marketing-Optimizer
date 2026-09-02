@@ -7,6 +7,7 @@ import { DialogContent, DialogRoot, DialogTrigger } from '@/components/ui/dialog
 import { FormField, inputClass } from '@/components/ui/form-field'
 import { testRunPromptAction } from '@/lib/actions/prompts'
 import type { PromptRun, PromptTemplate } from '@/lib/domain/prompt'
+import { Textarea } from '@/components/ui/textarea'
 
 /* Hallmark · component: test-run-dialog · theme: studied-DNA (Ink & Signal)
  *
@@ -101,7 +102,7 @@ export function TestRunDialog({
               htmlFor={`manual-${variable.name}`}
               hint={variable.description}
             >
-              <textarea
+              <Textarea
                 id={`manual-${variable.name}`}
                 name={variable.name}
                 required={variable.required}

@@ -10,6 +10,7 @@ import {
   type TrackedPromptActionState,
 } from '@/lib/actions/tracked-prompts'
 import { AI_ENGINE_LABELS, AI_ENGINES, PROMPT_INTENT_LABELS } from '@/lib/domain/geo'
+import { Textarea } from '@/components/ui/textarea'
 
 const INITIAL_STATE: TrackedPromptActionState = { error: null, ok: false }
 
@@ -44,7 +45,7 @@ export function AddTrackedPromptDialog({ siteId }: { readonly siteId: string }) 
           <input type="hidden" name="siteId" value={siteId} />
 
           <FormField label="Câu hỏi" htmlFor="prompt-text">
-            <textarea
+            <Textarea
               id="prompt-text"
               name="text"
               required

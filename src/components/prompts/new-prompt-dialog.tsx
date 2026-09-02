@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { DialogContent, DialogRoot, DialogTrigger } from '@/components/ui/dialog'
 import { FormField, inputClass } from '@/components/ui/form-field'
 import { createPromptAction } from '@/lib/actions/prompts'
+import { Textarea } from '@/components/ui/textarea'
 import {
   PROMPT_CATEGORY_LABELS,
   VARIABLE_SOURCE_LABELS,
@@ -127,11 +128,11 @@ export function NewPromptDialog({ siteId }: { readonly siteId: string }) {
           </div>
 
           <FormField label="System prompt" htmlFor="new-prompt-system">
-            <textarea id="new-prompt-system" name="systemPrompt" required rows={3} className={inputClass} />
+            <Textarea id="new-prompt-system" name="systemPrompt" required rows={3} className={inputClass} />
           </FormField>
 
           <FormField label="User template" htmlFor="new-prompt-template" hint="Biến chèn bằng {{tên_biến}}.">
-            <textarea id="new-prompt-template" name="userTemplate" required rows={4} className={inputClass} />
+            <Textarea id="new-prompt-template" name="userTemplate" required rows={4} className={inputClass} />
           </FormField>
 
           <fieldset className="flex flex-col gap-3">

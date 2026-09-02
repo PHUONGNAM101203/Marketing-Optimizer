@@ -92,6 +92,13 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
     loadingLabel,
     children,
     disabled,
+    // HTML mặc định `type="submit"` cho nút NẰM TRONG form. Nghĩa là một nút
+    // phụ (mở lịch, xoá dòng, sao chép) đặt trong form mà quên khai `type` sẽ
+    // GỬI FORM khi bấm — lỗi câm, chỉ lộ ra khi người dùng bấm nhầm và mất dữ
+    // liệu đang nhập. Mặc định 'button' đảo chiều rủi ro: nút gửi buộc phải nói
+    // ra ý định của nó, và toàn bộ nút gửi trong repo đã khai `type="submit"`
+    // hoặc dùng `SubmitButton` (đã kiểm: không có nút nào dựa vào mặc định cũ).
+    type = 'button',
     ...props
   },
   ref,
@@ -121,6 +128,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
       aria-disabled={disabled || isLoading || undefined}
       data-state={state}
       disabled={disabled || isLoading}
+      type={type}
       className={cn(
         buttonVariants({ variant, size }),
         state === 'error' && 'text-[var(--color-negative)]',

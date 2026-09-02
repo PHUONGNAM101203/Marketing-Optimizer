@@ -9,6 +9,7 @@ import { Badge } from '@/components/ui/badge'
 import { savePromptVersionAction } from '@/lib/actions/prompts'
 import { formatDateTime } from '@/lib/format'
 import type { PromptTemplate } from '@/lib/domain/prompt'
+import { Textarea } from '@/components/ui/textarea'
 
 /* Hallmark · component: version-history-dialog · theme: studied-DNA (Ink & Signal)
  *
@@ -111,7 +112,7 @@ export function VersionHistoryDialog({
           </p>
 
           <FormField label="System prompt" htmlFor="version-system">
-            <textarea
+            <Textarea
               id="version-system"
               name="systemPrompt"
               required
@@ -122,7 +123,7 @@ export function VersionHistoryDialog({
           </FormField>
 
           <FormField label="User template" htmlFor="version-template" hint="Biến chèn bằng {{tên_biến}}.">
-            <textarea
+            <Textarea
               id="version-template"
               name="userTemplate"
               required
