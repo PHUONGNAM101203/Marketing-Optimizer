@@ -10,9 +10,9 @@ import { TBody, TD, TH, THead, TR, Table, TableScroller } from '@/components/ui/
 import { ToggleChip } from '@/components/ui/toggle-chip'
 import {
   DEFAULT_GA4_EXPLORE_DIMENSION,
-  GA4_EXPLORE_DIMENSIONS,
-  GA4_EXPLORE_DIMENSION_LABELS,
-  type Ga4ExploreDimension,
+  GA4_BREAKDOWN_DIMENSION_LABELS,
+  GA4_BREAKDOWN_DIMENSIONS,
+  type Ga4BreakdownDimension,
 } from '@/lib/domain/explore-dimension'
 import { fetchGa4MetricBreakdownAction, type Ga4MetricBreakdownState } from '@/lib/actions/ga4-metric-breakdown'
 import type { Ga4Overview, Ga4OverviewMetric } from '@/lib/providers/google-explore'
@@ -111,6 +111,42 @@ const TILES: readonly TileConfig[] = [
 
 const ALL_METRIC_KEYS: readonly Ga4OverviewMetric[] = TILES.map((tile) => tile.key)
 
+/**
+ * Những chỉ số tách được theo TÊN SỰ KIỆN.
+ *
+ * Không phải chỉ số nào cũng tách được: `eventName` là chiều phạm vi sự kiện,
+ * còn GA4 từ chối thẳng (HTTP 400) khi ghép nó với chỉ số phạm vi phiên như
+ * `bounceRate` hay `engagementRate`. Hiện chip cho mọi chỉ số rồi để người dùng
+ * bấm phải lỗi là bắt họ tự dò xem cái nào hợp lệ — thà chỉ hiện ở nơi chắc
+ * chắn dùng được.
+ *
+ * Bốn chỉ số này đều thuộc phạm vi sự kiện nên luôn ghép được. Muốn thêm thì
+ * kiểm bằng dữ liệu thật trước, đừng đoán.
+ */
+const EVENT_NAME_METRICS = new Set<Ga4OverviewMetric>([
+  'eventCount',
+  'eventCountPerUser',
+  'conversions',
+  'totalRevenue',
+])
+
+const dimensionsFor = (metric: Ga4OverviewMetric): readonly Ga4BreakdownDimension[] =>
+  EVENT_NAME_METRICS.has(metric)
+    ? GA4_BREAKDOWN_DIMENSIONS
+    : GA4_BREAKDOWN_DIMENSIONS.filter((dimension) => dimension !== 'eventName')
+
+/** Chiều mở sẵn khi bấm vào một ô. Với "Sự kiện quan trọng" thì câu hỏi đầu
+ * tiên gần như luôn là "gồm những sự kiện nào" — mở thẳng vào đó thay vì bắt
+ * bấm thêm một lần. */
+const preferredDimensionFor = (
+  metric: Ga4OverviewMetric,
+  current: Ga4BreakdownDimension,
+): Ga4BreakdownDimension => {
+  if (metric === 'conversions') return 'eventName'
+  const allowed = dimensionsFor(metric)
+  return allowed.includes(current) ? current : DEFAULT_GA4_EXPLORE_DIMENSION
+}
+
 const BREAKDOWN_PAGE_SIZE = 50
 
 export function Ga4OverviewPanel({
@@ -133,7 +169,7 @@ export function Ga4OverviewPanel({
   const [visibleMetrics, setVisibleMetrics] = useState<readonly Ga4OverviewMetric[]>(ALL_METRIC_KEYS)
   const [expandedMetric, setExpandedMetric] = useState<Ga4OverviewMetric | null>(null)
   const [breakdownDimension, setBreakdownDimension] =
-    useState<Ga4ExploreDimension>(DEFAULT_GA4_EXPLORE_DIMENSION)
+    useState<Ga4BreakdownDimension>(DEFAULT_GA4_EXPLORE_DIMENSION)
   const [breakdownState, setBreakdownState] = useState<Ga4MetricBreakdownState | null>(null)
   const [breakdownPage, setBreakdownPage] = useState(1)
   const [pending, startTransition] = useTransition()
@@ -152,7 +188,7 @@ export function Ga4OverviewPanel({
     )
   }
 
-  const loadBreakdown = (metric: Ga4OverviewMetric, dimension: Ga4ExploreDimension) => {
+  const loadBreakdown = (metric: Ga4OverviewMetric, dimension: Ga4BreakdownDimension) => {
     setBreakdownState(null)
     startTransition(async () => {
       const result = await fetchGa4MetricBreakdownAction({
@@ -177,12 +213,14 @@ export function Ga4OverviewPanel({
       setExpandedMetric(null)
       return
     }
+    const dimension = preferredDimensionFor(metric, breakdownDimension)
     setExpandedMetric(metric)
+    setBreakdownDimension(dimension)
     setBreakdownPage(1)
-    loadBreakdown(metric, breakdownDimension)
+    loadBreakdown(metric, dimension)
   }
 
-  const changeBreakdownDimension = (dimension: Ga4ExploreDimension) => {
+  const changeBreakdownDimension = (dimension: Ga4BreakdownDimension) => {
     setBreakdownDimension(dimension)
     setBreakdownPage(1)
     if (expandedMetric) loadBreakdown(expandedMetric, dimension)
@@ -268,10 +306,10 @@ export function Ga4OverviewPanel({
               {expandedTile.label} theo
             </p>
             <div className="flex flex-wrap gap-2">
-              {GA4_EXPLORE_DIMENSIONS.map((dimension) => (
+              {dimensionsFor(expandedTile.key).map((dimension) => (
                 <ToggleChip
                   key={dimension}
-                  label={GA4_EXPLORE_DIMENSION_LABELS[dimension]}
+                  label={GA4_BREAKDOWN_DIMENSION_LABELS[dimension]}
                   active={breakdownDimension === dimension}
                   onToggle={() => changeBreakdownDimension(dimension)}
                 />
@@ -299,11 +337,11 @@ export function Ga4OverviewPanel({
             </p>
           ) : (
             <>
-              <TableScroller aria-label={`${expandedTile.label} theo ${GA4_EXPLORE_DIMENSION_LABELS[breakdownDimension]}`}>
+              <TableScroller aria-label={`${expandedTile.label} theo ${GA4_BREAKDOWN_DIMENSION_LABELS[breakdownDimension]}`}>
                 <Table>
                   <THead>
                     <TR className="hover:bg-transparent">
-                      <TH>{GA4_EXPLORE_DIMENSION_LABELS[breakdownDimension]}</TH>
+                      <TH>{GA4_BREAKDOWN_DIMENSION_LABELS[breakdownDimension]}</TH>
                       <TH numeric>{expandedTile.label}</TH>
                     </TR>
                   </THead>

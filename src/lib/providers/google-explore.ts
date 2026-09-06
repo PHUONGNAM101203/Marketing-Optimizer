@@ -8,7 +8,7 @@ import 'server-only'
  * mà không ai dùng lại.
  */
 
-import type { Ga4ExploreDimension } from '@/lib/domain/explore-dimension'
+import type { Ga4BreakdownDimension } from '@/lib/domain/explore-dimension'
 import {
   MAX_TOP_ALL_TIME,
   MIN_TRENDING_VIEWS,
@@ -129,11 +129,12 @@ export const fetchGa4Explore = async (
  * `Ga4ExploreDimension` với trang Khám phá (đã mở rộng thêm 'country' ở
  * `explore-dimension.ts`), không tạo hai khái niệm "hạng mục GA4" khác nhau
  * trong cùng một app. */
-const GA4_BREAKDOWN_DIMENSION_NAMES: Readonly<Record<Ga4ExploreDimension, string>> = {
+const GA4_BREAKDOWN_DIMENSION_NAMES: Readonly<Record<Ga4BreakdownDimension, string>> = {
   page: 'pagePath',
   channel: 'sessionDefaultChannelGroup',
   device: 'deviceCategory',
   country: 'country',
+  eventName: 'eventName',
 }
 
 export interface Ga4MetricBreakdownRow {
@@ -152,7 +153,7 @@ export const fetchGa4MetricBreakdown = async (
   property: string,
   range: { readonly startDate: string; readonly endDate: string },
   metric: Ga4OverviewMetric,
-  dimension: Ga4ExploreDimension,
+  dimension: Ga4BreakdownDimension,
   limit: number,
 ): Promise<{ readonly rows: readonly Ga4MetricBreakdownRow[] | null; readonly error: string | null }> => {
   const dimensionName = GA4_BREAKDOWN_DIMENSION_NAMES[dimension]

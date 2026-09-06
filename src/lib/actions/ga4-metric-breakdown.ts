@@ -1,7 +1,7 @@
 'use server'
 
 import { z } from 'zod'
-import { GA4_EXPLORE_DIMENSIONS } from '@/lib/domain/explore-dimension'
+import { GA4_BREAKDOWN_DIMENSIONS } from '@/lib/domain/explore-dimension'
 import {
   fetchGa4MetricBreakdown,
   GA4_OVERVIEW_METRICS,
@@ -21,7 +21,7 @@ const schema = z.object({
   connectionId: z.string().uuid(),
   siteId: z.string().uuid(),
   metric: z.enum(GA4_OVERVIEW_METRICS),
-  dimension: z.enum(GA4_EXPLORE_DIMENSIONS),
+  dimension: z.enum(GA4_BREAKDOWN_DIMENSIONS),
   startDate: z.string().min(1),
   endDate: z.string().min(1),
 })
