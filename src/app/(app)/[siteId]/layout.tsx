@@ -103,7 +103,13 @@ export default async function SiteLayout({
             // phải so với giờ THẬT, không phải ngày neo của dữ liệu mock.
             now={new Date()}
           />
-          <main className="min-w-0 flex-1 overflow-y-auto">{children}</main>
+          {/* `overscroll-y-contain`: chạm đáy (hoặc đỉnh) rồi cuộn tiếp thì cú
+              nảy KHÔNG lan sang tài liệu bên ngoài. Thiếu nó, trên trình duyệt
+              di động cú nảy đó đẩy cả khung ứng dụng lệch khỏi khung nhìn và để
+              lại một dải trống dưới cùng — dải này còn dính lại sau khi cuộn
+              lên, vì khung ngoài đã `overflow-hidden` nên không có gì kéo nó về
+              chỗ cũ. */}
+          <main className="min-w-0 flex-1 overflow-y-auto overscroll-y-contain">{children}</main>
         </div>
       </div>
     </MobileNavProvider>

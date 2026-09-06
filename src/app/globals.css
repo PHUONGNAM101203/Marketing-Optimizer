@@ -74,6 +74,12 @@
   html,
   body {
     overflow-x: clip;
+    /* Chặn hiệu ứng nảy ở cấp tài liệu. Khung ứng dụng cố định chiều cao theo
+       khung nhìn và tự cuộn bên trong (xem `[siteId]/layout.tsx`), nên tài
+       liệu bên ngoài KHÔNG có gì để cuộn — cú nảy ở đó chỉ tạo ra một dải
+       trống rồi để nó dính lại. Chỉ tắt phần nảy/lan, không đụng tới việc cuộn
+       bình thường của các trang cuộn theo cửa sổ (đăng nhập, điều khoản). */
+    overscroll-behavior-y: none;
   }
 
   html {
