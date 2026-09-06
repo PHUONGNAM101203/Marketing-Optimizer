@@ -556,6 +556,11 @@ export const getChannelDetail = async (
         `klaviyo:performance:${allTimeRange.startDate}:${allTimeRange.endDate}`,
         () => fetchKlaviyoPerformance(tokenResult.accessToken, allTimeRange),
         (value) => value.error === null,
+        // 24 giờ, không phải 6: đây là báo cáo 365 ngày, thêm một ngày nữa gần
+        // như không đổi con số. Mỗi lần lấy lại là hai request vào nhóm endpoint
+        // có hạn mức chặt nhất, nên lấy thưa ra là nhường chỗ cho báo cáo của
+        // khoảng ngày người dùng đang thật sự xem.
+        24 * 60 * 60,
       )
 
       return {

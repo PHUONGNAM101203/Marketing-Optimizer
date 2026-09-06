@@ -360,7 +360,20 @@ const parseThrottleWaitMs = (bodyText: string): number | null => {
   return Number.isFinite(seconds) ? Math.ceil(seconds * 1000) + 100 : null
 }
 
-const MAX_THROTTLE_ATTEMPTS = 3
+const MAX_THROTTLE_ATTEMPTS = 4
+
+/**
+ * Sàn thời gian chờ theo từng lần thử, tính bằng mili-giây.
+ *
+ * Klaviyo trả về "Expected available in 1 second" cho MỌI lần bị chặn, kể cả
+ * khi thứ đang chạm trần là hạn mức THEO PHÚT chứ không phải theo giây. Nghe
+ * theo đúng con số đó nghĩa là thử lại sau 1 giây, bị chặn tiếp, lại chờ 1
+ * giây — hết lượt thử mà chưa từng chờ đủ lâu để hạn mức hồi lại.
+ *
+ * Lấy số LỚN HƠN giữa con số Klaviyo báo và sàn dưới đây: lần bị chặn thứ hai
+ * là dấu hiệu vấn đề không nằm ở nhịp một-request-mỗi-giây, nên phải lùi hẳn ra.
+ */
+const THROTTLE_BACKOFF_FLOOR_MS: readonly number[] = [1_500, 6_000, 20_000]
 
 const fetchValuesReport = async (
   apiKey: string,
@@ -411,7 +424,8 @@ const fetchValuesReport = async (
 
     if (response.status === 429 && attempt < MAX_THROTTLE_ATTEMPTS) {
       const bodyText = await response.text().catch(() => '')
-      const waitMs = parseThrottleWaitMs(bodyText) ?? 1500
+      const floorMs = THROTTLE_BACKOFF_FLOOR_MS[attempt - 1] ?? 20_000
+      const waitMs = Math.max(parseThrottleWaitMs(bodyText) ?? 0, floorMs)
       console.error(
         `Klaviyo ${resource}-values-reports bị throttle (lần ${attempt}/${MAX_THROTTLE_ATTEMPTS}) — chờ ${waitMs}ms rồi thử lại.`,
       )
@@ -754,7 +768,13 @@ const fetchKlaviyoPerformanceCached = unstable_cache(
     // tự retry khi bị throttle rồi, nhưng giãn cách sẵn ở đây để KHÔNG PHẢI
     // dựa vào retry cho trường hợp phổ biến nhất.
     const campaigns = await fetchCampaignValuesReport(apiKey, metricResult.metricId, reportRange)
-    await sleep(1100)
+    // 3 giây, không phải 1,1 giây: 1,1 chỉ vừa đủ cho hạn mức theo GIÂY, mà
+    // Klaviyo còn hạn mức theo PHÚT cho nhóm endpoint báo cáo. Một lượt tải
+    // nguội của trang này gọi tới bốn báo cáo, dồn trong vài giây là chắc chắn
+    // bị chặn — và mỗi lần bị chặn lại tốn thêm thời gian chờ, tệ hơn hẳn việc
+    // giãn sẵn ra. Kết quả đã được lưu xuống database nên cái giá này chỉ trả
+    // một lần mỗi vài giờ, không phải mỗi lượt tải trang.
+    await sleep(3_000)
     const flows = await fetchFlowValuesReport(apiKey, metricResult.metricId, reportRange)
 
     const error = campaigns.error ?? flows.error

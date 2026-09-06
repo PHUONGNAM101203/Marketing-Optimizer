@@ -133,29 +133,32 @@ export const collectKlaviyoExtras = async (
         // Cùng lớp lưu-xuống-database với trang chi tiết Klaviyo (xem
         // `report-cache.ts`): thẻ kênh không được phép là chỗ duy nhất còn gọi
         // API nguội, vì nó nằm ngay trang Kênh — trang người dùng vào nhiều nhất.
-        ;[inventory, performance, newProfiles] = await Promise.all([
-          withReportCache(
-            admin,
-            connectionId,
-            'klaviyo:inventory',
-            () => fetchKlaviyoInventory(tokenResult.accessToken),
-            (value) => value.campaigns.error === null && value.flows.error === null,
-          ),
-          withReportCache(
-            admin,
-            connectionId,
-            `klaviyo:performance:${klaviyoRange.startDate}:${klaviyoRange.endDate}`,
-            () => fetchKlaviyoPerformance(tokenResult.accessToken, klaviyoRange),
-            (value) => value.error === null,
-          ),
-          withReportCache(
-            admin,
-            connectionId,
-            `klaviyo:profiles:${klaviyoRange.startDate}:${klaviyoRange.endDate}`,
-            () => fetchKlaviyoNewProfileCount(tokenResult.accessToken, klaviyoRange),
-            (value) => value.error === null,
-          ),
-        ])
+        // TUẦN TỰ, không `Promise.all`: ba lượt này đụng cùng một hạn mức của
+        // Klaviyo, bắn cùng lúc là tự gây 429 rồi phải chờ lâu hơn hẳn so với
+        // xếp hàng ngay từ đầu.
+        inventory = await withReportCache(
+          admin,
+          connectionId,
+          'klaviyo:inventory',
+          () => fetchKlaviyoInventory(tokenResult.accessToken),
+          (value) => value.campaigns.error === null && value.flows.error === null,
+        )
+        newProfiles = await withReportCache(
+          admin,
+          connectionId,
+          `klaviyo:profiles:${klaviyoRange.startDate}:${klaviyoRange.endDate}`,
+          () => fetchKlaviyoNewProfileCount(tokenResult.accessToken, klaviyoRange),
+          (value) => value.error === null,
+        )
+        // Báo cáo hiệu suất để CUỐI: nó là lượt gọi nặng nhất và hay bị chặn
+        // nhất, nên hai số trên đã kịp lưu xuống database trước khi tới nó.
+        performance = await withReportCache(
+          admin,
+          connectionId,
+          `klaviyo:performance:${klaviyoRange.startDate}:${klaviyoRange.endDate}`,
+          () => fetchKlaviyoPerformance(tokenResult.accessToken, klaviyoRange),
+          (value) => value.error === null,
+        )
       } catch (error) {
         console.error(
           `Không lấy được số liệu Klaviyo (${connectionId}): ${error instanceof Error ? error.message : String(error)}`,
