@@ -22,7 +22,7 @@ import type { RealMetricsSummary } from '@/lib/data/site-metrics'
 const METRICS = [
   { key: 'sessions', label: 'Phiên (GA4)' },
   { key: 'users', label: 'Người dùng (GA4)' },
-  { key: 'conversions', label: 'Chuyển đổi (GA4)' },
+  { key: 'conversions', label: 'Sự kiện quan trọng (GA4)' },
   { key: 'clicks', label: 'Lượt nhấp (Search Console)' },
   { key: 'impressions', label: 'Lượt hiển thị (Search Console)' },
 ] as const

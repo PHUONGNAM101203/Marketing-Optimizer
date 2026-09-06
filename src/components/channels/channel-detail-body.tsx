@@ -82,10 +82,10 @@ export function ChannelDetailBody({
         <div className="flex flex-col gap-6">
           {preset === 'today' ? <ProcessingDelayNote days="24–48 giờ" /> : null}
           <TrendCard
-            title="Sessions theo ngày"
+            title="Số phiên theo ngày"
             data={dailySeries.map((point) => ({ date: point.date, sessions: point.sessions }))}
             metricKey="sessions"
-            label="Sessions"
+            label="Phiên"
           />
           <BreakdownSection
             label="Trang"
@@ -103,7 +103,7 @@ export function ChannelDetailBody({
               dimension: row.channel,
               cells: [formatCompact(row.sessions)],
             }))}
-            columns={['Sessions']}
+            columns={['Phiên']}
           />
           <BreakdownSection
             label="Thiết bị"
@@ -112,7 +112,7 @@ export function ChannelDetailBody({
               dimension: row.device,
               cells: [formatCompact(row.sessions)],
             }))}
-            columns={['Sessions']}
+            columns={['Phiên']}
           />
         </div>
       )

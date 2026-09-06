@@ -148,7 +148,7 @@ export default async function OverviewPage({
       <StatRow>
         {real.hasGa4 ? (
           <StatTile
-            label="Chuyển đổi (GA4)"
+            label="Sự kiện quan trọng (GA4)"
             value={formatNumber(real.totals.conversions)}
             metric="conversions"
             deltaPct={compare(real.totals.conversions, realPrevious.totals.conversions).deltaPct}
@@ -198,7 +198,7 @@ export default async function OverviewPage({
         <Card>
           <CardHeader
             title="Truy cập theo ngày"
-            description="Sessions từ GA4, cộng gộp mọi property đã kết nối."
+            description="Số phiên từ GA4, cộng gộp mọi property đã kết nối."
           />
           <CardBody>
             {real.hasGa4 && sessionPoints.length > 0 ? (
@@ -379,7 +379,7 @@ function SessionsChart({ data }: { readonly data: readonly { date: string; sessi
   return (
     <TrendChart
       data={data}
-      series={[{ key: 'sessions', label: 'Sessions', colorToken: '--color-signal', kind: 'area' }]}
+      series={[{ key: 'sessions', label: 'Phiên', colorToken: '--color-signal', kind: 'area' }]}
       format="number"
     />
   )

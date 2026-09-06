@@ -54,42 +54,57 @@ const formatDurationHours = (seconds: number | null): string => {
     : formatDurationSec(seconds)
 }
 
+/**
+ * Nhãn lấy ĐÚNG theo giao diện tiếng Việt của GA4, không tự đặt lại.
+ *
+ * Lý do: người dùng đối chiếu số trên app với chính GA4. Gọi khác đi thì mỗi
+ * lần đối chiếu là một lần phải tự dịch trong đầu, và tệ hơn là dễ tưởng hai
+ * con số khác nhau đang đo hai thứ khác nhau. Vì vậy "Phiên" chứ không phải
+ * "Sessions", "Lượt xem" chứ không phải "Lượt xem trang".
+ *
+ * `conversions` hiện là "Sự kiện quan trọng": Google đã bỏ khái niệm
+ * "Chuyển đổi" khỏi GA4 và thay bằng key events. Tên chỉ số GỌI QUA API vẫn
+ * giữ `conversions` — Google còn phục vụ tên cũ, mà đổi tên chỉ số trong
+ * request là rủi ro cả lượt gọi hỏng chỉ để đổi một cái tên. KHÔNG áp cách gọi
+ * này sang Google Ads, Merchant Center, Meta hay TikTok: các nền tảng đó vẫn
+ * gọi là "Lượt chuyển đổi".
+ */
 const TILES: readonly TileConfig[] = [
-  { key: 'activeUsers', label: 'Người dùng', format: formatCompact },
-  { key: 'totalUsers', label: 'Tổng người dùng', format: formatCompact },
+  { key: 'activeUsers', label: 'Người dùng đang hoạt động', format: formatCompact },
+  { key: 'totalUsers', label: 'Tổng số người dùng', format: formatCompact },
   { key: 'newUsers', label: 'Người dùng mới', format: formatCompact },
-  { key: 'sessions', label: 'Sessions', format: formatCompact },
+  { key: 'sessions', label: 'Phiên', format: formatCompact },
   {
     key: 'sessionsPerUser',
-    label: 'Sessions/người dùng',
+    label: 'Số phiên trên mỗi người dùng',
     format: (v) => formatNumber(v, { maximumFractionDigits: 2 }),
   },
-  { key: 'engagedSessions', label: 'Sessions có tương tác', format: formatCompact },
+  { key: 'engagedSessions', label: 'Phiên tương tác', format: formatCompact },
   { key: 'engagementRate', label: 'Tỷ lệ tương tác', format: (v) => formatPercent(v) },
-  { key: 'averageSessionDuration', label: 'Thời lượng TB/session', format: formatDurationSec },
-  { key: 'userEngagementDuration', label: 'Tổng thời gian tương tác', format: formatDurationHours },
-  { key: 'screenPageViews', label: 'Lượt xem trang', format: formatCompact },
+  { key: 'averageSessionDuration', label: 'Thời lượng phiên trung bình', format: formatDurationSec },
+  { key: 'userEngagementDuration', label: 'Thời gian tương tác của người dùng', format: formatDurationHours },
+  { key: 'screenPageViews', label: 'Lượt xem', format: formatCompact },
   {
     key: 'screenPageViewsPerSession',
-    label: 'Lượt xem/session',
+    label: 'Lượt xem trên mỗi phiên',
     format: (v) => formatNumber(v, { maximumFractionDigits: 2 }),
   },
   {
     key: 'screenPageViewsPerUser',
-    label: 'Lượt xem/người dùng',
+    label: 'Lượt xem trên mỗi người dùng',
     format: (v) => formatNumber(v, { maximumFractionDigits: 2 }),
   },
   { key: 'eventCount', label: 'Số sự kiện', format: formatCompact },
   {
     key: 'eventCountPerUser',
-    label: 'Sự kiện/người dùng',
+    label: 'Số sự kiện trên mỗi người dùng',
     format: (v) => formatNumber(v, { maximumFractionDigits: 2 }),
   },
-  { key: 'conversions', label: 'Chuyển đổi', format: (v) => formatNumber(v, { maximumFractionDigits: 1 }) },
+  { key: 'conversions', label: 'Sự kiện quan trọng', format: (v) => formatNumber(v, { maximumFractionDigits: 1 }) },
   { key: 'bounceRate', label: 'Tỷ lệ thoát', format: (v) => formatPercent(v) },
   {
     key: 'totalRevenue',
-    label: 'Doanh thu',
+    label: 'Tổng doanh thu',
     format: (v, currency) => formatCurrencyCompact(v === null ? null : v * 1_000_000, currency),
   },
 ]

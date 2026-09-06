@@ -17,11 +17,16 @@ export function ChannelCard({
   provider,
   summary,
   currency,
+  pending = false,
 }: {
   readonly siteId: string
   readonly provider: ProviderId
   readonly summary: ChannelSummary
   readonly currency: string
+  /** Số liệu của kênh này còn đang lấy từ API của nền tảng. Khác hẳn "chưa có
+   * dữ liệu": nói nhầm hai thứ này khiến người dùng tưởng kênh hỏng trong khi
+   * nó chỉ đang tải. */
+  readonly pending?: boolean
 }) {
   const body = (
     <Link
@@ -41,7 +46,7 @@ export function ChannelCard({
         />
       </div>
 
-      <ChannelHeadline provider={provider} summary={summary} currency={currency} />
+      <ChannelHeadline provider={provider} summary={summary} currency={currency} pending={pending} />
     </Link>
   )
 
@@ -70,11 +75,21 @@ function ChannelHeadline({
   provider,
   summary,
   currency,
+  pending,
 }: {
   readonly provider: ProviderId
   readonly summary: ChannelSummary
   readonly currency: string
+  readonly pending: boolean
 }) {
+  // Đặt TRƯỚC mọi nhánh theo nền tảng: đang tải thì chưa nhánh nào có đủ số
+  // để nói điều gì đúng.
+  if (pending) {
+    return (
+      <p className="text-[length:var(--text-sm)] text-[var(--color-ink-3)]">Đang tải số liệu…</p>
+    )
+  }
+
   if (provider === 'gtm') {
     return (
       <div className="flex flex-1 flex-col justify-center gap-1.5 py-2">

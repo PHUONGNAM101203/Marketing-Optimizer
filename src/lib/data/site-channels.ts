@@ -8,6 +8,7 @@ import {
   type MetaFollowerTarget,
 } from './channel-live-extras'
 import { createClient } from '@/lib/supabase/server'
+import { cache } from 'react'
 
 export interface ChannelTotals {
   readonly sessions: number
@@ -114,6 +115,19 @@ const splitConnectionsBySnapshot = (
 export const getChannelSummaries = async (
   siteId: string,
   range: { readonly start: string; readonly end: string },
+  options?: {
+    /**
+     * Bỏ qua phần gọi API sống (Klaviyo, follower Meta) và trả về NGAY phần
+     * đọc từ database.
+     *
+     * Vì sao cần: hai nguồn đó nằm sau cache 6 giờ, nhưng khi cache nguội —
+     * đúng lúc người dùng lâu ngày mới vào app — chúng tốn vài giây, mà cả
+     * trang lại đang `await` chung một lượt. Một kênh chậm giữ toàn bộ trang.
+     * Nơi gọi dùng cờ này để vẽ ngay bằng số trong database, rồi tự lấy bản
+     * đầy đủ trong một `Suspense` riêng (xem `channels/page.tsx`).
+     */
+    readonly skipLive?: boolean
+  },
 ): Promise<ReadonlyMap<ProviderId, ChannelSummary>> => {
   const supabase = await createClient()
 
@@ -276,6 +290,8 @@ export const getChannelSummaries = async (
       return { connectionId, provider, externalAccountId: connectionRow.external_account_id }
     })
     .filter((target): target is MetaFollowerTarget => target !== null)
+
+  if (options?.skipLive) return summaries
 
   const [followerResults, klaviyo] = await Promise.all([
     collectMetaFollowerCounts(siteId, metaTargets),
@@ -478,3 +494,24 @@ export const getChannelDailySeriesByProvider = async (
 
   return new Map(PROVIDERS.map((provider) => [provider, mergeDailyRows(rowsByProvider.get(provider) ?? [])]))
 }
+
+/**
+ * Bản ĐẦY ĐỦ (kèm số liệu API sống), gói trong `cache` của React.
+ *
+ * `cache` khử trùng lặp trong PHẠM VI MỘT REQUEST: trang Kênh dựng ba thẻ cần
+ * số liệu sống (Klaviyo, Facebook, Instagram), mỗi thẻ trong một `Suspense`
+ * riêng để thẻ nào xong trước hiện trước. Không có lớp này thì ba thẻ đó gọi
+ * hàm nặng ba lần cho cùng một dữ liệu.
+ *
+ * Tham số phải là chuỗi rời chứ không phải object `range`: `cache` so sánh
+ * từng tham số bằng `Object.is`, mà hai object cùng nội dung vẫn khác nhau —
+ * truyền object là mất tác dụng khử trùng lặp mà không có dấu hiệu gì.
+ */
+export const getChannelSummariesLive = cache(
+  async (
+    siteId: string,
+    start: string,
+    end: string,
+  ): Promise<ReadonlyMap<ProviderId, ChannelSummary>> =>
+    getChannelSummaries(siteId, { start, end }),
+)
