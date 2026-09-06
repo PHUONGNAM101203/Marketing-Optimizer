@@ -961,6 +961,35 @@ export type Database = {
           },
         ]
       }
+      provider_report_cache: {
+        Row: {
+          cache_key: string
+          connection_id: string
+          fetched_at: string
+          payload: Json
+        }
+        Insert: {
+          cache_key: string
+          connection_id: string
+          fetched_at?: string
+          payload: Json
+        }
+        Update: {
+          cache_key?: string
+          connection_id?: string
+          fetched_at?: string
+          payload?: Json
+        }
+        Relationships: [
+          {
+            foreignKeyName: "provider_report_cache_connection_id_fkey"
+            columns: ["connection_id"]
+            isOneToOne: false
+            referencedRelation: "connections"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       site_ai_keys: {
         Row: {
           api_key_enc: string

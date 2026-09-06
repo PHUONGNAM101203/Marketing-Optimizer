@@ -47,6 +47,28 @@ export interface KlaviyoDashboardProps {
   readonly isAllTime: boolean
 }
 
+/**
+ * Đổi văn lỗi kỹ thuật thành câu người dùng hiểu và biết phải làm gì.
+ *
+ * "The operation was aborted due to timeout" là văn của trình duyệt khi lượt
+ * gọi chạm trần thời gian — đọc lên chỉ thấy như app hỏng. Thực tế là Klaviyo
+ * trả lời chậm: Reporting API của họ giới hạn khoảng một request mỗi giây, nên
+ * lượt lấy nguội phải chờ giữa các request.
+ */
+const describePerformanceError = (raw: string): string => {
+  const lowered = raw.toLowerCase()
+  if (lowered.includes('timeout') || lowered.includes('aborted')) {
+    return 'Klaviyo trả lời quá chậm cho lượt lấy này — Reporting API của họ giới hạn khoảng một request mỗi giây nên lượt lấy nguội phải chờ giữa các request. Các số khác trên trang vẫn đúng; thử lại sau ít phút là có.'
+  }
+  if (lowered.includes('429') || lowered.includes('throttl')) {
+    return 'Klaviyo đang chặn vì gọi quá nhiều trong thời gian ngắn. Chờ vài phút rồi tải lại trang.'
+  }
+  if (lowered.includes('401') || lowered.includes('403')) {
+    return 'Klaviyo từ chối API Key. Vào phần Kết nối để nhập lại key còn hiệu lực.'
+  }
+  return 'Lượt lấy số liệu hiệu suất không thành công. Nguyên văn lỗi ở dưới.'
+}
+
 export function KlaviyoDashboard({
   campaigns,
   campaignsTruncated,
@@ -124,8 +146,13 @@ export function KlaviyoDashboard({
       </StatRow>
 
       {performanceError ? (
-        <Callout tone="critical" title="Không lấy được số liệu hiệu suất">
-          <p className="font-mono text-[length:var(--text-xs)] break-all">{performanceError}</p>
+        <Callout tone="caution" title="Chưa lấy được số liệu hiệu suất lần này">
+          <p>{describePerformanceError(performanceError)}</p>
+          {/* Giữ nguyên văn lỗi gốc bên dưới lời giải thích: khi cần báo lại
+              hoặc tự dò, nguyên văn là thứ duy nhất dùng được. */}
+          <p className="mt-2 rounded-[var(--radius-sm)] bg-[var(--color-paper-2)] p-2 font-mono text-[length:var(--text-2xs)] break-all text-[var(--color-ink-3)]">
+            {performanceError}
+          </p>
         </Callout>
       ) : null}
 

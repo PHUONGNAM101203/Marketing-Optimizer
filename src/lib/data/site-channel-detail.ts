@@ -53,6 +53,7 @@ import {
 } from '@/lib/providers/klaviyo'
 import { addDays, toIsoDate } from '@/mock/dates'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { withReportCache } from '@/lib/data/report-cache'
 import { createClient } from '@/lib/supabase/server'
 
 export interface GoogleAdsExplore {
@@ -512,13 +513,35 @@ export const getChannelDetail = async (
       // KHÔNG phụ thuộc khoảng ngày (cache theo apiKey) nên đổi khoảng ngày
       // ở đầu trang không làm nó cache-miss; chỉ `fetchKlaviyoNewProfileCount`/
       // `fetchKlaviyoPerformance` mới phụ thuộc `range`.
-      const inventory = await fetchKlaviyoInventory(tokenResult.accessToken)
-      const rangeProfiles = await fetchKlaviyoNewProfileCount(tokenResult.accessToken, range)
+      // Bọc `withReportCache`: số đã lấy được MỘT LẦN thì còn trong database,
+      // nên lần sau đọc thẳng từ đó, và khi Klaviyo lỗi hoặc quá chậm vẫn còn
+      // số cũ để hiện thay vì một khung báo lỗi. Xem `report-cache.ts` — đây
+      // đúng là nơi lỗi "The operation was aborted due to timeout" xuất hiện.
+      const inventory = await withReportCache(
+        admin,
+        connection.id,
+        'klaviyo:inventory',
+        () => fetchKlaviyoInventory(tokenResult.accessToken),
+        (value) => value.campaigns.error === null && value.flows.error === null,
+      )
+      const rangeProfiles = await withReportCache(
+        admin,
+        connection.id,
+        `klaviyo:profiles:${range.startDate}:${range.endDate}`,
+        () => fetchKlaviyoNewProfileCount(tokenResult.accessToken, range),
+        (value) => value.error === null,
+      )
 
       // TUẦN TỰ, không Promise.all — cả hai lượt đều đụng Reporting API (giới
       // hạn ~1 request/giây, xem `fetchKlaviyoPerformance`); gọi song song sẽ
       // tái diễn đúng lỗi 429 vừa sửa ở tầng dưới.
-      const performance = await fetchKlaviyoPerformance(tokenResult.accessToken, range)
+      const performance = await withReportCache(
+        admin,
+        connection.id,
+        `klaviyo:performance:${range.startDate}:${range.endDate}`,
+        () => fetchKlaviyoPerformance(tokenResult.accessToken, range),
+        (value) => value.error === null,
+      )
       // -364, KHÔNG phải -365. Biên trên của Klaviyo là LOẠI TRỪ nên
       // `fetchKlaviyoPerformance` gửi đi ngày SAU `endDate`; để -365 thì
       // khoảng thật là 366 ngày và Klaviyo trả 400 "Passed in timeframe is
@@ -527,7 +550,13 @@ export const getChannelDetail = async (
         startDate: toIsoDate(addDays(new Date(), -364)),
         endDate: toIsoDate(new Date()),
       }
-      const allTimePerformance = await fetchKlaviyoPerformance(tokenResult.accessToken, allTimeRange)
+      const allTimePerformance = await withReportCache(
+        admin,
+        connection.id,
+        `klaviyo:performance:${allTimeRange.startDate}:${allTimeRange.endDate}`,
+        () => fetchKlaviyoPerformance(tokenResult.accessToken, allTimeRange),
+        (value) => value.error === null,
+      )
 
       return {
         kind: 'klaviyo',

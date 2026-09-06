@@ -9,6 +9,7 @@ import {
 } from '@/lib/providers/klaviyo'
 import { resolveKlaviyoApiKey, resolvePageAccessToken } from '@/lib/sync/access-token'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { withReportCache } from '@/lib/data/report-cache'
 
 /**
  * Hai nguồn số liệu của trang Kênh KHÔNG nằm trong `metrics_daily` mà phải gọi
@@ -129,10 +130,31 @@ export const collectKlaviyoExtras = async (
       // hiện rỗng; đó là hỏng cục bộ, đúng mức độ của sự cố.
       let inventory, performance, newProfiles
       try {
+        // Cùng lớp lưu-xuống-database với trang chi tiết Klaviyo (xem
+        // `report-cache.ts`): thẻ kênh không được phép là chỗ duy nhất còn gọi
+        // API nguội, vì nó nằm ngay trang Kênh — trang người dùng vào nhiều nhất.
         ;[inventory, performance, newProfiles] = await Promise.all([
-          fetchKlaviyoInventory(tokenResult.accessToken),
-          fetchKlaviyoPerformance(tokenResult.accessToken, klaviyoRange),
-          fetchKlaviyoNewProfileCount(tokenResult.accessToken, klaviyoRange),
+          withReportCache(
+            admin,
+            connectionId,
+            'klaviyo:inventory',
+            () => fetchKlaviyoInventory(tokenResult.accessToken),
+            (value) => value.campaigns.error === null && value.flows.error === null,
+          ),
+          withReportCache(
+            admin,
+            connectionId,
+            `klaviyo:performance:${klaviyoRange.startDate}:${klaviyoRange.endDate}`,
+            () => fetchKlaviyoPerformance(tokenResult.accessToken, klaviyoRange),
+            (value) => value.error === null,
+          ),
+          withReportCache(
+            admin,
+            connectionId,
+            `klaviyo:profiles:${klaviyoRange.startDate}:${klaviyoRange.endDate}`,
+            () => fetchKlaviyoNewProfileCount(tokenResult.accessToken, klaviyoRange),
+            (value) => value.error === null,
+          ),
         ])
       } catch (error) {
         console.error(
