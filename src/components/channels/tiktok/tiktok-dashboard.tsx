@@ -3,6 +3,7 @@ import { VideoRankingList, type VideoRankingItem } from '@/components/channels/v
 import { VideoTrendingWidget } from '@/components/channels/video/video-trending-widget'
 import { VideoStatsSummary } from '@/components/channels/video/video-stats-summary'
 import type { VideoSummary, VideoTrendingResult } from '@/lib/providers/video-trending-types'
+import { filterPostedInRange } from '@/lib/domain/video-posted-in-range'
 
 const RANKING_LIMIT = 5
 
@@ -35,16 +36,27 @@ const RANKING_LIMIT = 5
  */
 export function TiktokDashboard({
   rangeStats,
+  rangeStart,
+  rangeEnd,
   trending,
   rangeLabel,
   videoSnapshotsLikelyBroken,
 }: {
   readonly rangeStats: readonly VideoSummary[]
+  /** Mốc ngày THẬT của khoảng đang chọn (không phải nhãn hiển thị) — bảng xếp
+   * hạng lọc theo ngày đăng, xem `filterPostedInRange`. */
+  readonly rangeStart: string
+  readonly rangeEnd: string
   readonly trending: VideoTrendingResult
   readonly rangeLabel: string
   readonly videoSnapshotsLikelyBroken: boolean
 }) {
-  const rankedInRange: VideoRankingItem[] = rangeStats.slice(0, RANKING_LIMIT).map((video) => ({
+  // Xếp hạng chỉ tính video ĐĂNG trong khoảng — khớp với tab Tổng quan. Widget
+  // "Thống kê" bên dưới vẫn dùng `rangeStats` đầy đủ: tổng tương tác trong
+  // khoảng thì phải tính cả phần video cũ kiếm được, lọc đi là báo thiếu.
+  const rankedInRange: VideoRankingItem[] = filterPostedInRange(rangeStats, rangeStart, rangeEnd)
+    .slice(0, RANKING_LIMIT)
+    .map((video) => ({
     title: video.title,
     thumbnailUrl: video.thumbnailUrl,
     views: video.views,
@@ -72,8 +84,8 @@ export function TiktokDashboard({
         <VideoRankingList
           items={rankedInRange}
           platformLabel="TikTok"
-          emptyTitle="Đang thu thập dữ liệu"
-          emptyDescription="Chưa đủ lịch sử snapshot để tính chính xác cho khoảng ngày này — quay lại sau khi đồng bộ thêm."
+          emptyTitle="Chưa có video nào đăng trong khoảng này"
+          emptyDescription="Bảng này chỉ xếp hạng video ĐĂNG trong khoảng ngày đang chọn, giống tab Tổng quan. Nới rộng khoảng ngày để thấy nhiều hơn."
         />
       </section>
 

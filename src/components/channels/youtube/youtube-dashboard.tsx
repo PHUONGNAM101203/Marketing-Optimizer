@@ -4,6 +4,7 @@ import { VideoTrendingWidget } from '@/components/channels/video/video-trending-
 import { VideoStatsSummary } from '@/components/channels/video/video-stats-summary'
 import type { YoutubeExplore } from '@/lib/providers/google-explore'
 import type { VideoTrendingResult } from '@/lib/providers/video-trending-types'
+import { filterPostedInRange } from '@/lib/domain/video-posted-in-range'
 
 const RANKING_LIMIT = 5
 
@@ -20,14 +21,27 @@ const YOUTUBE_WATCH_URL = (videoId: string): string => `https://www.youtube.com/
  */
 export function YoutubeDashboard({
   topVideosInRange,
+  rangeStart,
+  rangeEnd,
   trending,
   rangeLabel,
 }: {
   readonly topVideosInRange: YoutubeExplore['topVideos']
+  /** Mốc ngày THẬT của khoảng đang chọn — xem `filterPostedInRange`. */
+  readonly rangeStart: string
+  readonly rangeEnd: string
   readonly trending: VideoTrendingResult
   readonly rangeLabel: string
 }) {
-  const rankedInRange: VideoRankingItem[] = topVideosInRange.slice(0, RANKING_LIMIT).map((video) => ({
+  // Cùng quy ước với TikTok: xếp hạng theo video ĐĂNG trong khoảng. Widget
+  // thống kê bên dưới giữ nguyên danh sách đầy đủ.
+  const rankedInRange: VideoRankingItem[] = filterPostedInRange(
+    topVideosInRange,
+    rangeStart,
+    rangeEnd,
+  )
+    .slice(0, RANKING_LIMIT)
+    .map((video) => ({
     title: video.title,
     thumbnailUrl: video.thumbnailUrl,
     views: video.views,

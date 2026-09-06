@@ -273,6 +273,8 @@ export function ChannelDetailBody({
                   />
                   <YoutubeDashboard
                     topVideosInRange={detail.data.topVideos}
+                    rangeStart={startDate ?? ''}
+                    rangeEnd={endDate ?? ''}
                     trending={detail.trending}
                     rangeLabel={DATE_RANGE_LABELS[preset]}
                   />
@@ -591,6 +593,8 @@ export function ChannelDetailBody({
               panel: (
                 <TiktokDashboard
                   rangeStats={detail.rangeStats}
+                  rangeStart={startDate ?? ''}
+                  rangeEnd={endDate ?? ''}
                   trending={detail.trending}
                   rangeLabel={DATE_RANGE_LABELS[preset]}
                   videoSnapshotsLikelyBroken={detail.videoSnapshotsLikelyBroken}
