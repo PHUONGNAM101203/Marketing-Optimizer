@@ -31,6 +31,8 @@ interface VideoTrendingRow {
   readonly cutoff1_views: number | null
   readonly cutoff2_date: string | null
   readonly cutoff2_views: number | null
+  readonly last_seen_date: string
+  readonly connection_last_seen_date: string
 }
 
 const toSummary = (row: VideoTrendingRow): VideoSummary => ({
@@ -43,9 +45,9 @@ const toSummary = (row: VideoTrendingRow): VideoSummary => ({
   shares: row.latest_shares,
   createdAt: row.posted_at,
   permalinkUrl: row.permalink_url,
-  // Nguồn này không biết video còn được liệt kê hay không — xem
-  // chú thích của `unavailableSince`.
-  unavailableSince: null,
+  // Vắng mặt ở lượt đồng bộ mới nhất = đã thôi được liệt kê.
+  unavailableSince:
+    row.last_seen_date < row.connection_last_seen_date ? row.last_seen_date : null,
 })
 
 const toIsoDate = (date: Date): string => date.toISOString().slice(0, 10)
@@ -131,8 +133,8 @@ export const getTiktokVideoRangeGrowth = async (
           shares: row.end_shares,
           createdAt: row.posted_at,
           permalinkUrl: row.permalink_url,
-          // Nguồn này không biết video còn được liệt kê hay không — xem
-          // chú thích của `unavailableSince`.
+          // `get_video_range_growth` chưa trả cột này — widget dùng nó (video
+          // tăng nhanh) hiện chưa cần phân biệt video đã ẩn.
           unavailableSince: null,
           growthDelta,
           growthPct: growthDelta / baseline,
@@ -236,6 +238,8 @@ interface VideoRangeRow {
   readonly baseline_likes: number | null
   readonly baseline_comments: number | null
   readonly baseline_shares: number | null
+  readonly last_seen_date: string
+  readonly connection_last_seen_date: string
 }
 
 /** Trần trên số video trả về từ `getTiktokVideoRangeStats` — trang chỉ cần
@@ -289,9 +293,9 @@ export const getTiktokVideoRangeStats = async (
         shares: Math.max(0, row.end_shares - (row.baseline_shares ?? 0)),
         createdAt: row.posted_at,
         permalinkUrl: row.permalink_url,
-        // Nguồn này không biết video còn được liệt kê hay không — xem
-        // chú thích của `unavailableSince`.
-        unavailableSince: null,
+        // Vắng mặt ở lượt đồng bộ mới nhất = đã thôi được liệt kê.
+        unavailableSince:
+          row.last_seen_date < row.connection_last_seen_date ? row.last_seen_date : null,
       }),
     )
     .filter((summary) => summary.views > 0)

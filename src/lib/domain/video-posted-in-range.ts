@@ -30,3 +30,19 @@ export const filterPostedInRange = <T extends { readonly createdAt: string | nul
     return day >= startDate && day <= endDate
   })
 }
+
+/**
+ * Bỏ video nền tảng đã thôi liệt kê ra khỏi bảng XẾP HẠNG.
+ *
+ * Bảng xếp hạng chỉ có năm dòng và trả lời câu "nên làm thêm nội dung kiểu
+ * nào" — một video đã ẩn thì không hành động gì được với nó, mà nó lại chiếm
+ * chỗ của video xếp sau đang còn chạy. Lọc ở đây rồi mới cắt năm dòng, nên
+ * dòng kế tiếp tự dâng lên thay chỗ.
+ *
+ * KHÁC lưới "Toàn bộ video theo ngày đăng": ở đó video ẩn vẫn hiện, kèm huy
+ * hiệu "Không khả dụng" — lưới đó là bản kiểm kê, giấu đi thì người dùng tưởng
+ * video biến mất khỏi app.
+ */
+export const excludeUnavailable = <T extends { readonly unavailableSince: string | null }>(
+  videos: readonly T[],
+): readonly T[] => videos.filter((video) => video.unavailableSince === null)

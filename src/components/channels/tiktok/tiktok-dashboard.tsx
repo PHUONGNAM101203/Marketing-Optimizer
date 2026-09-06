@@ -3,7 +3,10 @@ import { VideoRankingList, type VideoRankingItem } from '@/components/channels/v
 import { VideoTrendingWidget } from '@/components/channels/video/video-trending-widget'
 import { VideoStatsSummary } from '@/components/channels/video/video-stats-summary'
 import type { VideoSummary, VideoTrendingResult } from '@/lib/providers/video-trending-types'
-import { filterPostedInRange } from '@/lib/domain/video-posted-in-range'
+import {
+  excludeUnavailable,
+  filterPostedInRange,
+} from '@/lib/domain/video-posted-in-range'
 
 const RANKING_LIMIT = 5
 
@@ -54,7 +57,9 @@ export function TiktokDashboard({
   // Xếp hạng chỉ tính video ĐĂNG trong khoảng — khớp với tab Tổng quan. Widget
   // "Thống kê" bên dưới vẫn dùng `rangeStats` đầy đủ: tổng tương tác trong
   // khoảng thì phải tính cả phần video cũ kiếm được, lọc đi là báo thiếu.
-  const rankedInRange: VideoRankingItem[] = filterPostedInRange(rangeStats, rangeStart, rangeEnd)
+  const rankedInRange: VideoRankingItem[] = excludeUnavailable(
+    filterPostedInRange(rangeStats, rangeStart, rangeEnd),
+  )
     .slice(0, RANKING_LIMIT)
     .map((video) => ({
     title: video.title,
@@ -66,7 +71,9 @@ export function TiktokDashboard({
     createdAt: video.createdAt,
     permalinkUrl: video.permalinkUrl,
   }))
-  const rankedAllTime: VideoRankingItem[] = trending.topAllTime.slice(0, RANKING_LIMIT).map((video) => ({
+  const rankedAllTime: VideoRankingItem[] = excludeUnavailable(trending.topAllTime)
+    .slice(0, RANKING_LIMIT)
+    .map((video) => ({
     title: video.title,
     thumbnailUrl: video.thumbnailUrl,
     views: video.views,
