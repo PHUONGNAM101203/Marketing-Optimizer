@@ -54,14 +54,11 @@ const EXTENSION_BY_TYPE: Readonly<Record<string, string>> = {
 /**
  * Kích thước ảnh, đọc từ HEADER — không giải mã cả tấm ảnh.
  *
- * Lưới chấp nhận ảnh từ CDN của bên thứ ba, và không có gì bảo đảm thứ nhận
- * được là một ảnh bìa bình thường. Ảnh quá khổ hoặc tỉ lệ khung dị thường sẽ
- * ngốn bộ nhớ của trình duyệt và hiển thị méo, mà chặn bằng dung lượng thì
- * không phát hiện được (một ảnh vài chục megapixel vẫn có thể nén rất nhỏ).
+ * Lưới chấp nhận ảnh từ CDN của bên thứ ba, và một ảnh vài chục megapixel vẫn
+ * có thể nén rất nhỏ — nên trần dung lượng không phát hiện được nó, còn trình
+ * duyệt thì tốn hàng GB bộ nhớ khi giải mã.
  *
- * Đây là lưới an toàn, chưa từng chặn ca thật nào: mọi ảnh đo được tới ngày
- * 27/8/2026 đều nằm trong khoảng 300x400 tới 1500x2000. Giữ lại vì chi phí
- * bằng không — chỉ đọc vài chục byte đầu, không giải mã ảnh.
+ * Chỉ đọc vài chục byte đầu, không giải mã ảnh, nên chi phí gần như bằng không.
  */
 const readImageSize = (bytes: Uint8Array): { width: number; height: number } | null => {
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
@@ -98,18 +95,28 @@ const readImageSize = (bytes: Uint8Array): { width: number; height: number } | n
   return null
 }
 
-/** Trần kích thước cho một ảnh bìa/đại diện. 4000px là rộng rãi so với ảnh gốc
- * đo được (1440x2560), còn tỉ lệ thì chặn đúng thứ cần chặn: ảnh bìa video nằm
- * quanh 9:16 hoặc 16:9, một dải sprite thì lệch hàng chục lần. */
-const MAX_DIMENSION = 4000
-const MAX_ASPECT_RATIO = 3
+/**
+ * Trần kích thước, ĐỦ CAO để không bao giờ chạm phải ảnh thật.
+ *
+ * Từng có thêm ràng buộc tỉ lệ khung (loại ảnh lệch quá 3:1) với lập luận rằng
+ * ảnh bìa video quanh 9:16 hoặc 16:9. Ràng buộc đó SAI và đã gỡ: đo ngày
+ * 7/9/2026, nó loại một ảnh bài Facebook 869x259 — một ảnh banner ngang hoàn
+ * toàn bình thường — khiến bài đó giữ nguyên link fbcdn sẽ hết hạn, đúng thứ
+ * việc chép ảnh sinh ra để tránh. Nội dung mạng xã hội có đủ mọi tỉ lệ; đoán
+ * hộ người dùng cái nào "hợp lệ" là sai từ tiền đề.
+ *
+ * Giữ lại trần kích thước vì nó bảo vệ một thứ khác hẳn: một ảnh nén rất tốt
+ * nhưng kích thước khổng lồ (vd. 20000x20000 nền phẳng, vài chục KB) lọt qua
+ * trần dung lượng nhưng ngốn hàng GB bộ nhớ khi trình duyệt giải mã. 10000px
+ * cao hơn hẳn mọi thứ gặp được trong thực tế (ảnh gốc Facebook tối đa ~4096,
+ * ảnh bìa TikTok 1440) nên nó chỉ chạm tới trường hợp bệnh lý.
+ */
+const MAX_DIMENSION = 10_000
 
 const looksLikeCoverImage = (bytes: Uint8Array): boolean => {
   const size = readImageSize(bytes)
   if (!size || !size.width || !size.height) return true
-  if (size.width > MAX_DIMENSION || size.height > MAX_DIMENSION) return false
-  const ratio = size.width / size.height
-  return ratio <= MAX_ASPECT_RATIO && ratio >= 1 / MAX_ASPECT_RATIO
+  return size.width <= MAX_DIMENSION && size.height <= MAX_DIMENSION
 }
 
 /** URL công khai của bucket. Tự ghép thay vì gọi `getPublicUrl()` để hàm này

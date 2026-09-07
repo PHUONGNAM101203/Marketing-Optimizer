@@ -402,22 +402,17 @@ export const fetchAllTiktokVideos = async (accessToken: string): Promise<TiktokA
     // vòng: giữ nguyên `has_more` sẽ khiến vòng lặp gọi lại đúng TRANG 1 tới
     // hết `MAX_VIDEO_LIST_PAGES`, trả về cùng ~20 video nhân 50 lần trùng ID.
     const nextCursor = body.data?.cursor
-    const apiHasMore = body.data?.has_more ?? false
-    hasMore = apiHasMore && nextCursor !== undefined && nextCursor !== cursor
-    // Ghi lại vì sao vòng lặp dừng. Ngày 27/8/2026 danh sách của một tài khoản
-    // tụt từ 109 xuống 101 video trong một ngày, trong khi cả 8 video biến mất
-    // vẫn mở được công khai trên TikTok — không có cách nào biết TikTok báo hết
-    // trang thật, hay `cursor` đứng yên làm ta tự dừng sớm, nếu không ghi lại
-    // đúng lúc nó xảy ra.
-    if (!hasMore) {
-      console.warn(
-        `[tiktok] dừng phân trang sau ${pages} trang, ${videos.length} video: ` +
-          `has_more=${apiHasMore} cursor=${String(nextCursor)} cursor_trước=${String(cursor)}`,
-      )
-    }
+    // Đã từng ghi log ở đây để tìm hiểu vì sao danh sách của một tài khoản tụt
+    // từ 109 xuống 101 video trong một ngày (27/8/2026). Kết luận: chính TikTok
+    // trả `has_more=false` — app phân trang tới hết, không dừng sớm. Điều tra
+    // xong thì gỡ log đi: nó bắn ở MỌI lượt đồng bộ bình thường, biến thành
+    // tiếng ồn che mất cảnh báo thật.
+    hasMore = (body.data?.has_more ?? false) && nextCursor !== undefined && nextCursor !== cursor
     cursor = nextCursor
   }
 
+  // Giữ lại: chạm trần phân trang là bất thường thật (1000 video), khác hẳn
+  // đường chạy bình thường ở trên.
   if (pages >= MAX_VIDEO_LIST_PAGES) {
     console.warn(`[tiktok] chạm trần ${MAX_VIDEO_LIST_PAGES} trang, ${videos.length} video`)
   }

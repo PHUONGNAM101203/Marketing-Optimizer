@@ -426,7 +426,11 @@ const fetchValuesReport = async (
       const bodyText = await response.text().catch(() => '')
       const floorMs = THROTTLE_BACKOFF_FLOOR_MS[attempt - 1] ?? 20_000
       const waitMs = Math.max(parseThrottleWaitMs(bodyText) ?? 0, floorMs)
-      console.error(
+      // `warn`, không phải `error`: bị chặn rồi thử lại THÀNH CÔNG là tình
+      // huống đã tự xử lý xong, không phải hỏng. Vẫn giữ lại chứ không im
+      // hẳn — nếu dòng này bắn đều đặn thì nghĩa là app vẫn gọi quá dày và
+      // đó là thứ cần biết, khác hẳn tiếng ồn của đường chạy bình thường.
+      console.warn(
         `Klaviyo ${resource}-values-reports bị throttle (lần ${attempt}/${MAX_THROTTLE_ATTEMPTS}) — chờ ${waitMs}ms rồi thử lại.`,
       )
       await sleep(waitMs)
