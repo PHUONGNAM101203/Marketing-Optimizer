@@ -300,6 +300,7 @@ export type Database = {
           backfilled_at: string | null
           connected_at: string
           connected_by: string | null
+          disconnected_at: string | null
           error_at: string | null
           error_code: string | null
           error_message: string | null
@@ -317,6 +318,7 @@ export type Database = {
           backfilled_at?: string | null
           connected_at?: string
           connected_by?: string | null
+          disconnected_at?: string | null
           error_at?: string | null
           error_code?: string | null
           error_message?: string | null
@@ -334,6 +336,7 @@ export type Database = {
           backfilled_at?: string | null
           connected_at?: string
           connected_by?: string | null
+          disconnected_at?: string | null
           error_at?: string | null
           error_code?: string | null
           error_message?: string | null

@@ -15,7 +15,8 @@ import { ExternalChannelLink } from '@/components/connections/external-channel-l
 import { RefreshConnectionButton } from '@/components/connections/refresh-connection-button'
 import { DisconnectConnectionButton } from '@/components/connections/disconnect-connection-button'
 import { getSite } from '@/lib/data/sites'
-import { getConnectionSummary } from '@/lib/data/connections'
+import { getConnectionSummary, listDisconnectedConnections } from '@/lib/data/connections'
+import { RestoreConnectionButton } from '@/components/connections/restore-connection-button'
 import { getConfiguredOAuthApps, getGoogleAdsDeveloperToken } from '@/lib/data/site-oauth-apps'
 import { getConfiguredPageSpeedApiKey } from '@/lib/audit/pagespeed'
 import { getAppOrigin } from '@/lib/http/origin'
@@ -82,12 +83,16 @@ export default async function ConnectionsPage({
   const site = await getSite(siteId)
   if (!site) notFound()
 
-  const [summary, configuredFamilies, appOrigin, googleAdsDeveloperToken] = await Promise.all([
-    getConnectionSummary(site.id),
-    getConfiguredOAuthApps(site.id),
-    getAppOrigin(),
-    getGoogleAdsDeveloperToken(site.id),
-  ])
+  const [summary, configuredFamilies, appOrigin, googleAdsDeveloperToken, disconnected] =
+    await Promise.all([
+      getConnectionSummary(site.id),
+      getConfiguredOAuthApps(site.id),
+      getAppOrigin(),
+      getGoogleAdsDeveloperToken(site.id),
+      // Kết nối đã gỡ nhưng chưa bị dọn — còn khôi phục được, xem
+      // `listDisconnectedConnections`.
+      listDisconnectedConnections(site.id),
+    ])
   const hasPageSpeedApiKey = Boolean(getConfiguredPageSpeedApiKey())
 
   const connectedFamilyLabel =
@@ -217,6 +222,40 @@ export default async function ConnectionsPage({
       <GtmPicker siteId={site.id} />
       <GoogleAdsPicker siteId={site.id} />
       <MetaAdsPicker siteId={site.id} />
+
+      {disconnected.length > 0 ? (
+        <section className="flex flex-col gap-3">
+          <div>
+            <h2 className="text-[length:var(--text-2xs)] font-medium tracking-[var(--tracking-label)] text-[var(--color-ink-3)] uppercase">
+              Đã gỡ gần đây
+            </h2>
+            {/* Nói rõ hai điều người dùng cần biết để yên tâm: dữ liệu chưa
+                mất, và bao giờ thì mất thật. Thiếu vế thứ hai thì mục này
+                trông như một kho lưu trữ vĩnh viễn. */}
+            <p className="mt-1 text-[length:var(--text-sm)] text-[var(--color-ink-2)]">
+              Số liệu của những kết nối này vẫn còn nguyên. Khôi phục là dùng lại được ngay, kèm
+              toàn bộ lịch sử. Sau 30 ngày kể từ lúc gỡ, dữ liệu mới bị xoá hẳn.
+            </p>
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+            {disconnected.map((connection) => (
+              <Card key={connection.id} tone="inset" className="flex items-center gap-3 p-4">
+                <ProviderMark provider={connection.provider} />
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-[length:var(--text-sm)] font-medium text-[var(--color-ink)]">
+                    {PROVIDER_META[connection.provider].label}
+                  </p>
+                  <p className="truncate text-[length:var(--text-2xs)] text-[var(--color-ink-3)]">
+                    {connection.accountName ?? '—'} · gỡ ngày {connection.disconnectedAt.slice(0, 10)}
+                  </p>
+                </div>
+                <RestoreConnectionButton connectionId={connection.id} />
+              </Card>
+            ))}
+          </div>
+        </section>
+      ) : null}
 
       {summary.all.length > 0 ? (
         <section className="flex flex-col gap-4">

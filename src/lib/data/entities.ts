@@ -83,6 +83,7 @@ export const getCampaignPerformance = async (
   const { data: connections } = await admin
     .from('connections')
     .select('id, provider, external_account_id, status')
+    .is('disconnected_at', null)
     .eq('site_id', siteId)
     .in('provider', ['google-ads', 'meta-ads'])
 
@@ -169,6 +170,7 @@ export const getChannelSummariesForAgent = async (
   const admin = createAdminClient()
 
   const { data: connections } = await admin.from('connections').select('id, provider').eq('site_id', siteId)
+    .is('disconnected_at', null)
 
   const connectionsByProvider = new Map<ProviderId, string[]>()
   const connectionIdToProvider = new Map<string, ProviderId>()

@@ -16,6 +16,7 @@ export async function GtmPicker({ siteId }: { readonly siteId: string }) {
   const { data: existingGtm } = await supabase
     .from('connections')
     .select('id')
+    .is('disconnected_at', null)
     .eq('site_id', siteId)
     .eq('provider', 'gtm')
     .limit(1)

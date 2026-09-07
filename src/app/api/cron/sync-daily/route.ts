@@ -3,6 +3,7 @@ import { DAILY_PROVIDERS } from '@/lib/sync/cron-providers'
 import { syncMany, type SyncTarget } from '@/lib/sync/sync-many'
 import { refreshAllSiteAiModelCaches } from '@/lib/data/site-ai-keys'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { purgeDisconnectedConnections } from '@/lib/sync/purge-disconnected'
 import { cronEnv } from '@/lib/supabase/env'
 
 /**
@@ -29,11 +30,16 @@ export async function GET(request: NextRequest) {
   const { data: connections } = await admin
     .from('connections')
     .select('id, provider, backfilled_at')
+    .is('disconnected_at', null)
     .in('provider', DAILY_PROVIDERS)
     .or(`last_synced_at.is.null,last_synced_at.lt.${staleBefore},backfilled_at.is.null`)
 
   const result = await syncMany((connections ?? []) as SyncTarget[])
   const { refreshed: modelsRefreshed, failed: modelsFailed } = await refreshAllSiteAiModelCaches()
 
-  return NextResponse.json({ ...result, modelsRefreshed, modelsFailed })
+  // Dọn kết nối đã gỡ quá 30 ngày — nơi DUY NHẤT còn xoá thật một kết nối,
+  // xem `purge-disconnected.ts`.
+  const purged = await purgeDisconnectedConnections(admin)
+
+  return NextResponse.json({ ...result, modelsRefreshed, modelsFailed, purged })
 }

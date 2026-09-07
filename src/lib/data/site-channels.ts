@@ -134,6 +134,7 @@ export const getChannelSummaries = async (
   const { data: connections } = await supabase
     .from('connections')
     .select('id, provider, external_account_id, status')
+    .is('disconnected_at', null)
     .eq('site_id', siteId)
 
   const { connectionsByProvider, connectionIdToProvider, snapshotConnectionIds, regularConnectionIds } =
@@ -419,6 +420,7 @@ export const getChannelDailySeries = async (
     const { data: connections } = await supabase
       .from('connections')
       .select('id')
+      .is('disconnected_at', null)
       .eq('site_id', siteId)
       .eq('provider', provider)
     connectionIds = (connections ?? []).map((row) => row.id)
@@ -459,6 +461,7 @@ export const getChannelDailySeriesByProvider = async (
   const { data: connections } = await supabase
     .from('connections')
     .select('id, provider')
+    .is('disconnected_at', null)
     .eq('site_id', siteId)
 
   const { connectionIdToProvider, snapshotConnectionIds, regularConnectionIds } =

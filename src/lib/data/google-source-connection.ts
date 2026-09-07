@@ -27,6 +27,7 @@ export const findGoogleSourceConnection = async (
   const { data } = await admin
     .from('connections')
     .select('id, provider, connection_secrets!inner(connection_id)')
+    .is('disconnected_at', null)
     .eq('site_id', siteId)
     .in('provider', ['ga4', 'gsc', 'gtm', 'youtube'])
     .order('connected_at', { ascending: true })

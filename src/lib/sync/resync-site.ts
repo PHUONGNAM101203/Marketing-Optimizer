@@ -46,6 +46,7 @@ export async function resyncSite(siteId: string, domain: string): Promise<Resync
   const { data: rows } = await admin
     .from('connections')
     .select('id, provider, external_account_id')
+    .is('disconnected_at', null)
     .eq('site_id', siteId)
 
   const connections = (rows ?? []).filter(

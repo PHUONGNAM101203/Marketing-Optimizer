@@ -354,6 +354,7 @@ export const listChannelConnections = async (
   const { data } = await supabase
     .from('connections')
     .select('id, account_name, avatar_url, external_account_id')
+    .is('disconnected_at', null)
     .eq('site_id', siteId)
     .eq('provider', provider)
     .order('connected_at', { ascending: true })
@@ -384,6 +385,7 @@ export const getChannelDetail = async (
     supabase
       .from('connections')
       .select('id, external_account_id, account_name, avatar_url, connected_at')
+      .is('disconnected_at', null)
       .eq('site_id', siteId)
       .eq('provider', provider)
 

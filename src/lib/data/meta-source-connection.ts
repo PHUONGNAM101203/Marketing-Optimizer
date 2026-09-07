@@ -21,6 +21,7 @@ export const findMetaSourceConnection = async (
   const { data } = await admin
     .from('connections')
     .select('id, provider')
+    .is('disconnected_at', null)
     .eq('site_id', siteId)
     .eq('provider', 'instagram')
     .limit(1)

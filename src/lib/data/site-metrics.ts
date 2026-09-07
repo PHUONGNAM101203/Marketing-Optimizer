@@ -42,6 +42,7 @@ export const getRealMetricsSummary = async (
   const { data: connections } = await supabase
     .from('connections')
     .select('id, provider')
+    .is('disconnected_at', null)
     .eq('site_id', siteId)
 
   const ga4Ids = (connections ?? []).filter((c) => c.provider === 'ga4').map((c) => c.id)

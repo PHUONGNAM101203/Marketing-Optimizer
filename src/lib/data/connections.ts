@@ -66,6 +66,7 @@ export const listConnections = cache(async (
   const { data, error } = await supabase
     .from('connections')
     .select('*')
+    .is('disconnected_at', null)
     .eq('site_id', siteId)
     .order('connected_at', { ascending: true })
 
@@ -108,3 +109,40 @@ export const getConnectionSummary = async (
     lastSyncedAt: timestamps.at(-1) ?? null,
   }
 }
+
+export interface DisconnectedConnection {
+  readonly id: string
+  readonly provider: ProviderId
+  readonly accountName: string | null
+  readonly disconnectedAt: string
+}
+
+/**
+ * Kết nối đã gỡ nhưng CHƯA bị dọn — dữ liệu vẫn còn nguyên, khôi phục được.
+ *
+ * Tách hẳn khỏi `listConnections` (chỉ trả kết nối đang dùng) thay vì thêm một
+ * tham số: hai danh sách này phục vụ hai chỗ khác nhau và không bao giờ trộn
+ * lẫn. Gộp lại là mở đường cho việc lỡ hiện kết nối đã gỡ ở nơi không nên.
+ */
+export const listDisconnectedConnections = cache(async (
+  siteId: string,
+): Promise<readonly DisconnectedConnection[]> => {
+  const supabase = await createClient()
+  const { data } = await supabase
+    .from('connections')
+    .select('id, provider, account_name, disconnected_at')
+    .eq('site_id', siteId)
+    .not('disconnected_at', 'is', null)
+    .order('disconnected_at', { ascending: false })
+
+  return (data ?? [])
+    .filter((row): row is typeof row & { disconnected_at: string } =>
+      isProviderId(row.provider) && row.disconnected_at !== null,
+    )
+    .map((row) => ({
+      id: row.id,
+      provider: row.provider as ProviderId,
+      accountName: row.account_name,
+      disconnectedAt: row.disconnected_at,
+    }))
+})

@@ -88,6 +88,7 @@ export async function GoogleAdsPicker({ siteId }: { readonly siteId: string }) {
   const { data: connected } = await supabase
     .from('connections')
     .select('external_account_id')
+    .is('disconnected_at', null)
     .eq('site_id', siteId)
     .eq('provider', 'google-ads')
 
