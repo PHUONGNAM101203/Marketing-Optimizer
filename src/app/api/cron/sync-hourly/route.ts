@@ -19,11 +19,29 @@ import { cronEnv } from '@/lib/supabase/env'
  * Số ảnh chép bù mỗi lượt. Việc chép bù chỉ xử lý ảnh CŨ (ghi trước khi tính
  * năng chép ảnh tồn tại) nên nó có điểm dừng: ~318 ảnh, hết trong khoảng sáu
  * lượt rồi tự về 0 và gần như không tốn gì nữa. Đặt trần để một lượt cron không
- * bao giờ chạm ngân sách 800s, thay vì cố làm hết trong một lần rồi bị cắt
+ * bao giờ chạm ngân sách thời gian, thay vì cố làm hết trong một lần rồi bị cắt
  * giữa chừng.
  */
 const MEDIA_BACKFILL_PER_RUN = 60
-export const maxDuration = 800
+
+/**
+ * 300 giây, KHÔNG phải 800.
+ *
+ * 800 là trần của Fluid Compute. Project này đã TẮT Fluid (19/9/2026) nên trần
+ * thật là 300 — để nguyên 800 là giữ lại một con số không nền tảng nào tôn
+ * trọng, và ai đọc nó rồi thiết kế một tác vụ dài 600 giây sẽ bị cắt giữa chừng
+ * mà không hiểu vì sao.
+ *
+ * Đo thật trên production, ép TOÀN BỘ kết nối thành cũ để buộc đồng bộ lại:
+ * 12,21 giây. 300 giây là gấp gần 25 lần — thừa biên cho cả lượt nạp lịch sử
+ * 365 ngày (chỉ chạy một lần mỗi kết nối mới) lẫn phần chạy nền `after()` vốn
+ * tiếp tục SAU khi đã trả lời, nên không nằm trong 12,21 giây đo được.
+ *
+ * Khai TẠI ĐÂY chứ không dựa vào cài đặt mặc định của project: cài đặt đó đổi
+ * được từ bảng điều khiển mà không ai trong repo biết, còn dòng này đi cùng mã
+ * nguồn và review được.
+ */
+export const maxDuration = 300
 
 export async function GET(request: NextRequest) {
   const { CRON_SECRET } = cronEnv()

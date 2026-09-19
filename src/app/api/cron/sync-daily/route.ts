@@ -15,7 +15,10 @@ import { cronEnv } from '@/lib/supabase/env'
  *    — danh sách model AI hiếm khi đổi, chạy mỗi giờ chỉ tốn lượt gọi API
  *    của từng site vô ích.
  */
-export const maxDuration = 800
+/** 300 giây — trần THẬT sau khi tắt Fluid Compute (19/9/2026); 800 cũ là trần
+ * của Fluid nên không còn nghĩa lý gì. Đo thật trên production khi ép toàn bộ
+ * kết nối đồng bộ lại: 2,87 giây. Xem chú thích dài hơn ở `sync-hourly`. */
+export const maxDuration = 300
 
 export async function GET(request: NextRequest) {
   const { CRON_SECRET } = cronEnv()

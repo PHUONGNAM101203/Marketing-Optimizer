@@ -17,14 +17,24 @@ import type { AgentSchedule } from '@/lib/domain/agent'
  *    phải chặn cứng ở 15 agent/lượt để invocation không bị Vercel giết giữa
  *    chừng. Site nào có nhiều hơn 15 agent due cùng lúc thì phần thừa bị đẩy
  *    sang giờ sau, giờ sau lại đụng đúng trần đó. Có route riêng thì agent
- *    được trọn 800s của chính nó.
+ *    được trọn ngân sách thời gian của chính nó.
  * 2. Đồng bộ hỏng (API Google sập, token hết hạn hàng loạt) không còn kéo
  *    theo việc agent không được dispatch.
  *
  * Lịch lệch 20 phút so với `sync-hourly` để agent luôn đọc được số liệu vừa
  * đồng bộ xong của cùng giờ đó, thay vì số liệu của giờ trước.
  */
-export const maxDuration = 800
+/**
+ * 300 giây — trần THẬT sau khi tắt Fluid Compute (19/9/2026); 800 cũ là trần
+ * của Fluid.
+ *
+ * Đây là route DỄ vượt giờ nhất trong ba cron: nó gọi mô hình AI, và thời gian
+ * một lượt gọi do nhà cung cấp quyết chứ không do mã nguồn này. Đo được 0,61
+ * giây, nhưng đó là lượt chạy KHÔNG có agent nào tới hạn — chưa nói lên gì về
+ * trường hợp nặng. Trần cứng 15 agent mỗi lượt (`MAX_AGENTS_PER_RUN`) mới là
+ * thứ giữ cho lượt chạy không phình ra vô hạn.
+ */
+export const maxDuration = 300
 
 export async function GET(request: NextRequest) {
   const { CRON_SECRET } = cronEnv()

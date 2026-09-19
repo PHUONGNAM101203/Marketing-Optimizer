@@ -19,6 +19,17 @@ export const OAUTH_STATE_COOKIE = 'oauth_state'
  * URL. Cookie httpOnly nên chỉ server này đặt được nó; so khớp đúng là bằng
  * chứng request quay lại từ chính lượt đăng nhập ta vừa khởi tạo, chống CSRF.
  */
+
+/**
+ * 30 giây. Đo thật trên production: 0,26 giây — route này chỉ đọc cấu hình, tạo
+ * `state` ngẫu nhiên rồi chuyển hướng, KHÔNG gọi API bên ngoài nào.
+ *
+ * 30 là hơn 100 lần số đo, nhưng cố ý để thấp hơn hẳn các route khác: nếu một
+ * ngày nó chạm trần thì nghĩa là có ai đó vừa thêm việc nặng vào đây, và đó là
+ * điều đáng biết chứ không đáng che bằng một con số rộng rãi.
+ */
+export const maxDuration = 30
+
 export async function GET(
   request: NextRequest,
   context: { readonly params: Promise<{ readonly family: string }> },

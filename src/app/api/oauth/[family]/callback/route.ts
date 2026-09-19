@@ -24,6 +24,24 @@ import { OAUTH_STATE_COOKIE } from '../start/route'
  * `connection_secrets` bằng client `service_role` vì bảng đó cố tình không có
  * policy nào cho vai trò thường.
  */
+
+/**
+ * 300 giây — route NGƯỜI DÙNG CHỜ lâu nhất trong app, và là chỗ duy nhất một
+ * lượt cắt giữa chừng để lại trạng thái nửa vời (token đã lưu nhưng connection
+ * chưa đồng bộ).
+ *
+ * Không đo trực tiếp được: muốn chạy nó phải có một mã OAuth thật do Google cấp,
+ * dùng một lần. Nhưng đọc mã là đủ thấy nó nặng: với MỖI tài khoản dò ra, nó gọi
+ * `syncConnection` — mà lượt đồng bộ ĐẦU TIÊN của một kết nối kéo theo lượt nạp
+ * lịch sử 365 ngày, chia thành 4 khối 90 ngày chạy TUẦN TỰ. Một tài khoản Google
+ * quản lý 5 property GA4 thì riêng phần đó đã là 20 lượt gọi nối đuôi nhau.
+ *
+ * Nên lấy trần cao nhất nền tảng cho phép, không phải nhân 3–5 lần một con số
+ * đo được: ở đây con số đo được không tồn tại, còn cái giá của việc hụt giờ là
+ * người dùng phải kết nối lại từ đầu.
+ */
+export const maxDuration = 300
+
 export async function GET(
   request: NextRequest,
   context: { readonly params: Promise<{ readonly family: string }> },
