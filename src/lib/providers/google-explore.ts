@@ -722,10 +722,18 @@ export const fetchYoutubeExplore = async (
     topVideos: rows.flatMap((row) => {
       const id = String(row[0])
       const meta = metaById.get(id)
-      // Lấy metadata chạy xong mà vẫn không có ID này = video đã xoá hoặc
-      // chuyển riêng tư → giấu khỏi bảng xếp hạng, để video hạng dưới lên
-      // thế chỗ. Nếu lượt lấy metadata LỖI thì giữ lại tất cả (hiện ID thô)
-      // — một sự cố API không được trông giống "kênh trống".
+      // Lấy metadata chạy xong mà vẫn không có ID này = video không còn tồn
+      // tại → giấu khỏi bảng xếp hạng, để video hạng dưới lên thế chỗ. Nếu
+      // lượt lấy metadata LỖI thì giữ lại tất cả (hiện ID thô) — một sự cố
+      // API không được trông giống "kênh trống".
+      //
+      // CHƯA kiểm chứng video bị chuyển RIÊNG TƯ rơi vào nhánh nào: mới chỉ
+      // thử với ID không tồn tại (API lặng lẽ bỏ khỏi `items`, không báo
+      // lỗi). Nhiều khả năng token của chính chủ kênh vẫn đọc được video
+      // riêng tư của mình, tức nó vẫn hiện ra. Nếu cần giấu hẳn, thêm
+      // `status` vào `part` (không tốn thêm request) rồi lọc theo
+      // `privacyStatus` — nhưng phải quyết trước là video "không công khai"
+      // (unlisted) nên giấu hay nên hiện, hai thứ đó khác nhau.
       if (!meta && complete) return []
       return [
         {
