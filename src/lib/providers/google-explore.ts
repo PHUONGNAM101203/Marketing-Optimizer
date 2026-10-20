@@ -12,6 +12,7 @@ import type { Ga4BreakdownDimension } from '@/lib/domain/explore-dimension'
 import {
   MAX_TOP_ALL_TIME,
   MIN_TRENDING_VIEWS,
+  type VideoFormat,
   type VideoGrowthSummary,
   type VideoSummary,
   type VideoTrendingResult,
@@ -554,6 +555,85 @@ export const fetchGtmExplore = async (
 
 // ─── YouTube ────────────────────────────────────────────────────────────────
 
+/**
+ * Nhận diện Shorts: khung DỌC và không quá 180 giây.
+ *
+ * Analytics API có dimension `creatorContentType` (giá trị `shorts` /
+ * `videoOnDemand`) nhưng KHÔNG ghép được với `dimensions=video` và cũng
+ * không dùng làm `filters` được — cả hai cách đều trả HTTP 400 (đã thử với
+ * token thật ngày 20/10/2026). Nên không có đường nào hỏi thẳng API "video
+ * này có phải Short không"; phải suy ra từ metadata.
+ *
+ * Luật này đã đối chiếu với chính `creatorContentType` trên kênh TC Auto
+ * Official: mọi thời gian ra shorts 6029 / thường 595 so với chuẩn 6034 /
+ * 595, và khoảng 22/09→19/10 ra 40 / 36 khớp tuyệt đối. Lệch 5 view ở cột
+ * all-time là phần của video đã gỡ khỏi kênh (báo cáo theo video không còn
+ * liệt kê chúng, tổng theo content-type thì vẫn cộng).
+ *
+ * 180 giây chứ không phải 60: từ 10/2024 YouTube cho Shorts dài tới 3 phút.
+ */
+const YOUTUBE_SHORT_MAX_SECONDS = 180
+
+/**
+ * BẮT BUỘC gửi kèm `videos.list` để `player.embedWidth/embedHeight` phản ánh
+ * tỉ lệ khung hình THẬT. Không có tham số này thì API trả 480x270 cho mọi
+ * video bất kể dọc hay ngang (đã kiểm chứng bằng token thật) — nghĩa là mọi
+ * video sẽ bị xếp thành "thường" và tab Shorts luôn rỗng.
+ */
+const YOUTUBE_EMBED_PROBE_HEIGHT = 720
+
+/**
+ * Số video lấy về cho trang chi tiết kênh — CỐ Ý lớn hơn nhiều so với số
+ * thực sự hiện ra (`YOUTUBE_EXPLORE_ROWS_PER_FORMAT`).
+ *
+ * Analytics không lọc được theo dạng nội dung (xem `YOUTUBE_SHORT_MAX_SECONDS`),
+ * nên phải xếp hạng theo views trước rồi mới tách Shorts/video thường. Lấy
+ * đúng 10 như trước thì với kênh nghiêng hẳn về Shorts — TC Auto Official có
+ * 19/25 video là Shorts — tab còn lại chỉ còn một hai dòng, hoặc trống.
+ *
+ * Vẫn là MỘT lượt gọi report; phần `videos.list` chia lô 50 nên tốn tối đa 4
+ * request, đúng bằng nhánh trending vốn đã lấy 200 video.
+ */
+const YOUTUBE_EXPLORE_FETCH_LIMIT = 200
+
+/** `null` khi chuỗi không đọc được — gồm cả `P0D` mà API trả cho một số
+ * buổi phát trực tiếp, vốn không có độ dài cố định. */
+const parseIso8601Seconds = (value: string | undefined): number | null => {
+  if (!value) return null
+  const match = /^P(?:(\d+)D)?T(?:(\d+)H)?(?:(\d+)M)?(?:(\d+(?:\.\d+)?)S)?$/.exec(value)
+  if (!match) return null
+  return (
+    Number(match[1] ?? 0) * 86_400 +
+    Number(match[2] ?? 0) * 3_600 +
+    Number(match[3] ?? 0) * 60 +
+    Number(match[4] ?? 0)
+  )
+}
+
+/**
+ * `null` = thiếu dữ liệu để kết luận, KHÔNG được đọc thành "video thường".
+ *
+ * Nhận `string | number` vì tài liệu YouTube khai `embedWidth`/`embedHeight`
+ * là `unsigned long` nhưng API THẬT trả về chuỗi (`"embedWidth": "1280"`, đã
+ * kiểm chứng 20/10/2026). Khai kiểu `number` rồi so sánh thẳng thì
+ * `'1280' <= '720'` đúng theo thứ tự chữ cái — mọi video NGANG bị xếp thành
+ * Short. TypeScript không bắt được lỗi này vì kiểu chỉ là một lời khẳng định
+ * về JSON bên ngoài. Vì vậy phải ép `Number` tường minh.
+ */
+const classifyYoutubeFormat = (
+  embedWidth: string | number | undefined,
+  embedHeight: string | number | undefined,
+  duration: string | undefined,
+): VideoFormat | null => {
+  const seconds = parseIso8601Seconds(duration)
+  const width = Number(embedWidth)
+  const height = Number(embedHeight)
+  if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) return null
+  if (seconds === null) return null
+  // `<=` chứ không `<`: video vuông vẫn đăng được dưới dạng Short.
+  return width <= height && seconds <= YOUTUBE_SHORT_MAX_SECONDS ? 'short' : 'standard'
+}
+
 export interface YoutubeExplore {
   readonly topVideos: readonly {
     readonly externalVideoId: string
@@ -569,6 +649,9 @@ export interface YoutubeExplore {
     /** ISO 8601, từ `snippet.publishedAt` — `null` nếu lượt gọi `videos.list`
      * lấy metadata thất bại (không chặn phần còn lại, xem `metaById`). */
     readonly createdAt: string | null
+    /** `null` = không kết luận được (xem `classifyYoutubeFormat`). UI phải
+     * xếp nhóm này vào tab "Video" chứ không được giấu đi. */
+    readonly format: VideoFormat | null
   }[]
   /** `null` = tải thành công (danh sách có thể rỗng — kênh chưa đăng video
    * trong khoảng ngày đã chọn, hoàn toàn bình thường). Khác `null` = request
@@ -592,7 +675,7 @@ export const fetchYoutubeExplore = async (
   accessToken: string,
   channelId: string,
   range: { readonly startDate: string; readonly endDate: string },
-  maxResults: number = DEFAULT_CHANNEL_DETAIL_ROW_LIMIT,
+  maxResults: number = YOUTUBE_EXPLORE_FETCH_LIMIT,
 ): Promise<YoutubeExplore> => {
   const reportUrl = new URL('https://youtubeanalytics.googleapis.com/v2/reports')
   reportUrl.searchParams.set('ids', `channel==${channelId}`)
@@ -627,53 +710,36 @@ export const fetchYoutubeExplore = async (
     return index === undefined ? null : Number(row[index] ?? 0)
   }
 
-  const videoIds = rows.map((row) => String(row[0]))
-  const videosResponse = await fetch(
-    `https://www.googleapis.com/youtube/v3/videos?part=snippet&id=${videoIds.join(',')}`,
-    { headers: authHeader(accessToken) },
+  // Dùng chung `fetchYoutubeMetaById` với nhánh trending thay vì tự gọi
+  // `videos.list` ở đây: nó đã chia lô 50 ID (bắt buộc, vì `maxResults` ở
+  // trên vượt xa trần đó) và đã gửi kèm tham số nhận diện Shorts.
+  const { metaById, complete } = await fetchYoutubeMetaById(
+    accessToken,
+    rows.map((row) => String(row[0])),
   )
-  interface VideoMeta {
-    readonly title: string
-    readonly thumbnailUrl: string | null
-    readonly publishedAt: string | null
-  }
-  const metaById = new Map<string, VideoMeta>()
-  if (videosResponse.ok) {
-    const videosData = (await videosResponse.json()) as {
-      readonly items?: readonly {
-        readonly id?: string
-        readonly snippet?: {
-          readonly title?: string
-          readonly publishedAt?: string
-          readonly thumbnails?: YoutubeThumbnails
-        }
-      }[]
-    }
-    for (const item of videosData.items ?? []) {
-      if (!item.id) continue
-      metaById.set(item.id, {
-        title: item.snippet?.title ?? item.id,
-        thumbnailUrl:
-          pickLargestThumbnail(item.snippet?.thumbnails),
-        publishedAt: item.snippet?.publishedAt ?? null,
-      })
-    }
-  }
 
   return {
-    topVideos: rows.map((row) => {
+    topVideos: rows.flatMap((row) => {
       const id = String(row[0])
       const meta = metaById.get(id)
-      return {
-        externalVideoId: id,
-        title: meta?.title ?? id,
-        thumbnailUrl: meta?.thumbnailUrl ?? null,
-        views: valueAt(row, 'views') ?? 0,
-        likes: valueAt(row, 'likes') ?? 0,
-        comments: valueAt(row, 'comments') ?? 0,
-        shares: valueAt(row, 'shares'),
-        createdAt: meta?.publishedAt ?? null,
-      }
+      // Lấy metadata chạy xong mà vẫn không có ID này = video đã xoá hoặc
+      // chuyển riêng tư → giấu khỏi bảng xếp hạng, để video hạng dưới lên
+      // thế chỗ. Nếu lượt lấy metadata LỖI thì giữ lại tất cả (hiện ID thô)
+      // — một sự cố API không được trông giống "kênh trống".
+      if (!meta && complete) return []
+      return [
+        {
+          externalVideoId: id,
+          title: meta?.title ?? id,
+          thumbnailUrl: meta?.thumbnailUrl ?? null,
+          views: valueAt(row, 'views') ?? 0,
+          likes: valueAt(row, 'likes') ?? 0,
+          comments: valueAt(row, 'comments') ?? 0,
+          shares: valueAt(row, 'shares'),
+          createdAt: meta?.publishedAt ?? null,
+          format: meta?.format ?? null,
+        },
+      ]
     }),
     fetchError: null,
   }
@@ -703,6 +769,22 @@ type YoutubeVideoMeta = {
    * `VideoMeta` đã dùng, thêm vào đây để `VideoSummary.createdAt` (trending/
    * top-mọi-thời-gian) có ngày đăng thật thay vì `null` cố định. */
   readonly publishedAt: string | null
+  /** Xem `classifyYoutubeFormat` — `null` = không kết luận được. */
+  readonly format: VideoFormat | null
+}
+
+/**
+ * Kết quả lấy metadata — cần biết lô nào THẤT BẠI, không chỉ biết map rỗng.
+ *
+ * Phân biệt này quyết định hành vi: ID không có trong `metaById` dù lô chạy
+ * xong nghĩa là video đã bị xoá/chuyển riêng tư (API lặng lẽ bỏ ID đó khỏi
+ * `items`) → giấu khỏi bảng xếp hạng. Còn nếu lô lỗi mạng thì KHÔNG được
+ * giấu, vì như vậy một sự cố API sẽ hiện ra y hệt "kênh không có video nào".
+ */
+interface YoutubeMetaLookup {
+  readonly metaById: ReadonlyMap<string, YoutubeVideoMeta>
+  /** `false` = ít nhất một lô lỗi, danh sách thiếu sót không đáng tin. */
+  readonly complete: boolean
 }
 
 /** `videos.list` chỉ nhận tối đa 50 ID mỗi request — giới hạn cứng của
@@ -720,16 +802,19 @@ const chunkIds = (ids: readonly string[], size: number): string[][] => {
 const fetchYoutubeMetaBatch = async (
   accessToken: string,
   batchIds: readonly string[],
-): Promise<Map<string, YoutubeVideoMeta>> => {
+): Promise<YoutubeMetaLookup> => {
   const metaById = new Map<string, YoutubeVideoMeta>()
   try {
+    // `contentDetails` + `player` (kèm `maxHeight`) là nguyên liệu nhận diện
+    // Shorts — xem `classifyYoutubeFormat`. Cùng một lượt gọi với `snippet`,
+    // không tốn thêm request nào.
     const videosResponse = await fetch(
-      `https://www.googleapis.com/youtube/v3/videos?part=snippet&id=${batchIds.join(',')}`,
+      `https://www.googleapis.com/youtube/v3/videos?part=snippet,contentDetails,player&maxHeight=${YOUTUBE_EMBED_PROBE_HEIGHT}&id=${batchIds.join(',')}`,
       { headers: authHeader(accessToken) },
     )
     if (!videosResponse.ok) {
       console.error(`Không đọc được videos.list của YouTube: HTTP ${videosResponse.status}`)
-      return metaById
+      return { metaById, complete: false }
     }
 
     const videosData = (await videosResponse.json()) as {
@@ -740,6 +825,12 @@ const fetchYoutubeMetaBatch = async (
           readonly publishedAt?: string
           readonly thumbnails?: YoutubeThumbnails
         }
+        readonly contentDetails?: { readonly duration?: string }
+        /** Chuỗi, không phải số — xem `classifyYoutubeFormat`. */
+        readonly player?: {
+          readonly embedWidth?: string | number
+          readonly embedHeight?: string | number
+        }
       }[]
     }
     for (const item of videosData.items ?? []) {
@@ -749,6 +840,11 @@ const fetchYoutubeMetaBatch = async (
         thumbnailUrl:
           pickLargestThumbnail(item.snippet?.thumbnails),
         publishedAt: item.snippet?.publishedAt ?? null,
+        format: classifyYoutubeFormat(
+          item.player?.embedWidth,
+          item.player?.embedHeight,
+          item.contentDetails?.duration,
+        ),
       })
     }
   } catch (error) {
@@ -758,17 +854,17 @@ const fetchYoutubeMetaBatch = async (
     console.error(
       `Không đọc được videos.list của YouTube: ${error instanceof Error ? error.message : String(error)}`,
     )
-    return metaById
+    return { metaById, complete: false }
   }
-  return metaById
+  return { metaById, complete: true }
 }
 
 const fetchYoutubeMetaById = async (
   accessToken: string,
   videoIds: readonly string[],
-): Promise<Map<string, YoutubeVideoMeta>> => {
+): Promise<YoutubeMetaLookup> => {
   const metaById = new Map<string, YoutubeVideoMeta>()
-  if (videoIds.length === 0) return metaById
+  if (videoIds.length === 0) return { metaById, complete: true }
 
   const batches = await Promise.all(
     chunkIds(videoIds, YOUTUBE_VIDEOS_LIST_BATCH_SIZE).map((batchIds) =>
@@ -776,9 +872,9 @@ const fetchYoutubeMetaById = async (
     ),
   )
   for (const batch of batches) {
-    for (const [id, meta] of batch) metaById.set(id, meta)
+    for (const [id, meta] of batch.metaById) metaById.set(id, meta)
   }
-  return metaById
+  return { metaById, complete: batches.every((batch) => batch.complete) }
 }
 
 /**
@@ -832,7 +928,7 @@ const fetchYoutubeAllTimeMetrics = async (
     return index === undefined ? null : Number(row[index] ?? 0)
   }
 
-  const metaById = await fetchYoutubeMetaById(accessToken, rows.map((row) => String(row[0])))
+  const { metaById } = await fetchYoutubeMetaById(accessToken, rows.map((row) => String(row[0])))
 
   const result = new Map<string, VideoSummary>()
   for (const row of rows) {
@@ -847,6 +943,7 @@ const fetchYoutubeAllTimeMetrics = async (
       comments: valueAt(row, 'comments') ?? 0,
       shares: valueAt(row, 'shares'),
       createdAt: meta?.publishedAt ?? null,
+      ...(meta?.format ? { format: meta.format } : {}),
       // Hàm thuần của `externalVideoId`, không cần lưu riêng — cùng cách
       // `YOUTUBE_WATCH_URL` trong `youtube-dashboard.tsx` tự dựng, chỉ khác
       // chỗ dựng (ở đây để field không rỗng trên `VideoSummary` — UI vẫn tự

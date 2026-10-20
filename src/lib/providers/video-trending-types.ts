@@ -5,10 +5,22 @@
  * bên dưới khác nhau (xem
  * docs/superpowers/specs/2026-08-14-video-snapshot-pipeline-design.md).
  */
+/**
+ * Dạng nội dung — YouTube tách "Shorts" khỏi video thường, và người dùng
+ * quản lý hai thứ đó như hai việc khác nhau (xem 2 tab ở trang chi tiết kênh).
+ *
+ * `undefined` = nguồn KHÔNG phân biệt được, chứ không phải "là video thường":
+ * TikTok chỉ có một dạng nội dung nên luôn bỏ trống field này.
+ */
+export type VideoFormat = 'short' | 'standard'
+
 export interface VideoSummary {
   readonly externalVideoId: string
   readonly title: string
   readonly thumbnailUrl: string | null
+  /** Xem `VideoFormat`. Để OPTIONAL chứ không `| null` bắt buộc vì TikTok
+   * dựng `VideoSummary` ở nhiều chỗ và không có gì để điền vào đây. */
+  readonly format?: VideoFormat
   readonly views: number
   readonly likes: number
   readonly comments: number
@@ -108,6 +120,12 @@ export const hasEnoughHistory = (
  * YouTube tới 200) để đỡ nặng payload mà không phải đổi hợp đồng lần nữa
  * nếu UI sau này cần top 20/30. */
 export const MAX_TOP_ALL_TIME = 50
+
+/** Trần số video hiện ra MỖI TAB (Video / Shorts) ở trang chi tiết kênh
+ * YouTube. Nằm ở đây chứ không ở `google-explore.ts` để component (Server
+ * Component, nhưng cùng cây với component client) không phải kéo theo cả
+ * module `server-only` chỉ vì một con số. */
+export const YOUTUBE_EXPLORE_ROWS_PER_FORMAT = 10
 
 /** Video có dưới ngần này view ở đầu cửa sổ bị loại khỏi "tăng nhanh" — %
  * tăng của một video 2 view lên 20 view (900%) không có ý nghĩa, chỉ là

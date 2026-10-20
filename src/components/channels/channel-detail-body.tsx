@@ -11,6 +11,7 @@ import { Pagination } from '@/components/ui/pagination'
 import type { ChannelDetail } from '@/lib/data/site-channel-detail'
 import type { ChannelDailyPoint } from '@/lib/data/site-channels'
 import type { ProductApprovalStatus } from '@/lib/providers/google-merchant'
+import { YOUTUBE_EXPLORE_ROWS_PER_FORMAT } from '@/lib/providers/video-trending-types'
 import { DATE_RANGE_LABELS, type DateRangePreset } from '@/lib/domain/site'
 import type { ProviderId } from '@/lib/domain/providers'
 import { formatCompact, formatCurrencyCompact, formatNumber, formatPercent } from '@/lib/format'
@@ -232,28 +233,57 @@ export function ChannelDetailBody({
       )
     }
 
-    case 'youtube':
+    case 'youtube': {
+      // Analytics không lọc được theo dạng nội dung nên tách ở đây, sau khi
+      // đã xếp hạng theo views (xem `classifyYoutubeFormat`). `format: null`
+      // = không kết luận được, xếp vào "Video" chứ không giấu đi.
+      const shorts = detail.data.topVideos.filter((row) => row.format === 'short')
+      const standard = detail.data.topVideos.filter((row) => row.format !== 'short')
+      const toCard = (row: (typeof detail.data.topVideos)[number]) => ({
+        title: row.title,
+        thumbnailUrl: row.thumbnailUrl,
+        views: row.views,
+        likes: row.likes,
+        comments: row.comments,
+        shares: row.shares,
+      })
+      // Kênh hoàn toàn không có dòng nào khác hẳn kênh chỉ thiếu MỘT dạng
+      // nội dung. Trường hợp đầu gần như luôn là độ trễ xử lý của YouTube
+      // (kênh mới đăng video xong vẫn trống trơn), nói "chưa có video nào"
+      // là sai sự thật và khiến người dùng tưởng app hỏng.
+      const noDataAtAll = detail.data.topVideos.length === 0
+      const emptyFor = (formatLabel: string) =>
+        noDataAtAll
+          ? 'YouTube Analytics chưa trả số liệu nào cho khoảng ngày này. Video vừa đăng thường mất vài ngày mới có dữ liệu, và kênh mới lập thì lâu hơn.'
+          : `Kênh có số liệu trong khoảng ngày này, nhưng không có ${formatLabel} nào.`
+
       return (
         <UrlTabs
           ariaLabel="Chế độ xem"
           tabs={[
             {
               id: 'overview',
-              label: 'Tổng quan',
+              label: 'Video',
               panel: (
                 <VideoCardGrid
                   label="Video"
                   title="Video xem nhiều nhất"
-                  emptyDescription="Chưa có video nào trong khoảng ngày này."
+                  emptyDescription={emptyFor('video thường')}
                   fetchError={detail.data.fetchError}
-                  videos={detail.data.topVideos.map((row) => ({
-                    title: row.title,
-                    thumbnailUrl: row.thumbnailUrl,
-                    views: row.views,
-                    likes: row.likes,
-                    comments: row.comments,
-                    shares: row.shares,
-                  }))}
+                  videos={standard.slice(0, YOUTUBE_EXPLORE_ROWS_PER_FORMAT).map(toCard)}
+                />
+              ),
+            },
+            {
+              id: 'shorts',
+              label: 'Shorts',
+              panel: (
+                <VideoCardGrid
+                  label="Shorts"
+                  title="Shorts xem nhiều nhất"
+                  emptyDescription={emptyFor('Shorts')}
+                  fetchError={detail.data.fetchError}
+                  videos={shorts.slice(0, YOUTUBE_EXPLORE_ROWS_PER_FORMAT).map(toCard)}
                 />
               ),
             },
@@ -284,6 +314,7 @@ export function ChannelDetailBody({
           ]}
         />
       )
+    }
 
     case 'merchant-center':
       // Cùng cấu trúc "Tổng quan" (không đổi) / "Chi tiết" (mới) với GA4/GSC
