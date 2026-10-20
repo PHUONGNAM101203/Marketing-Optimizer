@@ -18,13 +18,20 @@ export const metadata = { title: 'Kiểm tra SEO/GEO/AIO/AEO' }
 // trong `after()` — quét thật (crawl tới `CRAWL_DEADLINE_MS`) + PSI (tới 3 lượt
 // thử/chiến lược, xem `pagespeed.ts`) + gợi ý AI có thể mất tới vài phút cho
 // site nhiều trang (xác nhận thật: handdn.com 1182 trang mất ~238s, 8/2026).
-// 300s từng là trần đúng cho Hobby — giờ đã lên Vercel Pro, trần thật là 800s
-// không cần đăng ký beta (xác nhận từ tài liệu Vercel). Nới lên 600s: PSI
-// worst-case một chiến lược = 3×150s = 450s (mobile/desktop chạy song song
-// nên tính MAX không phải tổng), cộng ~45s gợi ý AI (`AI_JSON_TIMEOUT_MS`,
-// cũng chạy song song) và ~100s đệm cho DB write/khởi động — vẫn chừa ~200s
-// so với trần 800s.
-export const maxDuration = 600
+// 800s chỉ là trần của FLUID COMPUTE. Fluid đã tắt (19/9/2026, để giảm chi
+// phí), nên trần thật của gói Pro là 300s — và Vercel chặn ngay ở bước deploy
+// chứ không âm thầm kẹp lại: "must have a maxDuration between 1 and 300 for
+// plan pro". Chính con số 600 ở đây đã làm MỌI lượt deploy hỏng từ 19/9 tới
+// 20/10/2026, tức production đứng yên suốt một tháng trong khi mã mới vẫn
+// được đẩy lên Git đều đặn.
+//
+// 300 là trần cứng, không phải lựa chọn: không có số nào lớn hơn deploy
+// được khi Fluid tắt. Đây là rủi ro CÓ THẬT chứ không phải dư đệm — đo thật
+// handdn.com 1182 trang mất ~238s, chỉ còn ~62s dự phòng. Site lớn hơn sẽ bị
+// Vercel giết giữa chừng. Nếu việc đó xảy ra, cách duy nhất để nới là BẬT
+// LẠI Fluid Compute (rồi mới nâng số này lên 600/800), chứ không phải sửa ở
+// đây.
+export const maxDuration = 300
 
 export default async function AuditPage({
   params,

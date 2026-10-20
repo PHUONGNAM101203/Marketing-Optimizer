@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { Suspense } from 'react'
 import { AlertTriangle, Eye, Heart, Info, MessageCircle, Settings2, Share2 } from 'lucide-react'
+import { cn } from '@/lib/cn'
 import { Card, CardBody, CardHeader, SectionHead } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -246,6 +247,14 @@ export function ChannelDetailBody({
         likes: row.likes,
         comments: row.comments,
         shares: row.shares,
+        // `/shorts/` cho Short, `/watch?v=` cho video thường: mở Short bằng
+        // link `/watch` vẫn xem được nhưng ra trình phát ngang, không phải
+        // giao diện Shorts người dùng đang quản lý. Dựng thuần từ ID nên
+        // không bao giờ thiếu.
+        href:
+          row.format === 'short'
+            ? `https://www.youtube.com/shorts/${row.externalVideoId}`
+            : `https://www.youtube.com/watch?v=${row.externalVideoId}`,
       })
       // Kênh hoàn toàn không có dòng nào khác hẳn kênh chỉ thiếu MỘT dạng
       // nội dung. Trường hợp đầu gần như luôn là độ trễ xử lý của YouTube
@@ -970,6 +979,10 @@ interface VideoCardData {
   /** `null` khi nền tảng không trả được chỉ số này cho tài khoản (khác 0
    * thật) — cả YouTube lẫn TikTok đều có thể rơi vào trường hợp này. */
   readonly shares: number | null
+  /** Link mở video trên chính nền tảng. `null` = không dựng được link, thẻ
+   * khi đó KHÔNG bấm được (thà không bấm được còn hơn bấm vào một trang
+   * lỗi). */
+  readonly href: string | null
 }
 
 /**
@@ -1009,7 +1022,14 @@ function VideoCardGrid({
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {videos.map((video, index) => (
-            <Card key={index} className="flex flex-col overflow-hidden p-0">
+            <Card
+              key={index}
+              className={cn(
+                'flex flex-col overflow-hidden p-0',
+                video.href &&
+                  'transition-colors duration-[var(--dur-fast)] ease-[var(--ease-out)] hover:border-[var(--color-signal)]',
+              )}
+            >
               <ImageWithFallback
                 src={video.thumbnailUrl}
                 className="aspect-video w-full object-cover"
@@ -1019,13 +1039,29 @@ function VideoCardGrid({
                   </div>
                 }
               />
-              <div className="flex flex-1 flex-col gap-3 p-4">
-                <p
-                  className="line-clamp-2 text-[length:var(--text-sm)] font-medium text-[var(--color-ink)]"
-                  title={video.title}
-                >
-                  {video.title}
-                </p>
+              <div className="relative flex flex-1 flex-col gap-3 p-4">
+                {video.href ? (
+                  // Link phủ cả thẻ (`after:absolute inset-0`) nhưng neo vào
+                  // ĐÚNG tiêu đề: trình đọc màn hình đọc được "mở <tên video>"
+                  // thay vì một ô trống, trong khi chuột vẫn bấm được ở bất kỳ
+                  // đâu trên thẻ. `relative` ở trên là mốc cho lớp phủ đó.
+                  <Link
+                    href={video.href}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    title={video.title}
+                    className="line-clamp-2 text-[length:var(--text-sm)] font-medium text-[var(--color-ink)] after:absolute after:inset-0 hover:text-[var(--color-signal)]"
+                  >
+                    {video.title}
+                  </Link>
+                ) : (
+                  <p
+                    className="line-clamp-2 text-[length:var(--text-sm)] font-medium text-[var(--color-ink)]"
+                    title={video.title}
+                  >
+                    {video.title}
+                  </p>
+                )}
                 <div className="mt-auto grid grid-cols-2 gap-2">
                   <VideoStat icon={Eye} label="Lượt xem" value={formatCompact(video.views)} />
                   <VideoStat icon={Heart} label="Lượt thích" value={formatCompact(video.likes)} />
