@@ -74,6 +74,7 @@ export async function signIn(
   const { data: sites } = await supabase
     .from('sites')
     .select('id')
+    .is('deleted_at', null)
     .order('created_at', { ascending: true })
     .limit(1)
 

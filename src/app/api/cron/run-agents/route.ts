@@ -54,7 +54,11 @@ export async function GET(request: NextRequest) {
   const siteIds = [...new Set((agents ?? []).map((agent) => agent.site_id))]
   const { data: sites } =
     siteIds.length > 0
-      ? await admin.from('sites').select('id, timezone').in('id', siteIds)
+      ? await admin
+          .from('sites')
+          .select('id, timezone')
+          .in('id', siteIds)
+          .is('deleted_at', null)
       : { data: [] as { id: string; timezone: string }[] }
   const timezoneBySiteId = new Map((sites ?? []).map((site) => [site.id, site.timezone]))
 

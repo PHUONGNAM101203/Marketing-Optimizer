@@ -53,6 +53,7 @@ export const listSites = async (): Promise<readonly Site[]> => {
   const { data, error } = await supabase
     .from('sites')
     .select('*')
+    .is('deleted_at', null)
     .order('created_at', { ascending: true })
 
   if (error) throw new Error(`Không đọc được danh sách website: ${error.message}`)
@@ -71,6 +72,7 @@ export const getSite = cache(async (siteId: string): Promise<Site | null> => {
   const { data, error } = await supabase
     .from('sites')
     .select('*')
+    .is('deleted_at', null)
     .eq('id', siteId)
     .maybeSingle()
 
@@ -170,3 +172,36 @@ export const setLastSiteId = async (
 
   if (error) console.error(`Không ghi được last_site_id: ${error.message}`)
 }
+
+export interface DeletedSite {
+  readonly id: string
+  readonly name: string
+  readonly domain: string
+  readonly deletedAt: string
+}
+
+/**
+ * Website đã xoá nhưng CHƯA bị dọn — dữ liệu còn nguyên, khôi phục được.
+ *
+ * Tách hẳn khỏi `listSites` (chỉ trả website đang dùng) thay vì thêm tham số:
+ * trộn hai danh sách là mở đường cho việc lỡ hiện website đã xoá ở nơi không
+ * nên. RLS vẫn lọc theo `is_site_member`, nên người dùng chỉ thấy website của
+ * chính họ.
+ */
+export const listDeletedSites = cache(async (): Promise<readonly DeletedSite[]> => {
+  const supabase = await createClient()
+  const { data } = await supabase
+    .from('sites')
+    .select('id, name, domain, deleted_at')
+    .not('deleted_at', 'is', null)
+    .order('deleted_at', { ascending: false })
+
+  return (data ?? [])
+    .filter((row): row is typeof row & { deleted_at: string } => row.deleted_at !== null)
+    .map((row) => ({
+      id: row.id,
+      name: row.name,
+      domain: row.domain,
+      deletedAt: row.deleted_at,
+    }))
+})

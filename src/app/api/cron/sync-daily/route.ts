@@ -4,6 +4,7 @@ import { syncMany, type SyncTarget } from '@/lib/sync/sync-many'
 import { refreshAllSiteAiModelCaches } from '@/lib/data/site-ai-keys'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { purgeDisconnectedConnections } from '@/lib/sync/purge-disconnected'
+import { purgeDeletedSites } from '@/lib/sync/purge-deleted-sites'
 import { cronEnv } from '@/lib/supabase/env'
 
 /**
@@ -43,6 +44,8 @@ export async function GET(request: NextRequest) {
   // Dọn kết nối đã gỡ quá 30 ngày — nơi DUY NHẤT còn xoá thật một kết nối,
   // xem `purge-disconnected.ts`.
   const purged = await purgeDisconnectedConnections(admin)
+  // Dọn website đã xoá quá 30 ngày — xem `purge-deleted-sites.ts`.
+  const purgedSites = await purgeDeletedSites(admin)
 
-  return NextResponse.json({ ...result, modelsRefreshed, modelsFailed, purged })
+  return NextResponse.json({ ...result, modelsRefreshed, modelsFailed, purged, purgedSites })
 }

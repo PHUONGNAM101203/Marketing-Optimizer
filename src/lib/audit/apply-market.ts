@@ -29,7 +29,12 @@ export const applyDetectedMarketOnce = async (
   if (!market || market.confidence !== 'high') return false
   if (market.currency === DEFAULT_CURRENCY && market.timezone === DEFAULT_TIMEZONE) return false
 
-  const { data: siteRow } = await admin.from('sites').select('currency, timezone').eq('id', siteId).single()
+  const { data: siteRow } = await admin
+    .from('sites')
+    .select('currency, timezone')
+    .eq('id', siteId)
+    .is('deleted_at', null)
+    .maybeSingle()
   const stillAtDefault = siteRow?.currency === DEFAULT_CURRENCY && siteRow?.timezone === DEFAULT_TIMEZONE
   if (!stillAtDefault) return false
 

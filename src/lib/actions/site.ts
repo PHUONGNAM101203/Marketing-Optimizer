@@ -3,7 +3,10 @@
 import { redirect } from 'next/navigation'
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
+import { cookies } from 'next/headers'
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { LAST_SITE_COOKIE } from '@/lib/last-site-cookie'
 import { normalizeHostname } from '@/lib/domain/hostname'
 
 /**
@@ -244,4 +247,122 @@ export async function updateInsightThresholds(
 
   revalidatePath(`/${parsed.data.siteId}/insights`)
   return { error: null, success: true }
+}
+
+/**
+ * Xoá website — ĐÁNH DẤU, không xoá thật.
+ *
+ * `sites` là gốc của cây xoá lan: một lệnh `delete` ở đây cuốn theo
+ * `connections`, rồi từ đó cuốn tiếp mọi `metrics_daily`,
+ * `video_metrics_daily`, `content_metrics_daily`, `connection_secrets`. Tức
+ * mất nhiều hơn hẳn sự cố 7/9/2026 (một kết nối TikTok, 1.877 hàng lịch sử,
+ * phải khôi phục cả database hai lượt mới lấy lại). Và từ nay project nằm ở
+ * gói Free — không còn sao lưu hằng ngày để mà khôi phục.
+ *
+ * Nên ở đây chỉ đặt `deleted_at`, rồi đánh dấu mọi connection CÒN SỐNG của
+ * site bằng ĐÚNG mốc thời gian đó. Dùng chung một mốc là có chủ đích: lúc
+ * khôi phục, nó phân biệt được connection "bị site kéo theo" với connection
+ * người dùng đã tự gỡ từ trước — chỉ nhóm thứ nhất được hồi sinh.
+ *
+ * Chỉ CHỦ SỞ HỮU được xoá, không phải admin: admin sửa được nội dung site,
+ * nhưng huỷ cả website cùng toàn bộ lịch sử là quyết định của người sở hữu.
+ */
+export interface DeleteSiteState {
+  readonly error: string | null
+}
+
+export async function deleteSiteAction(
+  _previous: DeleteSiteState,
+  formData: FormData,
+): Promise<DeleteSiteState> {
+  const siteId = formData.get('siteId')
+  if (typeof siteId !== 'string' || !siteId) return { error: 'Thiếu website.' }
+
+  const supabase = await createClient()
+  const { data: isOwner } = await supabase.rpc('has_site_role', {
+    target_site: siteId,
+    allowed: ['owner'],
+  })
+  if (!isOwner) return { error: 'Chỉ chủ sở hữu mới xoá được website.' }
+
+  const admin = createAdminClient()
+  const deletedAt = new Date().toISOString()
+
+  const { error } = await admin.from('sites').update({ deleted_at: deletedAt }).eq('id', siteId)
+  if (error) return { error: 'Không xoá được website. Vui lòng thử lại.' }
+
+  // Đánh dấu connection SAU khi site đã đánh dấu thành công. Ngược lại, lỗi ở
+  // bước trên sẽ để lại một site còn sống nhưng mọi kết nối đã bị gỡ.
+  await admin
+    .from('connections')
+    .update({ disconnected_at: deletedAt })
+    .eq('site_id', siteId)
+    .is('disconnected_at', null)
+
+  // Người dùng đang đứng trong chính site vừa xoá. Không dọn hai thứ dưới đây
+  // thì lần vào app kế tiếp bị đẩy thẳng về site đã xoá rồi nhận 404 — đúng
+  // vòng lặp đã sửa ở `last-site-cookie.ts`.
+  const { data: user } = await supabase.auth.getUser()
+  if (user.user) {
+    await admin
+      .from('profiles')
+      .update({ last_site_id: null })
+      .eq('id', user.user.id)
+      .eq('last_site_id', siteId)
+  }
+  const cookieStore = await cookies()
+  cookieStore.delete(LAST_SITE_COOKIE)
+
+  revalidatePath('/', 'layout')
+  // `/` tự chọn site còn lại, hoặc đưa về onboarding khi đã hết site.
+  redirect('/')
+}
+
+export interface RestoreSiteState {
+  readonly error: string | null
+}
+
+/**
+ * Bỏ dấu đã-xoá, đưa website trở lại cùng toàn bộ dữ liệu.
+ *
+ * Không phục dựng gì — chưa hàng nào bị xoá, nên mọi số liệu vẫn gắn đúng
+ * `site_id` cũ. Đây chính là điều cách xoá thật không cho phép.
+ */
+export async function restoreSiteAction(
+  _previous: RestoreSiteState,
+  formData: FormData,
+): Promise<RestoreSiteState> {
+  const siteId = formData.get('siteId')
+  if (typeof siteId !== 'string' || !siteId) return { error: 'Thiếu website.' }
+
+  const supabase = await createClient()
+  const { data: isOwner } = await supabase.rpc('has_site_role', {
+    target_site: siteId,
+    allowed: ['owner'],
+  })
+  if (!isOwner) return { error: 'Chỉ chủ sở hữu mới khôi phục được website.' }
+
+  const admin = createAdminClient()
+  const { data: site } = await admin
+    .from('sites')
+    .select('deleted_at')
+    .eq('id', siteId)
+    .maybeSingle()
+
+  if (!site?.deleted_at) return { error: 'Không tìm thấy website đã xoá.' }
+
+  const { error } = await admin.from('sites').update({ deleted_at: null }).eq('id', siteId)
+  if (error) return { error: 'Không khôi phục được website. Vui lòng thử lại.' }
+
+  // CHỈ những connection bị chính lượt xoá site này kéo theo — khớp đúng mốc
+  // thời gian. Connection người dùng đã tự gỡ trước đó mang mốc khác và phải
+  // ở nguyên trạng thái đã gỡ.
+  await admin
+    .from('connections')
+    .update({ disconnected_at: null })
+    .eq('site_id', siteId)
+    .eq('disconnected_at', site.deleted_at)
+
+  revalidatePath('/', 'layout')
+  return { error: null }
 }

@@ -22,7 +22,9 @@ import {
   type ComparisonRanges,
 } from '@/lib/domain/comparison-param'
 import { DATE_RANGE_LABELS, type DateRangePreset, type Site } from '@/lib/domain/site'
+import type { DeletedSite } from '@/lib/data/sites'
 import { formatDateRange, formatRelativeTime } from '@/lib/format'
+import { RestoreSiteItem } from '@/components/layout/restore-site-item'
 
 /* Hallmark · component: topbar · theme: studied-DNA (Ink & Signal)
  *
@@ -57,13 +59,14 @@ const DATE_PRESETS: readonly DateRangePreset[] = [
 export interface TopbarProps {
   readonly site: Site
   readonly sites: readonly Site[]
+  readonly deletedSites: readonly DeletedSite[]
   readonly lastSyncedAt: string | null
   readonly hasConnections: boolean
   /** Truyền vào để render ổn định giữa server và client. */
   readonly now: Date
 }
 
-export function Topbar({ site, sites, lastSyncedAt, hasConnections, now }: TopbarProps) {
+export function Topbar({ site, sites, deletedSites, lastSyncedAt, hasConnections, now }: TopbarProps) {
   const searchParams = useSearchParams()
   const preset = parseRangeParam(searchParams.get('range') ?? undefined)
   const customRange = parseCustomRangeParams(
@@ -101,7 +104,7 @@ export function Topbar({ site, sites, lastSyncedAt, hasConnections, now }: Topba
         <Menu aria-hidden className="size-5" />
       </Button>
 
-      <SiteSwitcher site={site} sites={sites} />
+      <SiteSwitcher site={site} sites={sites} deletedSites={deletedSites} />
 
       <div className="relative hidden min-w-0 flex-1 md:block">
         <Search
@@ -159,9 +162,11 @@ export function Topbar({ site, sites, lastSyncedAt, hasConnections, now }: Topba
 function SiteSwitcher({
   site,
   sites,
+  deletedSites,
 }: {
   readonly site: Site
   readonly sites: readonly Site[]
+  readonly deletedSites: readonly DeletedSite[]
 }) {
   return (
     // modal={false}: đây là menu ĐIỀU HƯỚNG (mỗi item là một <Link>), không
@@ -221,6 +226,33 @@ function SiteSwitcher({
               </Link>
             </DropdownMenu.Item>
           ))}
+
+          {deletedSites.length > 0 ? (
+            <>
+              <div className="my-1 border-t border-[var(--color-rule)]" />
+              <p className="px-2 py-1 text-[length:var(--text-2xs)] tracking-[var(--tracking-label)] text-[var(--color-ink-3)] uppercase">
+                Đã xoá gần đây
+              </p>
+              {deletedSites.map((deleted) => (
+                // `onSelect` chặn hành vi mặc định: Radix đóng menu ngay khi
+                // chọn một item, mà menu đóng giữa chừng thì form bên trong
+                // chưa kịp gửi đi.
+                <DropdownMenu.Item
+                  key={deleted.id}
+                  asChild
+                  onSelect={(event) => event.preventDefault()}
+                >
+                  <div>
+                    <RestoreSiteItem
+                      siteId={deleted.id}
+                      name={deleted.name}
+                      domain={deleted.domain}
+                    />
+                  </div>
+                </DropdownMenu.Item>
+              ))}
+            </>
+          ) : null}
 
           <div className="my-1 border-t border-[var(--color-rule)]" />
 

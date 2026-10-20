@@ -1,9 +1,7 @@
 import { notFound } from 'next/navigation'
-import { Trash2 } from 'lucide-react'
 import { PageHeader, PageShell } from '@/components/layout/page-header'
 import { Card, CardBody, CardHeader } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
 import { getSite, listMembers } from '@/lib/data/sites'
 import { getInviteLink } from '@/lib/data/site-invite'
 import { getLatestAuditPageSignals } from '@/lib/data/audit'
@@ -13,6 +11,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { EditSiteForm } from '@/components/settings/edit-site-form'
 import { AiKeySetup } from '@/components/settings/ai-key-setup'
 import { InviteMemberDialog } from '@/components/settings/invite-member-dialog'
+import { DeleteSiteDialog } from '@/components/settings/delete-site-dialog'
 import { canManageConnections, type SiteRole } from '@/lib/domain/site'
 import { TLD_MARKET } from '@/lib/audit/market-detection'
 import { formatRelativeTime } from '@/lib/format'
@@ -51,6 +50,14 @@ export default async function SettingsPage({
   }
 
   const members = await listMembers(site.id)
+  // Hộp thoại xoá phải nói ĐÚNG bao nhiêu kênh sẽ bị gỡ — con số mơ hồ thì
+  // người dùng không quyết định được.
+  const { count: liveConnectionCount } = await createAdminClient()
+    .from('connections')
+    .select('id', { count: 'exact', head: true })
+    .eq('site_id', site.id)
+    .is('disconnected_at', null)
+
   const aiConnection = await getSiteAiConnection(site.id)
   const inviteLink = await getInviteLink(site.id)
 
@@ -163,10 +170,11 @@ export default async function SettingsPage({
           description="Xoá vĩnh viễn Site này cùng toàn bộ số liệu đã đồng bộ, đề xuất, kế hoạch và lịch sử agent. Không hoàn tác được."
         />
         <CardBody>
-          <Button variant="danger" size="md">
-            <Trash2 aria-hidden className="size-4" />
-            Xoá {site.name}
-          </Button>
+          <DeleteSiteDialog
+            siteId={site.id}
+            siteName={site.name}
+            connectionCount={liveConnectionCount ?? 0}
+          />
         </CardBody>
       </Card>
     </PageShell>

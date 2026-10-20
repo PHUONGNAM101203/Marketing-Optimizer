@@ -78,7 +78,12 @@ const fetchPromptVersionRow = async (admin: AdminClient, versionId: string): Pro
 }
 
 const fetchSiteRow = async (admin: AdminClient, siteId: string): Promise<Site | null> => {
-  const { data, error } = await admin.from('sites').select('*').eq('id', siteId).maybeSingle()
+  const { data, error } = await admin
+    .from('sites')
+    .select('*')
+    .eq('id', siteId)
+    .is('deleted_at', null)
+    .maybeSingle()
   if (error) throw new Error(`Không đọc được website: ${error.message}`)
   if (!data) return null
   return {

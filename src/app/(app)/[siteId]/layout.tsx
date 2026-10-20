@@ -6,7 +6,13 @@ import { Topbar } from '@/components/layout/topbar'
 import { MobileNavDrawer } from '@/components/layout/mobile-nav-drawer'
 import { ConnectionsRealtime } from '@/components/realtime/connections-realtime'
 import { MobileNavProvider } from '@/components/layout/mobile-nav-context'
-import { getCurrentProfile, getSite, listSites, setLastSiteId } from '@/lib/data/sites'
+import {
+  getCurrentProfile,
+  getSite,
+  listDeletedSites,
+  listSites,
+  setLastSiteId,
+} from '@/lib/data/sites'
 import { getConnectionSummary } from '@/lib/data/connections'
 import { isAwaitingFirstSync } from '@/lib/domain/connection'
 import { createClient } from '@/lib/supabase/server'
@@ -27,9 +33,10 @@ export default async function SiteLayout({
 }) {
   const { siteId } = await params
 
-  const [site, sites, profile, connections] = await Promise.all([
+  const [site, sites, deletedSites, profile, connections] = await Promise.all([
     getSite(siteId),
     listSites(),
+    listDeletedSites(),
     getCurrentProfile(),
     getConnectionSummary(siteId),
   ])
@@ -97,6 +104,7 @@ export default async function SiteLayout({
           <Topbar
             site={site}
             sites={sites}
+            deletedSites={deletedSites}
             lastSyncedAt={connections.lastSyncedAt}
             hasConnections={!connections.isEmpty}
             // Giờ đồng bộ là dữ liệu THẬT (connections.lastSyncedAt từ Supabase) —
