@@ -94,7 +94,14 @@ export const resolveAiConfig = async (siteId: string): Promise<SiteAiConfig | nu
  */
 export const refreshAllSiteAiModelCaches = async (): Promise<{ readonly refreshed: number; readonly failed: number }> => {
   const admin = createAdminClient()
-  const { data: rows } = await admin.from('site_ai_keys').select('site_id, provider, api_key_enc')
+  // `!inner` + lọc `deleted_at`: site đã xoá vẫn còn hàng trong `site_ai_keys`
+  // (xoá mềm giữ nguyên dữ liệu con), nên không lọc thì cron hằng ngày vẫn gọi
+  // API của nhà cung cấp AI cho website người dùng đã bỏ — tốn tiền thật, mỗi
+  // ngày, cho tới lúc dọn sau 30 ngày.
+  const { data: rows } = await admin
+    .from('site_ai_keys')
+    .select('site_id, provider, api_key_enc, sites!inner(deleted_at)')
+    .is('sites.deleted_at', null)
 
   const results = await Promise.allSettled(
     (rows ?? []).map(async (row) => {
